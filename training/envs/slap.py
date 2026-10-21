@@ -101,6 +101,7 @@ class SlapEnv:
         self.push_wait, self.push_left, self.push_f = z(N), z(N), z(N, 3)
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
         self.ret, self.foot0, self.left_box = z(N), z(N, 2, 2), torch.zeros(N, dtype=torch.bool, device=dev)
+        self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
         self.episodes = []   # (return, fell, left foot box, length) of finished episodes; the trainer drains it
 
         # CUDA graphs: compile once, then replay
@@ -140,7 +141,7 @@ class SlapEnv:
 
     # ------------------------------------------------------------------ step
     def _pushes(self, dt):
-        if not (self.cfg["pushes"] and self.randomize):
+        if not (self.cfg["pushes"] and self.randomize and self.push_scale > 0):
             return
         self.xfrc.zero_()
         self.push_wait -= dt
@@ -148,7 +149,7 @@ class SlapEnv:
         n = int(start.sum())
         if n:
             ang = self._u(n, -math.pi, math.pi)
-            mag = self._u(n, 150.0, 300.0)
+            mag = self._u(n, 150.0, 300.0) * self.push_scale
             self.push_f[start] = torch.stack([torch.cos(ang) * mag, torch.sin(ang) * mag, torch.zeros_like(mag)], -1)
             self.push_left[start] = self._u(n, 0.1, 0.2)
             self.push_wait[start] = self._u(n, 1.0, 3.0)

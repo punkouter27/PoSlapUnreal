@@ -125,6 +125,8 @@ class PPOConfig:
     # under a ceiling; lr_max stops the KL-adaptive rate from running up to where it undoes what is known.
     max_std: float = 0.0
     lr_max: float = 1e-2
+    # PoSlap 2026-10-21: the L0 smoke run's KL controller sat at the old 1e-5 floor for most of 5 minutes.
+    lr_min: float = 1e-5
 
 
 class PPO:
@@ -212,7 +214,7 @@ class PPO:
                     kl = torch.sum(torch.log(sigma / sigma_old[idx] + 1e-5)
                                    + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2)) - 0.5, dim=-1).mean()
                     if kl > c.desired_kl * 2.0:
-                        self.cfg.lr = max(1e-5, self.cfg.lr / c.lr_adapt)
+                        self.cfg.lr = max(c.lr_min, self.cfg.lr / c.lr_adapt)
                     elif kl < c.desired_kl / 2.0 and kl > 0.0:
                         self.cfg.lr = min(c.lr_max, self.cfg.lr * c.lr_adapt)
                     for g in self.opt.param_groups:

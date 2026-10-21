@@ -7,7 +7,7 @@ TensorBoard starts with the run (http://localhost:6006). A brain is exported to 
 level's own exam passed by the deterministic policy. runs/<run>/: latest.pt, telemetry.jsonl, meta.json,
 report.html (runs over 30 min). Runs that never reached 5,000 steps are pruned at start.
 """
-import argparse, json, shutil, socket, subprocess, sys, time
+import argparse, copy, json, shutil, socket, subprocess, sys, time
 from collections import deque
 from pathlib import Path
 
@@ -15,6 +15,7 @@ import torch
 import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
+from brain_cpu import video
 from envs.slap import SlapEnv
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx
@@ -41,6 +42,19 @@ def tensorboard():
     subprocess.Popen([str(exe), "--logdir", str(RUNS), "--port", "6006"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     print("TensorBoard: http://localhost:6006")
+
+
+def cpu_policy(ppo):
+    """The current deterministic policy as numpy-in, numpy-out (what the exported ONNX computes)."""
+    actor = copy.deepcopy(ppo.model.actor).cpu().eval()
+    mean, std = ppo.obs_rms.mean.cpu(), torch.sqrt(ppo.obs_rms.var + 1e-8).cpu()
+    clip = ppo.cfg.obs_clip
+
+    @torch.no_grad()
+    def act(o):
+        x = torch.clamp((torch.from_numpy(o) - mean) / std, -clip, clip)
+        return actor(x[None])[0].numpy()
+    return act
 
 
 @torch.no_grad()
@@ -86,12 +100,15 @@ def main():
     env = SlapEnv(a.char, a.level, num_envs=a.envs)
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25))
-    if a.resume:
-        ppo.load(a.resume)
+    ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4))
+    extra = ppo.load(a.resume) if a.resume else {}
+    # push curriculum: no pushes until he can stand, then up to full 150-300 N; graduation only at full
+    env.push_scale = extra.get("push_scale", 0.0) if LEVELS[a.level]["pushes"] else 1.0
     target = LEVELS[a.level]["reward_target"]
     recent = deque(maxlen=100)
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
+    last_video = time.time()
+    (run / "videos").mkdir(exist_ok=True)
     print(f"run {run.name}: {a.level}, {a.envs} worlds, {a.minutes} min, graduate at return {target} over 100 episodes")
 
     while time.time() - t0 < a.minutes * 60:
@@ -111,17 +128,27 @@ def main():
         ret = sum(e[0] for e in recent) / max(1, len(recent))
         fall = sum(e[1] for e in recent) / max(1, len(recent))
         eplen = sum(e[3] for e in recent) / max(1, len(recent)) / 50
-        for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen}.items():
+        if LEVELS[a.level]["pushes"] and len(recent) == 100:
+            if eplen > 0.8 * env.T / 50:
+                env.push_scale = min(1.0, env.push_scale + 0.02)
+            elif eplen < 0.4 * env.T / 50:
+                env.push_scale = max(0.0, env.push_scale - 0.01)
+        for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale}.items():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episode_return": ret,
-                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), **stats,
+                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), "push_scale": env.push_scale, **stats,
                                "pelvis_z_w0": env.qpos[0, 2].item()}) + "\n")
         if it % 10 == 0:
             print(f"it {it:5d} {steps / 1e6:7.1f}M steps {(time.time() - t0) / 60:5.1f} min | return {ret:7.1f} "
-                  f"fall {fall:.2f} ep {eplen:4.1f}s | std {stats['action_std']:.3f} lr {stats['lr']:.1e}")
+                  f"fall {fall:.2f} ep {eplen:4.1f}s | push {env.push_scale:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
         if it % 50 == 0:
-            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level})
-        if len(recent) == 100 and ret >= target and time.time() - last_exam > 120:
+            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale})
+        if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)
+            last_video = time.time()
+            gif = run / "videos" / f"it{it:05d}_{(time.time() - t0) / 60:04.0f}min.gif"
+            z = video(cpu_policy(ppo), gif, a.char)
+            print(f"video {gif.name}: pelvis at {z:.2f} m after 6 s", flush=True)
+        if len(recent) == 100 and ret >= target and env.push_scale >= 1.0 and time.time() - last_exam > 120:
             last_exam = time.time()
             ok, res = exam(ppo, a.char, a.level)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}")
@@ -130,7 +157,7 @@ def main():
                 graduated = res
                 break
 
-    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level})
+    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale})
     minutes = (time.time() - t0) / 60
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             "episode_return": ret if it else 0, "fall_rate": fall if it else 1, "graduated": graduated, "nan": nan}
