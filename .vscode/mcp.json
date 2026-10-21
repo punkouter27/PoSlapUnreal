@@ -1,0 +1,13 @@
+{
+    "servers": {
+        "aura": {
+            "command": "node",
+            "args": [
+                "c:\\Users\\punko\\.vscode\\extensions\\monticma-aura.aura-visualizer-3d-1.3.2\\out\\mcp-server.js"
+            ],
+            "env": {
+                "AURA_DB_PATH": "c:\\Users\\punko\\Downloads\\PoSlapUnreal\\.aura\\graph.db"
+            }
+        }
+    }
+}

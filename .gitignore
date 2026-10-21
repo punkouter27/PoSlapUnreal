@@ -1,0 +1,19 @@
+# Unreal
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+*.sln
+*.slnx
+# Plugins build output (URLab lives in Plugins/ later)
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+# Tools / local
+.aura/
+__pycache__/
+*.pyc
+.venv/
+training/runs/
+training/checkpoints/
+training/logs/
