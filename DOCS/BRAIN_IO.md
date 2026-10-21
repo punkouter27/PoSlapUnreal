@@ -20,10 +20,10 @@ Positions (xpos, site_xpos) come from `mj_kinematics` on the current qpos (mj_st
 | 70–99 | previous action | [−1, 1] |
 | 100 | role: +1 strike, −1 defend, 0 none | |
 | 101 | turn clock remaining (1 → 0 over 30 s) | |
-| 102–104 | target − own pelvis, heading frame (opponent `face_zone` site; L2: the `target` mocap; else 0) | m |
-| 105–107 | opponent `hand_r` − own pelvis, heading frame (0 without opponent) | m |
+| 102–104 | target − own pelvis, heading frame (opponent `face_zone` site; L2: the `target` mocap). **0 when role = 0** | m |
+| 105–107 | opponent `hand_r` − own pelvis, heading frame. **0 when role = 0** or no opponent | m |
 
-## Action — 30 floats, ONNX output `action` shape [1, 30]
+## Action — 30 floats, ONNX output 0 `actions` shape [1, 30] (output 1 `value` [1, 1], the critic)
 
 `a = clip(action, −1, 1)`;
 `target = clip(stand + a · ½(hi − lo), lo, hi)` with `lo, hi` = `ctrl_range_rad`;

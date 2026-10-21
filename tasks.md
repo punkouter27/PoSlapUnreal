@@ -38,13 +38,13 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
 - [x] B11 Knockdown detector from MuJoCo contacts (non-sole vs floor/podium/mat), logged in UE — done: any non-foot geom on floor/podium → logged knockdown (`LogSlap`)
 
 ## Phase C — Training Prep
-- [ ] C1 `training/envs/slap.py` on MuJoCo Warp: observation (incl. role flag), 30 actions, 50 Hz control / 200 Hz physics
-- [ ] C2 Randomisation per Blueprint §6 (pushes 150–300 N, friction 0.6–1.2, ±5 % mass, ±10 % strength, 0–20 ms delay)
-- [ ] C3 Level configs L0–L5 with pass/fail checks + graduation (reward target over 100 episodes, zero NaN grads)
-- [ ] C4 PPO trainer, TensorBoard autostart, checkpoint + ONNX export only on graduation
-- [ ] C5 Housekeeping: prune runs/checkpoints/TB logs under 5,000 steps; HTML report for runs > 30 min (top-3 charts, delta vs last, Toddler/Child/Adult)
-- [ ] C6 Telemetry to local storage (JSONL): actions, kinematics, strikes, outcomes
-- [ ] C7 Smoke run: 5 min L0 on GPU, curves move, no NaNs, Unreal Editor closed
+- [x] C1 `training/envs/slap.py` on MuJoCo Warp: observation (incl. role flag), 30 actions, 50 Hz control / 200 Hz physics — done: `training/envs/slap.py`, BRAIN_IO obs (role-0 opponent inputs zeroed, both sides), fall = Unreal's contact rule; ~53k steps/s at 4096 worlds
+- [x] C2 Randomisation per Blueprint §6 (pushes 150–300 N, friction 0.6–1.2, ±5 % mass, ±10 % strength, 0–20 ms delay) — done: friction 0.6–1.2, ±5 % mass+inertia, ±10 % strength, 0–20 ms delay, 150–300 N pushes, sensor noise. Skipped: per-foot friction (floor friction has priority), add if L0 needs it
+- [x] C3 Level configs L0–L5 with pass/fail checks + graduation (reward target over 100 episodes, zero NaN grads) — done: `training/levels.py` L0–L5 with targets and exams; L0/L1 mechanics live, L2+ mechanics added as the ladder reaches them
+- [x] C4 PPO trainer, TensorBoard autostart, checkpoint + ONNX export only on graduation — done: `train.py` (PPO from PoBox's `ppo.py`), TensorBoard autostart :6006, exam + ONNX export only on graduation (return over 100 episodes, no NaN)
+- [x] C5 Housekeeping: prune runs/checkpoints/TB logs under 5,000 steps; HTML report for runs > 30 min (top-3 charts, delta vs last, Toddler/Child/Adult) — done: prune runs under 5,000 steps / no meta; `report.py` HTML (top-3 charts, delta vs last run, Toddler/Child/Adult) for runs > 30 min
+- [x] C6 Telemetry to local storage (JSONL): actions, kinematics, strikes, outcomes — done: `runs/<run>/telemetry.jsonl` per iteration (stats + world-0 kinematics) and TensorBoard scalars
+- [x] C7 Smoke run: 5 min L0 on GPU, curves move, no NaNs, Unreal Editor closed — done: 5 min, 15.7 M steps, no NaN, standing 1.9 s → 3.6 s, editor closed. Learning-rate collapse + strong pushes to tune in Step 4
 
 ## Step 4 — Training & Verification (after Phase C)
 - [ ] L0 Stand trained and graduated in MuJoCo

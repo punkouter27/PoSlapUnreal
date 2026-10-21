@@ -315,10 +315,12 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		{
 			TArray<float> Action;
 			Action.SetNumZeroed(A.Act.Num());
+			float Value = 0.f;	// trained brains also output the critic's value (later: the HUD's win bar)
 			BuildObs(m, d, A, Obs);
 			const UE::NNE::FTensorBindingCPU In{ Obs, sizeof(Obs) };
-			const UE::NNE::FTensorBindingCPU Out{ Action.GetData(), (uint64)Action.Num() * sizeof(float) };
-			if (Instance->RunSync({ In }, { Out }) != UE::NNE::EResultStatus::Ok) continue;
+			TArray<UE::NNE::FTensorBindingCPU> Out = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) } };
+			if (Instance->GetOutputTensorDescs().Num() > 1) Out.Add({ &Value, sizeof(float) });
+			if (Instance->RunSync({ In }, Out) != UE::NNE::EResultStatus::Ok) continue;
 			for (int32 j = 0; j < A.Act.Num(); ++j)
 			{
 				const double a = FMath::Clamp((double)Action[j], -1.0, 1.0);
@@ -359,9 +361,15 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete
 	Heading(d->qvel + A.RootV, O + 4);
 	for (int32 k = 0; k < 3; ++k) O[7 + k] = (float)(d->qvel[A.RootV + 3 + k] * 0.25);
 	for (int32 j = 0; j < N; ++j) O[10 + j] = A.PrevAction[j];
-	O[10 + N] = 0.f;		// role: set by the match flow (Step 5)
+	const float Role = 0.f;	// set by the match flow (Step 5); at role 0 the target and opponent inputs stay zero
+	O[10 + N] = Role;
 	O[11 + N] = 0.f;		// turn clock
 	double Rel[3] = { 0, 0, 0 };
+	if (Role == 0.f)
+	{
+		for (int32 k = 12 + N; k < 18 + N; ++k) O[k] = 0.f;
+		return;
+	}
 	if (A.Target >= 0)
 	{
 		const double* P = A.TargetIsSite ? d->site_xpos + 3 * A.Target : d->xpos + 3 * A.Target;
