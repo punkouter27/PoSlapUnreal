@@ -52,8 +52,8 @@ class SlapEnv:
         self.jq = torch.tensor([m.jnt_qposadr[j] for j in jid], device=dev)
         self.jv = torch.tensor([m.jnt_dofadr[j] for j in jid], device=dev)
         self.act_id = torch.tensor([m.actuator(n).id for n in order], device=dev)
-        self.stand = torch.tensor([math.radians(fp["stand_pose_deg"].get(n, 0.0)) for n in order], device=dev)
-        rng = torch.tensor(fp["ctrl_range_rad"], device=dev)[self.act_id]
+        self.stand = torch.tensor([fp["stand_pose_rad"].get(n, 0.0) for n in order], device=dev)
+        rng = torch.tensor(fp["ctrl_range_rad"], device=dev)   # listed in joint order
         self.lo, self.hi = rng[:, 0], rng[:, 1]
         self.scale = 0.5 * (self.hi - self.lo)
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02

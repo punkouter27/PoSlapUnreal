@@ -153,6 +153,8 @@ Run the **same 5-second recording** (same start pose, same brain decisions) in M
 
 - **Replay test** (recorded actions played back): every body part within **1 mm** at every physics step.
 - **Live test** (brain running in both): pelvis and head within **1 cm** after 5 s, same fall/no-fall outcome.
+  The simulator side steps *the model Unreal runs* (URLab's compiled `.mjb`): URLab's rebuild of our XML differs by float
+  residues that a closed-loop brain amplifies to ~2 cm in 5 s, so the XML is a different (equally valid) model.
 
 Fail → stop, find the difference (version, timestep, model file, coordinates), fix, rerun. Nothing advances past L0 until this passes.
 

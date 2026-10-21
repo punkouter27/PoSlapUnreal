@@ -403,7 +403,8 @@ def main():
               "ctrl_range_rad": m.actuator_ctrlrange.tolist(),
               "torque_limit_nm": m.actuator_forcerange[:, 1].tolist(),
               "max_joint_speed_rad_s": ADULT_JOINT_SPEED * card["speed"],
-              "stand_pose_deg": stand_pose(stand), "root_height_m": float(root[2]),
+              "stand_pose_deg": stand_pose(stand), "stand_pose_rad": {k: math.radians(v) for k, v in stand_pose(stand).items()},
+              "root_height_m": float(root[2]),
               "geom_scale": scale, "balance_offset_m": off.tolist(), "drop_test_upright_s": up,
               "card": card}
         (out / f"{card['name']}_fingerprint.json").write_text(json.dumps(fp, indent=1))

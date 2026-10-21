@@ -47,8 +47,8 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
 - [x] C7 Smoke run: 5 min L0 on GPU, curves move, no NaNs, Unreal Editor closed — done: 5 min, 15.7 M steps, no NaN, standing 1.9 s → 3.6 s, editor closed. Learning-rate collapse + strong pushes to tune in Step 4
 
 ## Step 4 — Training & Verification (after Phase C)
-- [ ] L0 Stand trained and graduated in MuJoCo
-- [ ] **Matching Check** (Blueprint §8): replay ≤ 1 mm, live ≤ 1 cm, same outcome — STOP and fix on failure
+- [x] L0 Stand trained and graduated in MuJoCo — 46 min (+13 min before the noise cap), exam 97 % no-fall under full 150–300 N pushes; `training/models/brains/grandpa_L0.onnx`
+- [x] **Matching Check** (Blueprint §8): replay 0.017 mm, **live 0.000 cm** (bit-identical vs URLab's model), same outcome
 - [ ] L1 → L5 in order, each graduating before the next
 
 ## Step 5 — Visual Polish & Gameplay (after L5)

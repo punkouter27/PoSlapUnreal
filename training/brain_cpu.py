@@ -22,8 +22,8 @@ class Athlete:
         root = m.joint(prefix + "root").id
         self.rq, self.rv = m.jnt_qposadr[root], m.jnt_dofadr[root]
         self.pelvis = m.body(prefix + "pelvis").id
-        self.stand = np.array([math.radians(fp["stand_pose_deg"].get(n, 0.0)) for n in self.order])
-        self.lo, self.hi = np.array(fp["ctrl_range_rad"])[self.act].T
+        self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
+        self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
 
@@ -53,9 +53,9 @@ class Athlete:
 def stand(m, d, fp):
     mujoco.mj_resetData(m, d)
     for i in range(m.njnt):
-        for j, deg in fp["stand_pose_deg"].items():
+        for j, rad in fp["stand_pose_rad"].items():
             if m.joint(i).name.endswith(j):
-                d.qpos[m.jnt_qposadr[i]] = math.radians(deg)
+                d.qpos[m.jnt_qposadr[i]] = rad
     mujoco.mj_forward(m, d)
 
 

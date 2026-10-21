@@ -70,6 +70,11 @@ private:
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
 	void BuildObs(const mjModel* m, const mjData* d, const FAthlete& A, float* Obs) const;
+	void WriteQposDump(const mjModel* m, const FString& RelPath);
+
+	// live matching check (-SlapRecord=<file>): record qpos for RecordSteps physics steps from the stand pose
+	FString RecordFile;
+	int32 RecordSteps = 1000;
 
 	int64 StepCount = 0;
 	double MaxStep = 0.0;

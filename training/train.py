@@ -89,6 +89,8 @@ def main():
     ap.add_argument("--envs", type=int, default=4096)
     ap.add_argument("--run", default=None)
     ap.add_argument("--resume", default=None)
+    ap.add_argument("--max-std", type=float, default=0.3, help="cap on exploration noise (it ran away to 0.47 in grandpa_L0_v1)")
+    ap.add_argument("--entropy", type=float, default=0.001)
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
     housekeeping()
@@ -100,8 +102,10 @@ def main():
     env = SlapEnv(a.char, a.level, num_envs=a.envs)
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4))
+    ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy))
     extra = ppo.load(a.resume) if a.resume else {}
+    with torch.no_grad():
+        ppo.model.log_std.clamp_(max=float(torch.log(torch.tensor(a.max_std))))
     # push curriculum: no pushes until he can stand, then up to full 150-300 N; graduation only at full
     env.push_scale = extra.get("push_scale", 0.0) if LEVELS[a.level]["pushes"] else 1.0
     target = LEVELS[a.level]["reward_target"]

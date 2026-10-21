@@ -11,6 +11,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
+#include <cmath>
+
 DEFINE_LOG_CATEGORY_STATIC(LogSlap, Log, All);
 
 namespace
@@ -79,6 +81,7 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	{
 		Mode = CmdMode == TEXT("Replay") ? ESlapControlMode::Replay : ESlapControlMode::Policy;
 	}
+	FParse::Value(FCommandLine::Get(), TEXT("SlapRecord="), RecordFile);	// policy mode: record 5 s for the live check
 
 	// URLab attaches our MJCF as a child spec, whose <option> is dropped (root spec defaults: 0.002 s, Euler),
 	// and its own override is single-precision. Set the training options exactly, from the fingerprint.
@@ -93,7 +96,8 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 		for (int32 k = 0; k < 3; ++k) m->opt.gravity[k] = G[k]->AsNumber();
 		UE_LOG(LogSlap, Log, TEXT("MuJoCo options from %s: timestep %.17g, integrator %d"), *Fingerprint, m->opt.timestep, m->opt.integrator);
 	}
-	Mode == ESlapControlMode::Replay ? BindReplay(m) : BindPolicy(m);
+	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state
+	if (Mode == ESlapControlMode::Policy) BindPolicy(m);
 }
 
 void USlapController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
@@ -156,21 +160,27 @@ void USlapController::StepReplay(mjModel* m, mjData* d)
 	if (++ReplaySteps == NumCtrl * ControlEvery)
 	{
 		bReplayDone = true;
-		FString Out = TEXT("{\"names\": [");
-		const TArray<FString> Names = QposNames(m);
-		for (int32 i = 0; i < Names.Num(); ++i) Out += FString::Printf(TEXT("%s\"%s\""), i ? TEXT(", ") : TEXT(""), *Names[i]);
-		Out += TEXT("], \"qpos\": [");
-		for (int32 s = 0; s < ReplaySteps; ++s)
-		{
-			Out += s ? TEXT(", [") : TEXT("[");
-			for (int32 i = 0; i < m->nq; ++i) Out += FString::Printf(TEXT("%s%.17g"), i ? TEXT(", ") : TEXT(""), Recorded[s * m->nq + i]);
-			Out += TEXT("]");
-		}
-		Out += TEXT("]}");
-		const FString Path = FPaths::Combine(FPaths::ProjectDir(), ReplayDump);
-		FFileHelper::SaveStringToFile(Out, *Path);
-		UE_LOG(LogSlap, Log, TEXT("Replay done: %d steps -> %s"), ReplaySteps, *Path);
+		WriteQposDump(m, ReplayDump);
 	}
+}
+
+void USlapController::WriteQposDump(const mjModel* m, const FString& RelPath)
+{
+	const int32 Steps = Recorded.Num() / m->nq;
+	FString Out = TEXT("{\"names\": [");
+	const TArray<FString> Names = QposNames(m);
+	for (int32 i = 0; i < Names.Num(); ++i) Out += FString::Printf(TEXT("%s\"%s\""), i ? TEXT(", ") : TEXT(""), *Names[i]);
+	Out += TEXT("], \"qpos\": [");
+	for (int32 s = 0; s < Steps; ++s)
+	{
+		Out += s ? TEXT(", [") : TEXT("[");
+		for (int32 i = 0; i < m->nq; ++i) Out += FString::Printf(TEXT("%s%.17g"), i ? TEXT(", ") : TEXT(""), Recorded[s * m->nq + i]);
+		Out += TEXT("]");
+	}
+	Out += TEXT("]}");
+	const FString Path = FPaths::Combine(FPaths::ProjectDir(), RelPath);
+	FFileHelper::SaveStringToFile(Out, *Path);
+	UE_LOG(LogSlap, Log, TEXT("qpos dump: %d steps -> %s"), Steps, *Path);
 }
 
 // ---------------------------------------------------------------- policy (DOCS/BRAIN_IO.md)
@@ -183,7 +193,7 @@ void USlapController::BindPolicy(mjModel* m)
 	MaxStep = Fp->GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
 	const TArray<TSharedPtr<FJsonValue>>& Order = Fp->GetArrayField(TEXT("joint_order"));
 	const TArray<TSharedPtr<FJsonValue>>& Range = Fp->GetArrayField(TEXT("ctrl_range_rad"));
-	const TSharedPtr<FJsonObject> StandDeg = Fp->GetObjectField(TEXT("stand_pose_deg"));
+	const TSharedPtr<FJsonObject> StandRad = Fp->GetObjectField(TEXT("stand_pose_rad"));
 
 	for (int32 b = 0; b < m->nbody; ++b)
 	{
@@ -205,9 +215,9 @@ void USlapController::BindPolicy(mjModel* m)
 			A.Vadr.Add(m->jnt_dofadr[Jnt]);
 			A.Lo.Add(Range[j]->AsArray()[0]->AsNumber());
 			A.Hi.Add(Range[j]->AsArray()[1]->AsNumber());
-			double Deg = 0.0;
-			StandDeg->TryGetNumberField(J, Deg);
-			A.Stand.Add(FMath::DegreesToRadians(Deg));
+			double Rad = 0.0;	// exact radians from Python; a degree conversion here can differ in the last bit
+			StandRad->TryGetNumberField(J, Rad);
+			A.Stand.Add(Rad);
 		}
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
@@ -297,7 +307,23 @@ void USlapController::ResetAthletes(const mjModel* m, mjData* d)
 
 void USlapController::StepPolicy(mjModel* m, mjData* d)
 {
-	if (StepCount % ControlEvery == 0)
+	if (!RecordFile.IsEmpty())	// live matching check: same start as training/brain_cpu.py, record 5 s, no resets
+	{
+		if (StepCount == 0)	// Python's exact start state (URLab's own qpos0 differs by 1 ulp in blue's root quat)
+		{
+			mj_resetData(m, d);
+			for (const TPair<int32, double>& Q : ReplayQ0) d->qpos[Q.Key] = Q.Value;
+			mj_forward(m, d);
+			Recorded.Reset();
+		}
+		Recorded.Append(d->qpos, m->nq);	// before this step, as Python records it
+		if (Recorded.Num() / m->nq == RecordSteps)
+		{
+			WriteQposDump(m, RecordFile);
+			RecordFile.Reset();
+		}
+	}
+	else if (StepCount % ControlEvery == 0)
 	{
 		FString Why;
 		const int32 Down = Fallen(m, d, Why);
@@ -321,6 +347,15 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 			TArray<UE::NNE::FTensorBindingCPU> Out = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) } };
 			if (Instance->GetOutputTensorDescs().Num() > 1) Out.Add({ &Value, sizeof(float) });
 			if (Instance->RunSync({ In }, Out) != UE::NNE::EResultStatus::Ok) continue;
+			if (!RecordFile.IsEmpty() && StepCount == 0)	// live check diagnostics: first decision at full precision
+			{
+				FString S;
+				for (int32 k = 0; k < NumObs; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
+				UE_LOG(LogSlap, Log, TEXT("first obs %s: %s"), *A.Prefix, *S);
+				S.Reset();
+				for (float V : Action) S += FString::Printf(TEXT("%.9g "), V);
+				UE_LOG(LogSlap, Log, TEXT("first action %s: %s"), *A.Prefix, *S);
+			}
 			for (int32 j = 0; j < A.Act.Num(); ++j)
 			{
 				const double a = FMath::Clamp((double)Action[j], -1.0, 1.0);
@@ -346,8 +381,8 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete
 	}
 	mjtNum R[9];
 	mju_quat2Mat(R, d->qpos + A.RootQ + 3);	// pelvis -> world
-	const double Yaw = FMath::Atan2(R[3], R[0]);
-	const double C = FMath::Cos(Yaw), S = FMath::Sin(Yaw);
+	const double Yaw = std::atan2(R[3], R[0]);	// C runtime, as Python's math (FMath::Atan2 is UE's own approximation)
+	const double C = std::cos(Yaw), S = std::sin(Yaw);
 	auto Heading = [&](const double* V, float* Dst)	// world -> heading frame
 	{
 		Dst[0] = (float)(C * V[0] + S * V[1]);

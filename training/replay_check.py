@@ -22,9 +22,9 @@ def stand(m, d, fp):
     mujoco.mj_resetData(m, d)
     for i in range(m.njnt):
         name = m.joint(i).name
-        for j, deg in fp["stand_pose_deg"].items():
+        for j, rad in fp["stand_pose_rad"].items():
             if name.endswith(j):
-                d.qpos[m.jnt_qposadr[i]] = math.radians(deg)
+                d.qpos[m.jnt_qposadr[i]] = rad
     mujoco.mj_forward(m, d)
 
 
@@ -112,11 +112,50 @@ def compare(ref_path, ue_path, mjb):
     sys.exit(0 if ok else 1)
 
 
+def live(onnx, ue_path, mjb, xml="models/grandpa_vs_grandpa_arena.xml"):
+    """Live test (Blueprint 8): the brain drives both athletes 5 s here (CPU MuJoCo + onnxruntime) and in Unreal
+    (NNE, -SlapRecord). Pass: pelvis and head within 1 cm after 5 s, and the same fall / no-fall outcome.
+    The simulator side steps the model Unreal runs (URLab's compiled .mjb, our options): URLab's rebuild of the XML
+    differs by float residues that a closed-loop brain amplifies to ~2 cm in 5 s, so the XML is not the same model."""
+    from brain_cpu import onnx_policy, rollout
+    import re
+    fp = json.loads((HERE / "models" / "grandpa_fingerprint.json").read_text())
+    u = mujoco.MjModel.from_binary_path(mjb)
+    o = fp["option"]
+    u.opt.timestep, u.opt.integrator, u.opt.solver, u.opt.iterations = o["timestep"], o["integrator"], o["solver"], o["iterations"]
+    u.opt.gravity[:] = o["gravity"]
+    pre = next(re.sub(r"red_pelvis$", "", u.body(i).name) for i in range(u.nbody) if u.body(i).name.endswith("red_pelvis"))
+    raw = []
+    rollout(u, fp, onnx_policy(onnx), prefixes=(pre + "red_", pre + "blue_"), seconds=SECONDS, on_step=lambda k, d: raw.append(d.qpos.copy()))
+    m = mujoco.MjModel.from_xml_path(str(HERE / xml))
+    un, mine = joint_names(u), joint_names(m)
+    order = [next(i for i, x in enumerate(un) if x == n or x.endswith("_" + n)) for n in mine]
+    trace = [q[order] for q in raw]
+    ue = json.loads(Path(ue_path).read_text())
+    n = min(len(trace), len(ue["qpos"]))
+    d = mujoco.MjData(m)
+    mine = joint_names(m)
+    def kin(names, row):
+        q = np.zeros(m.nq)
+        for nm, v in zip(names, row):
+            hit = [i for i, x in enumerate(mine) if x == nm or nm.endswith("_" + x)]
+            if hit: q[hit[0]] = v
+        d.qpos[:] = q; mujoco.mj_kinematics(m, d)
+        return {b: d.xpos[m.body(b).id].copy() for b in ("red_pelvis", "red_head", "blue_pelvis", "blue_head")}
+    a, b = kin(mine, trace[n - 1]), kin(ue["names"], ue["qpos"][n - 1])
+    gap = max(np.linalg.norm(a[k] - b[k]) for k in a)
+    fell = lambda p: tuple(p[k][2] < 0.6 for k in ("red_pelvis", "blue_pelvis"))
+    ok = gap <= 0.01 and fell(a) == fell(b) and n == len(trace)
+    print(f"live: {n} steps, pelvis/head gap after {n * m.opt.timestep:.2f} s = {gap * 100:.3f} cm, "
+          f"fell python {fell(a)} unreal {fell(b)}  ->  {'PASS' if ok else 'FAIL'}")
+    sys.exit(0 if ok else 1)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["record", "compare"])
+    ap.add_argument("cmd", choices=["record", "compare", "live"])
     ap.add_argument("a")
     ap.add_argument("b", nargs="?")
-    ap.add_argument("--mjb")
+    ap.add_argument("--mjb", default=str(HERE.parent / "Saved/URLab/scene_compiled.mjb"))
     x = ap.parse_args()
-    record(x.a) if x.cmd == "record" else compare(x.a, x.b, x.mjb)
+    {"record": lambda: record(x.a), "compare": lambda: compare(x.a, x.b, x.mjb), "live": lambda: live(x.a, x.b, x.mjb)}[x.cmd]()

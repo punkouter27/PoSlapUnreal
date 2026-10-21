@@ -236,6 +236,12 @@
   "shoulder_raise_r": -70,
   "elbow_r": 10
  },
+ "stand_pose_rad": {
+  "shoulder_raise_l": -1.2217304763960306,
+  "elbow_l": 0.17453292519943295,
+  "shoulder_raise_r": -1.2217304763960306,
+  "elbow_r": 0.17453292519943295
+ },
  "root_height_m": 0.881,
  "geom_scale": {
   "thigh_l": 0.95,

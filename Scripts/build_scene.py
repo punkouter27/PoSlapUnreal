@@ -75,7 +75,7 @@ mats[0].set_editor_property("material_interface", skin)
 grandpa.set_editor_property("materials", mats)
 ASSETS.save_loaded_asset(grandpa)
 
-brain = import_file("training/models/random_brain.onnx", "/Game/Brains")[0]
+brain = import_file(os.environ.get("SLAP_BRAIN", "training/models/random_brain.onnx"), "/Game/Brains")[0]  # SLAP_BRAIN=training/models/brains/<char>_<level>.onnx
 if ASSETS.does_asset_exist("/Game/Arena/grandpa_vs_grandpa_arena"):   # URLab won't overwrite; the MJCF may have changed
     ASSETS.delete_asset("/Game/Arena/grandpa_vs_grandpa_arena")
 arena_bp = next(a for a in import_file("training/models/grandpa_vs_grandpa_arena.xml", "/Game/Arena")
