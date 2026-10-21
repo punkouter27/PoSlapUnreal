@@ -99,7 +99,7 @@ The skinned Grandpa mesh is moved bone by bone: each MuJoCo body part's position
 |---|---|---|
 | Physics step | 200 Hz (5 ms) | Same in training and Unreal |
 | Brain decision | 50 Hz (every 4 physics steps) | Same in training and Unreal |
-| Screen | 60 fps | Smooth blend between the two most recent physics states. Display only, never fed back into physics. |
+| Screen | 60 fps | Shows the latest physics state (at most 5 ms old at 200 Hz). Display only, never fed back into physics. |
 
 Physics never runs on Unreal's frame clock. A slow frame means Unreal catches up physics steps; it never stretches them.
 

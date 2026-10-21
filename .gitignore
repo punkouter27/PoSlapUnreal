@@ -17,3 +17,8 @@ __pycache__/
 training/runs/
 training/checkpoints/
 training/logs/
+
+# URLab clone (local commits saved in Plugins/urlab_poslap.patch)
+Plugins/UnrealRoboticsLab/
+training/replays/
+Scripts/__pycache__/

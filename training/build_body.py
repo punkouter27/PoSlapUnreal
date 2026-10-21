@@ -62,7 +62,24 @@ def seg(name):
 
 
 def fmt(v):
-    return " ".join(f"{x:.4f}" for x in np.atleast_1d(v))
+    """Numbers as the exact value of their float32: URLab stores floats, so this round-trips bit for bit."""
+    return " ".join(repr(float(np.float32(x))) for x in np.atleast_1d(v))
+
+
+def quat_z_to(d):
+    """Quaternion turning +Z onto direction d (capsule axis)."""
+    d = np.asarray(d, float) / np.linalg.norm(d)
+    ax = np.cross([0, 0, 1], d)
+    s = np.linalg.norm(ax)
+    if s < 1e-9:
+        return np.array([1.0, 0, 0, 0]) if d[2] > 0 else np.array([0.0, 1, 0, 0])
+    a = math.atan2(s, d[2])
+    return np.array([math.cos(a / 2), *(ax / s * math.sin(a / 2))])
+
+
+def quat_axis(axis, deg):
+    t = math.radians(deg) / 2
+    return np.array([math.cos(t), *(np.array(axis, float) * math.sin(t))])
 
 
 # ---------------------------------------------------------------- A8: rig validation
@@ -182,12 +199,17 @@ def geom_xml(g, mass, pre, scale):
     kind, name, a, b, r = g
     k = scale.get(name, 1.0)
     full = pre + name
+    # explicit pos/quat/size (no fromto/euler): nothing left for URLab to recompute in single precision
     if kind == "capsule":
-        return f'<geom name="{full}" type="capsule" fromto="{fmt(a)} {fmt(b)}" size="{r * k:.4f}" mass="{mass:.4f}"/>'
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        return (f'<geom name="{full}" type="capsule" pos="{fmt((a + b) / 2)}" quat="{fmt(quat_z_to(b - a))}" '
+                f'size="{fmt([r * k, np.linalg.norm(b - a) / 2])}" mass="{fmt(mass)}"/>')
     if kind == "sphere":
-        return f'<geom name="{full}" type="sphere" pos="{fmt(a)}" size="{r * k:.4f}" mass="{mass:.4f}"/>'
-    return (f'<geom name="{full}" type="box" pos="{fmt(a)}" size="{fmt(np.array(b) * k)}" '
-            f'euler="{fmt(r)}" mass="{mass:.4f}"/>')
+        return f'<geom name="{full}" type="sphere" pos="{fmt(a)}" size="{fmt(r * k)}" mass="{fmt(mass)}"/>'
+    ex, _, ez = r  # boxes turn about one axis only (hand: x, foot: z)
+    q = quat_axis((1, 0, 0), ex) if ex else quat_axis((0, 0, 1), ez)
+    return (f'<geom name="{full}" type="box" pos="{fmt(a)}" quat="{fmt(q)}" size="{fmt(np.array(b) * k)}" '
+            f'mass="{fmt(mass)}"/>')
 
 
 def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
@@ -203,21 +225,22 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
         out = [f'{ind}<body name="{pre}{n}" pos="{fmt(pos if not PARENT[n] else rel)}"'
                + (f' quat="{fmt(quat)}"' if not PARENT[n] else "") + ">"]
         if not PARENT[n]:
-            out.append(f'{ind}  <freejoint name="{pre}root"/>')
+            out.append(f'{ind}  <joint name="{pre}root" type="free" damping="0" armature="0"/>')  # explicit: URLab applies <default> to free joints, MuJoCo's <freejoint> doesn't
         for jn, ax, (lo, hi), tq in JOINTS.get(seg(n), []):
             side = n[-2:] if n.endswith(("_l", "_r")) else ""
             axis = np.array(ax) * ([-1, 1, -1] if side == "_r" else 1)  # rotation axes mirror as (-x, y, -z)
             j = f"{pre}{jn}{side}"
-            out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{lo * flex:.1f} {hi * flex:.1f}"/>')
+            rng = fmt([math.radians(lo * flex), math.radians(hi * flex)])
+            out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{rng}"/>')
             kp = tq * S * KP_PER_NM
-            acts.append(f'<position name="{j}" joint="{j}" kp="{kp:.1f}" kv="{kp * KV_RATIO:.2f}" '
-                        f'ctrlrange="{lo * flex:.1f} {hi * flex:.1f}" forcerange="{-tq * S:.1f} {tq * S:.1f}"/>')
+            acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kp * KV_RATIO)}" '
+                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * S, tq * S])}"/>')
         for gg in g["geoms"]:
             out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"/>'))
         if n == "head":
             c = g["geoms"][0][2]
             out.append(f'{ind}  <site name="{pre}face_zone" type="box" pos="{fmt(c + [0.04, 0, -0.02])}" '
-                       f'size="0.06 0.09 0.06" rgba="1 1 0 0.2"/>')
+                       f'size="{fmt([0.06, 0.09, 0.06])}" rgba="1 1 0 0.2"/>')
         for c in kids[n]:
             out += body(c, depth + 1)
         out.append(f"{ind}</body>")
@@ -226,17 +249,17 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
     return "\n".join(body("pelvis", 2)), acts
 
 
-HEADER = """<mujoco model="{model}">
-  <compiler angle="degree" autolimits="true"/>
+HEADER = f"""<mujoco model="{{model}}">
+  <compiler angle="radian" autolimits="true"/>
   <option timestep="0.005" integrator="implicitfast"/>
   <default>
-    <joint armature="0.02" damping="0.5"/>
-    <geom condim="3" friction="0.8 0.02 0.01"/>
+    <joint armature="{fmt(0.02)}" damping="0.5"/>
+    <geom condim="3" friction="{fmt([0.8, 0.02, 0.01])}"/>
     <position ctrllimited="true" forcelimited="true"/>
   </default>
   <worldbody>
     <light pos="0 0 4" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
-    <geom name="floor" type="plane" size="10 10 0.1" friction="0.9 0.02 0.01" priority="1" rgba="0.25 0.25 0.28 1"/>
+    <geom name="floor" type="plane" size="10 10 0.1" friction="{fmt([0.9, 0.02, 0.01])}" priority="1" rgba="0.25 0.25 0.28 1"/>
 """
 
 
@@ -391,9 +414,9 @@ def main():
     (rc, rg, rs, rr), (bc, bg, bs, br) = built[a.card], built[a.blue or a.card]
     gap = 0.85                                  # pelvis to pelvis (PRD 0.85-1.0 m; shortest so a lean reaches)
     pod_h = round(0.59 * min(rc["height_m"], bc["height_m"]), 3)  # below the belly bulge
-    world = (f'    <geom name="podium" type="box" pos="0 0 {pod_h / 2:.3f}" size="0.10 0.30 {pod_h / 2:.3f}" rgba="0.15 0.15 0.18 1"/>\n'
-             f'    <site name="footbox_red" type="box" pos="{-gap / 2:.3f} 0 0.001" size="0.20 0.25 0.001" rgba="0.8 0.1 0.1 0.4"/>\n'
-             f'    <site name="footbox_blue" type="box" pos="{gap / 2:.3f} 0 0.001" size="0.20 0.25 0.001" rgba="0.1 0.2 0.8 0.4"/>\n')
+    world = (f'    <geom name="podium" type="box" pos="0 0 {fmt(pod_h / 2)}" size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n'
+             f'    <site name="footbox_red" type="box" pos="{fmt([-gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.8 0.1 0.1 0.4"/>\n'
+             f'    <site name="footbox_blue" type="box" pos="{fmt([gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.1 0.2 0.8 0.4"/>\n')
     red = athlete_xml(rg, rc, "red_", [-gap / 2, 0, rr[2]], (1, 0, 0, 0), rs, "0.85 0.3 0.3 1")
     blue = athlete_xml(bg, bc, "blue_", [gap / 2, 0, br[2]], (0, 0, 0, 1), bs, "0.3 0.4 0.85 1")
     arena = scene_xml(f"{rc['name']}_vs_{bc['name']}", [red, blue], world)
