@@ -1,0 +1,261 @@
+{
+ "mujoco": "3.10.0",
+ "model": "grandpa_solo.xml",
+ "sha256": "fc3a307870c56c7680effc4079852cc1a8f920825c01bec484caac81896dea4e",
+ "option": {
+  "timestep": 0.005,
+  "integrator": 3,
+  "solver": 2,
+  "iterations": 100,
+  "gravity": [
+   0.0,
+   0.0,
+   -9.81
+  ]
+ },
+ "sizes": {
+  "nq": 37,
+  "nv": 36,
+  "nu": 30,
+  "nbody": 19,
+  "ngeom": 19
+ },
+ "mass_kg": 78.0,
+ "body_mass": {
+  "target": 3.054,
+  "pelvis": 11.076,
+  "belly": 10.842,
+  "chest": 16.848,
+  "neck": 0.936,
+  "head": 5.382,
+  "upperarm_l": 2.184,
+  "forearm_l": 1.248,
+  "hand_l": 0.468,
+  "upperarm_r": 2.184,
+  "forearm_r": 1.248,
+  "hand_r": 0.468,
+  "thigh_l": 7.8,
+  "shin_l": 3.627,
+  "foot_l": 1.131,
+  "thigh_r": 7.8,
+  "shin_r": 3.627,
+  "foot_r": 1.131
+ },
+ "control_hz": 50,
+ "physics_hz": 200,
+ "joint_order": [
+  "waist_twist",
+  "waist_flex",
+  "waist_side",
+  "neck_turn",
+  "neck_nod",
+  "neck_tilt",
+  "shoulder_swing_l",
+  "shoulder_raise_l",
+  "shoulder_twist_l",
+  "elbow_l",
+  "wrist_flex_l",
+  "wrist_dev_l",
+  "shoulder_swing_r",
+  "shoulder_raise_r",
+  "shoulder_twist_r",
+  "elbow_r",
+  "wrist_flex_r",
+  "wrist_dev_r",
+  "hip_flex_l",
+  "hip_abd_l",
+  "hip_rot_l",
+  "knee_l",
+  "ankle_flex_l",
+  "ankle_roll_l",
+  "hip_flex_r",
+  "hip_abd_r",
+  "hip_rot_r",
+  "knee_r",
+  "ankle_flex_r",
+  "ankle_roll_r"
+ ],
+ "ctrl_range_rad": [
+  [
+   -34.0,
+   34.0
+  ],
+  [
+   -17.0,
+   51.0
+  ],
+  [
+   -25.5,
+   25.5
+  ],
+  [
+   -59.5,
+   59.5
+  ],
+  [
+   -34.0,
+   42.5
+  ],
+  [
+   -34.0,
+   34.0
+  ],
+  [
+   -110.5,
+   34.0
+  ],
+  [
+   -80.8,
+   68.0
+  ],
+  [
+   -68.0,
+   68.0
+  ],
+  [
+   0.0,
+   119.0
+  ],
+  [
+   -51.0,
+   59.5
+  ],
+  [
+   -21.2,
+   21.2
+  ],
+  [
+   -110.5,
+   34.0
+  ],
+  [
+   -80.8,
+   68.0
+  ],
+  [
+   -68.0,
+   68.0
+  ],
+  [
+   0.0,
+   119.0
+  ],
+  [
+   -51.0,
+   59.5
+  ],
+  [
+   -21.2,
+   21.2
+  ],
+  [
+   -17.0,
+   93.5
+  ],
+  [
+   -21.2,
+   34.0
+  ],
+  [
+   -34.0,
+   34.0
+  ],
+  [
+   0.0,
+   119.0
+  ],
+  [
+   -38.2,
+   17.0
+  ],
+  [
+   -17.0,
+   17.0
+  ],
+  [
+   -17.0,
+   93.5
+  ],
+  [
+   -21.2,
+   34.0
+  ],
+  [
+   -34.0,
+   34.0
+  ],
+  [
+   0.0,
+   119.0
+  ],
+  [
+   -38.2,
+   17.0
+  ],
+  [
+   -17.0,
+   17.0
+  ]
+ ],
+ "torque_limit_nm": [
+  60.0,
+  100.0,
+  80.0,
+  20.0,
+  20.0,
+  20.0,
+  45.0,
+  45.0,
+  30.0,
+  35.0,
+  10.0,
+  7.5,
+  45.0,
+  45.0,
+  30.0,
+  35.0,
+  10.0,
+  7.5,
+  110.0,
+  80.0,
+  50.0,
+  110.0,
+  90.0,
+  30.0,
+  110.0,
+  80.0,
+  50.0,
+  110.0,
+  90.0,
+  30.0
+ ],
+ "max_joint_speed_rad_s": 9.0,
+ "stand_pose_deg": {
+  "shoulder_raise_l": -70,
+  "elbow_l": 10,
+  "shoulder_raise_r": -70,
+  "elbow_r": 10
+ },
+ "root_height_m": 0.881,
+ "geom_scale": {
+  "thigh_l": 0.95,
+  "thigh_r": 0.95
+ },
+ "balance_offset_m": [
+  -0.013930058822848757,
+  0.0
+ ],
+ "drop_test_upright_s": 1.544999999999989,
+ "card": {
+  "name": "grandpa",
+  "display": "GRANDPA",
+  "mesh": "Content/Art/Exports/Grandpa_rigged.fbx",
+  "skeleton": "characters/grandpa_skeleton.json",
+  "height_m": 1.7,
+  "mass_kg": 78.0,
+  "strength": 0.5,
+  "speed": 0.75,
+  "flexibility": 0.85,
+  "notes": "v1 athlete, used for both players. Strength/speed/flexibility are multiples of a trained adult (Blueprint section 1)."
+ }
+}

@@ -33,9 +33,9 @@ Simple shapes fitted *inside* the mesh skin so contacts look right.
 | Neck | Capsule | Short; carries the head's wobble |
 | Chest, Belly, Pelvis | 3 capsules | Pelvis is the root (free-floating body) |
 | Upper arm, Forearm | Capsules | |
-| Hand | Flat box | **Palm side** = the scoring surface; back of hand/wrist does not score |
+| Hand | Flat box, standard hand length (10.8 % of height) | **Palm side** = the scoring surface; back of hand/wrist does not score. The scan's left hand is a fist, so its look ≠ the physics hand |
 | Thigh, Shin | Capsules | |
-| Foot | Box + **Sole** box | Sole is the only part allowed to touch the floor |
+| Foot | One box = the **sole** | The foot box is the only part allowed to touch the floor (a rolled shoe edge is not a knockdown) |
 
 **Self-collision:** every pair of parts collides *except* a part and its direct parent (e.g. forearm–upper arm).
 Checked automatically: zero overlap in the reference pose, the rest stance, and through a full slap swing arc.
@@ -112,9 +112,9 @@ tool for testing brains in Unreal before they are exported.
 | Item | Size / setting |
 |---|---|
 | Floor | Flat, high friction (0.9 base) |
-| Podium | Rigid box between athletes, top at mid-torso (≈ 1.05 m for Grandpa) |
+| Podium | Rigid box between athletes, 0.2 m deep, top at 0.59 × height (1.00 m for Grandpa, just under the belly) |
 | Foot boxes | Marked zones; **stance check**, not walls |
-| Spacing | Chest-to-chest 0.85–1.0 m (set so Grandpa's full-reach palm meets the face zone) |
+| Spacing | Pelvis-to-pelvis 0.85 m (PRD's shortest; reaching the face needs a lean) |
 | Safety mat | Padded boundary ring; touching it with anything but soles = knockdown |
 | Out of bounds | Any body part outside the mat area → episode/turn ends, athletes reset in place (no respawn) |
 

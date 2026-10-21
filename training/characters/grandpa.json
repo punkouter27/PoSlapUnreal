@@ -1,0 +1,12 @@
+{
+  "name": "grandpa",
+  "display": "GRANDPA",
+  "mesh": "Content/Art/Exports/Grandpa_rigged.fbx",
+  "skeleton": "characters/grandpa_skeleton.json",
+  "height_m": 1.70,
+  "mass_kg": 78.0,
+  "strength": 0.50,
+  "speed": 0.75,
+  "flexibility": 0.85,
+  "notes": "v1 athlete, used for both players. Strength/speed/flexibility are multiples of a trained adult (Blueprint section 1)."
+}

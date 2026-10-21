@@ -1,0 +1,7 @@
+# MuJoCo is pinned to URLab's version: trainer and Unreal must step identical physics.
+mujoco==3.10.0
+mujoco-warp==3.10.0.3
+numpy
+onnx
+tensorboard
+# torch: uv pip install torch --index-url https://download.pytorch.org/whl/cu128
