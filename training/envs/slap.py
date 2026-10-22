@@ -33,7 +33,7 @@ def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
 
 class SlapEnv:
     def __init__(self, character="grandpa", level="L0", num_envs=4096, seed=0, randomize=True):
-        if level not in ("L0", "L1"):
+        if level not in ("L0", "L1", "L2"):
             raise NotImplementedError(f"{level}: its mechanics are added when the ladder reaches it (levels.py)")
         self.level, self.cfg, self.N, self.randomize = level, LEVELS[level], num_envs, randomize
         dev = self.device = "cuda"
@@ -93,6 +93,12 @@ class SlapEnv:
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
+        self.strike = self.cfg["role"] == 1
+        if self.strike:   # L2: the mocap sphere stands in for the opponent's head (arena: 0.80 m ahead, 0.74 m up)
+            self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
+            self.tbase = self.q0[:3] + torch.tensor([0.8015, 0.0, 0.74], device=dev)
+            self.mocap, self.geom_xmat = T(self.dw.mocap_pos), T(self.dw.geom_xmat)
+            self.con_frame = T(self.dw.contact.frame)
 
         N, A = num_envs, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
@@ -102,7 +108,12 @@ class SlapEnv:
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
         self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 2), torch.zeros(N, dtype=torch.bool, device=dev)
         self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
-        self.episodes = []   # (return, fell, left foot box, length) of finished episodes; the trainer drains it
+        self.episodes = []   # (return, fell, left foot box, length, clean hit, hit speed) of finished episodes; the trainer drains it
+        self.struck = torch.zeros(N, dtype=torch.bool, device=dev)
+        self.hit_ok = torch.zeros(N, dtype=torch.bool, device=dev)
+        self.done_hit = torch.zeros(N, dtype=torch.bool, device=dev)
+        self.settle = torch.zeros(N, dtype=torch.long, device=dev)   # control steps left after the strike
+        self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl = z(N), z(N), z(N, 3), z(N, 3)
 
         # CUDA graphs: compile once, then replay
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
@@ -139,6 +150,12 @@ class SlapEnv:
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.head0[mask] = self.xpos[mask][:, self.head, :2]
+        if self.strike:
+            self.mocap[mask, 0] = self.tbase + self._u((n, 3), -0.03, 0.03)
+            self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
+            self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
+            self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
+            self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
 
     # ------------------------------------------------------------------ step
     def _pushes(self, dt):
@@ -170,6 +187,8 @@ class SlapEnv:
             self.ctrl[:, self.act_id] = torch.where((s >= self.delay)[:, None], tgt, old)
             self._pushes(0.005)
             wp.capture_launch(self.g_step)
+            if self.strike:
+                self._strike_check()
         wp.capture_launch(self.g_kin)
 
         fell = self.fell_now = self._fallen()
@@ -179,12 +198,47 @@ class SlapEnv:
         self.ret += rew
         stop = fell | out                       # L1: leaving the foot box ends the episode like a fall
         done = stop | (self.t >= self.T)
+        if self.strike:                         # L2: the episode ends 1.5 s after the strike (did he stay up?)
+            self.settle = torch.where(self.struck, self.settle - 1, self.settle)
+            done = done | (self.struck & (self.settle <= 0))
         timeout = done & ~stop
+        self.done_hit = done & self.hit_ok & ~stop
         if done.any():
-            for r, l, f, b in zip(self.ret[done].tolist(), self.t[done].tolist(), fell[done].tolist(), self.left_box[done].tolist()):
-                self.episodes.append((r, f, b, l))
+            for r, l, f, b, h, v in zip(self.ret[done].tolist(), self.t[done].tolist(), fell[done].tolist(),
+                                        self.left_box[done].tolist(), self.done_hit[done].tolist(), self.hit_speed[done].tolist()):
+                self.episodes.append((r, f, b, l, h, v))
             self.reset(done)
         return self.observe(), rew, done, timeout
+
+    def _strike_check(self):
+        """After each physics step: the first contact with the target decides the strike (Blueprint L2)."""
+        hand = self.geom_xpos[:, self.hand]
+        speed = (hand - self.hand_prev).norm(dim=-1) / 0.005
+        self.hand_prev = hand.clone()
+        n = self.nacon[0]
+        idx = torch.arange(self.con_geom.shape[0], device=self.device)
+        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
+        on = (idx < n) & ((g0 == self.tgeom) | (g1 == self.tgeom))
+        if not bool(on.any()):
+            return
+        w = self.con_world.long()[on]
+        other = torch.where(g0[on] == self.tgeom, g1[on], g0[on])
+        sign = torch.where(g0[on] == self.tgeom, -1.0, 1.0)[:, None]
+        normal = self.con_frame[on][:, 0, :] * sign                       # from the hand towards the target
+        palm_dir = -self.geom_xmat[w, self.hand][:, :, 2]                   # hand box -z = palm
+        palm = (other == self.hand) & ((normal * palm_dir).sum(-1) > 0.5)
+        hit = torch.zeros(self.N, dtype=torch.bool, device=self.device)
+        hit[w] = True
+        good = torch.zeros_like(hit)
+        good[w[palm]] = True
+        new = hit & ~self.struck
+        if bool(new.any()):
+            v = speed[new]
+            clean = good[new] & (v >= 8.0)
+            self.hit_ok[new], self.hit_speed[new] = clean, v
+            self.bonus[new] += torch.where(clean, 30.0 + 3.0 * v, torch.where(good[new], 5.0 + 2.0 * v, torch.full_like(v, -10.0)))
+            self.struck |= new
+            self.settle[new] = 75
 
     def _fallen(self):
         n = self.nacon[0]
@@ -202,6 +256,17 @@ class SlapEnv:
         posture = torch.exp(-((self.qpos[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
         smooth = ((a - self.prev_action) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
+        if self.strike:   # L2: no pay for waiting; reach the target fast, a clean palm strike pays most, then stay up
+            hand, tgt = self.geom_xpos[:, self.hand], self.mocap[:, 0]
+            d = (tgt - hand).norm(dim=-1)
+            u = (tgt - hand) / d[:, None].clamp(min=1e-6)
+            toward = (u * (hand - self.hand_prev_ctrl) / 0.02).sum(-1).clamp(0, 12)
+            reach = torch.exp(-d ** 2 / 0.05) + 0.1 * toward * torch.exp(-d ** 2 / 0.1)
+            before = -0.05 + 0.3 * upright.clamp(min=0) + reach - 0.01 * smooth
+            after = 0.5 + 0.5 * upright.clamp(min=0) + 0.5 * height
+            r = torch.where(self.struck, after, before) + self.bonus
+            self.bonus.zero_()
+            self.hand_prev_ctrl = hand.clone()
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()
@@ -210,7 +275,7 @@ class SlapEnv:
             facing = R[:, 0, 0]                                        # cos(yaw): pelvis x-axis on the world x-axis
             head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0) ** 2).sum(-1) / 0.01)
             anchor = torch.exp(-(d ** 2).sum((-1, -2)) / 0.005)         # feet on their marks, before the hard limit
-            r = r + 0.3 * facing + 0.3 * head + 0.5 * anchor
+            r = r + 0.3 * facing + 0.5 * anchor + (0.0 if self.strike else 0.3) * head   # a striker must lean in
         else:
             out = torch.zeros_like(fell)
         return torch.where(fell | out, torch.full_like(r, -5.0), r), out
@@ -225,6 +290,12 @@ class SlapEnv:
         heading = torch.stack([c * lin[:, 0] + s * lin[:, 1], -s * lin[:, 0] + c * lin[:, 1], lin[:, 2]], -1)
         bx, by = self.q0[0] - q[:, 0], self.q0[1] - q[:, 1]          # box centre = start pelvis x, y
         box = torch.stack([c * bx + s * by, -s * bx + c * by, torch.zeros_like(bx)], -1)
+        role_clock = torch.zeros(self.N, 2, device=self.device)
+        if self.strike:
+            rel = self.mocap[:, 0] - q[:, 0:3]
+            box = torch.stack([c * rel[:, 0] + s * rel[:, 1], -s * rel[:, 0] + c * rel[:, 1], rel[:, 2]], -1)
+            role_clock[:, 0] = 1.0
+            role_clock[:, 1] = 1.0 - self.t.float() / self.T
         obs = torch.cat([
             q[:, self.jq] - self.stand,
             v[:, self.jv] * 0.1,
@@ -233,9 +304,9 @@ class SlapEnv:
             heading,
             v[:, 3:6] * 0.25,
             self.prev_action,
-            torch.zeros(self.N, 2, device=self.device),   # role 0, clock 0
-            box,                                          # role 0: own foot-box centre - pelvis, heading frame
-            torch.zeros(self.N, 3, device=self.device),   # opponent hand: zero at role 0
+            role_clock,                                   # role, turn clock remaining
+            box,                                          # role 0: own foot-box centre; striker: target - pelvis (heading)
+            torch.zeros(self.N, 3, device=self.device),   # opponent hand: none here
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

@@ -20,7 +20,7 @@ Positions (xpos, site_xpos) come from `mj_kinematics` on the current qpos (mj_st
 | 70–99 | previous action | [−1, 1] |
 | 100 | role: +1 strike, −1 defend, 0 none | |
 | 101 | turn clock remaining (1 → 0 over 30 s) | |
-| 102–104 | role ≠ 0: target − own pelvis (opponent `face_zone` site; L2: the `target` mocap). **Role 0: own foot-box centre − pelvis** (box centre = the athlete's start pelvis x, y; z = 0). Heading frame | m |
+| 102–104 | role ≠ 0: target − own pelvis (opponent **head geom centre**; L2: the `target` mocap sphere, placed where that head is). **Role 0: own foot-box centre − pelvis** (box centre = the athlete's start pelvis x, y; z = 0). Heading frame | m |
 | 105–107 | opponent `hand_r` − own pelvis, heading frame. **0 when role = 0** or no opponent | m |
 
 ## Action — 30 floats, ONNX output 0 `actions` shape [1, 30] (output 1 `value` [1, 1], the critic)

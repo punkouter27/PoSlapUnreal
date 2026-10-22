@@ -64,19 +64,25 @@ def exam(ppo, character, level):
     env = SlapEnv(character, level, num_envs=chk["episodes"], seed=12345)
     env.push_scale = LEVELS[level].get("max_push", 1.0)
     obs = env.observe()
-    fell_any = torch.zeros(env.N, dtype=torch.bool, device="cuda")
-    left_box = torch.zeros_like(fell_any)
+    fell_any = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # each world's first episode only
+    left_box, hit, seen = torch.zeros_like(fell_any), torch.zeros_like(fell_any), torch.zeros_like(fell_any)
     for _ in range(env.T):
         a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
         lb = env.left_box.clone()
         obs, _, done, timeout = env.step(a)
-        fell_any |= env.fell_now
-        left_box |= lb
+        live = ~seen
+        fell_any |= live & env.fell_now
+        left_box |= live & lb
+        hit |= live & done & env.done_hit
+        seen |= done
     res = {"no_fall": 1.0 - fell_any.float().mean().item()}
     passed = res["no_fall"] >= chk["min_no_fall"]
     if "min_in_box" in chk:
         res["in_box"] = 1.0 - left_box.float().mean().item()
         passed &= res["in_box"] >= chk["min_in_box"]
+    if "min_hit" in chk:   # L2: clean palm strike >= 8 m/s and still up 1.5 s later
+        res["hit"] = hit.float().mean().item()
+        passed &= res["hit"] >= chk["min_hit"]
     torch.cuda.set_stream(ppo_stream)                 # the exam env switched both streams to its own
     wp.set_stream(wp.stream_from_torch(ppo_stream))
     return passed, res

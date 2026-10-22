@@ -20,8 +20,9 @@ LEVELS = {
         check=dict(episodes=100, min_no_fall=0.95, min_in_box=0.95),
     ),
     "L2": dict(  # Strike a fixed head target: palm first, >= 8 m/s, striker stays up, inside the 30 s clock
-        model="solo", seconds=30.0, pushes=False, role=1,
-        check=dict(episodes=100, min_hit=0.90, min_hand_speed=8.0, min_no_fall=0.90),
+        model="solo", seconds=30.0, pushes=False, role=1, foot_box=(0.20, 0.25),
+        reward_target=40.0,   # a clean hit pays 30 + 3 x speed; the exam is what counts
+        check=dict(episodes=100, min_hit=0.90, min_no_fall=0.90),   # hit = palm first, >= 8 m/s (envs/slap.py)
     ),
     "L3": dict(  # Absorb scripted strikes of rising impulse; COM back within 5 cm in 5 s
         model="arena", seconds=30.0, pushes=False, role=-1,
