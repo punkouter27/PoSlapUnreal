@@ -143,7 +143,7 @@ def _eval(args):
     return float(np.mean([run(m, fp, x, s)[0]["score"] for s in seeds]))
 
 
-def search(iters=150, pop=96, elite=12):
+def search(iters=150, pop=96, elite=12, nseeds=3):
     x0 = np.array([GUESS[k][i] for i in range(3) for k in KEYS] + list(TIMES) + list(DELAY.values()), float)
     prev = HERE / "models" / f"{CHAR}_slap_demo.json"
     if prev.exists():   # continue from the last search: its poses and times, new joints at the guess
@@ -157,7 +157,7 @@ def search(iters=150, pop=96, elite=12):
         for it in range(iters):
             xs = mu + rng.standard_normal((pop, len(mu))) * sig
             xs[0] = best[1]
-            seeds = [1 + 3 * it, 2 + 3 * it, 3 + 3 * it]   # fresh variations every generation: robust, not lucky
+            seeds = [1 + nseeds * it + i for i in range(nseeds)]   # fresh variations every generation: robust, not lucky
             sc = np.array(P.map(_eval, [(x, seeds) for x in xs]))
             idx = np.argsort(sc)[::-1][:elite]
             mu = xs[idx].mean(0)
