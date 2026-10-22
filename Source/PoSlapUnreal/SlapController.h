@@ -28,6 +28,8 @@ struct FSlapHud
 	double HeadG = 0.0;						// defender's head acceleration over the last 20 ms (g)
 	FVector Com[2], Feet[2];				// centre of mass, midpoint of the soles (Unreal cm)
 	double Stamina[2] = { 1.0, 1.0 }, Neck[2] = { 1.0, 1.0 };
+	double Value[2] = {};					// each brain's critic: its own expected reward over the next ~2 s
+	int32 Role[2] = {};						// the role each was playing then (+1 strike, -1 defend, 0 guard)
 
 	// broadcast cues: a counter that changes once per event
 	int32 StrikeSeq = 0, KOSeq = 0, MatchSeq = 0;
@@ -108,6 +110,8 @@ private:
 		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
 		bool bFresh = true;
 		double Mem[2] = {}, Stamina = 1.0, NeckStrength = 1.0;
+		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward
+		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0;	// character card
 	};
 

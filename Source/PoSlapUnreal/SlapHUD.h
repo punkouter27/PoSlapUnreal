@@ -51,6 +51,11 @@ private:
 	int32 Struck = 0;
 	TArray<float> HeadG;	// the defender's head g, one sample per frame (last ~2 s)
 
+	// momentum bar: what each brain's critic usually says in each role (index role + 1), and the bar's red share
+	double RoleMean[3] = {}, RoleVar[3] = {};
+	bool bRoleSeen[3] = {};
+	float Momentum = 0.5f;
+
 	// director
 	EShot Shot = EShot::Wide;
 	double ShotStart = 0.0;

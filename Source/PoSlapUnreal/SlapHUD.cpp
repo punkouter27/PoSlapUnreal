@@ -75,6 +75,7 @@ void ASlapHUD::BeginPlay()
 	CrowdLoop = Load<USoundBase>(TEXT("/Game/Audio/S_CrowdLoop.S_CrowdLoop"));
 	Bell = Load<USoundBase>(TEXT("/Game/Audio/S_Bell.S_Bell"));
 	if (CrowdLoop) UGameplayStatics::SpawnSound2D(this, CrowdLoop, 0.35f);
+	CommentaryStamp = IFileManager::Get().GetTimeStamp(*(FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt")));	// only lines from now on
 	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d crowd %d/%d bell %d"), Spray ? TEXT("yes") : TEXT("MISSING"),
 		SlapSound != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr);
 }
@@ -342,6 +343,32 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	const float S = Canvas->ClipX / 540.f;
 	const int32 Sk = Team(H.Striker);
 
+	// momentum: each brain's critic (its own expected reward over the next ~2 s) against what it usually expects in that
+	// role -- a guard expects thousands, a striker about nothing, so raw values don't compare. The bar is the logistic of
+	// the difference: who is doing better than usual right now. Not a calibrated win probability.
+	double Z[2];
+	for (int32 a = 0; a < 2; ++a)
+	{
+		const int32 R = FMath::Clamp(H.Role[a] + 1, 0, 2);
+		if (!bRoleSeen[R])
+		{
+			RoleMean[R] = H.Value[a];
+			RoleVar[R] = FMath::Square(0.1 * FMath::Abs(H.Value[a]) + 1.0);
+			bRoleSeen[R] = true;
+		}
+		const double D = H.Value[a] - RoleMean[R];
+		RoleMean[R] += 0.002 * D;	// exponential averages over ~500 frames (~8 s)
+		RoleVar[R] = 0.998 * (RoleVar[R] + 0.002 * D * D);
+		Z[a] = (H.Value[a] - RoleMean[R]) / FMath::Sqrt(RoleVar[R]);
+	}
+	Momentum = FMath::FInterpTo(Momentum, 1.f / (1.f + FMath::Exp(Z[1] - Z[0])), GetWorld()->GetDeltaSeconds(), 2.f);
+	const float MX = 8.f * S, MY = 264.f * S, MW = 524.f * S, MH = 16.f * S;	// under the panel
+	DrawRect(FLinearColor(TeamColor[1]), MX, MY, MW, MH);
+	DrawRect(FLinearColor(TeamColor[0]), MX, MY, MW * Momentum, MH);
+	DrawLine(MX + MW * 0.5f, MY - 2.f * S, MX + MW * 0.5f, MY + MH + 2.f * S, FLinearColor::White, 2.f * S);
+	const int32 Pct = FMath::RoundToInt(100.f * Momentum);
+	Text(FString::Printf(TEXT("RED %d%%        MOMENTUM        %d%% BLUE"), Pct, 100 - Pct), Canvas->ClipX * 0.5f, MY + 2.f * S, FColor::White, 0.9f * S, true);
+
 	// balance: a ring under each athlete's soles, the dot is his centre of mass over the floor (green < 5 cm off, red > 10)
 	for (int32 a = 0; a < 2; ++a)
 	{
@@ -423,10 +450,10 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	const double Tk = Now - KOAt;
 	if (Tk < 0.3) DrawRect(FLinearColor(0.9f, 0.1f, 0.05f, 0.35f * (1.f - Tk / 0.3f)), 0, 0, Canvas->ClipX, Canvas->ClipY);
 
-	// tale of the tape, at every match start: under the panel, clear of the athletes' heads
-	if (Now - TapeAt < 4.0)
+	// tale of the tape, at every match start: under the panel and the momentum bar, clear of the athletes' heads
+	if (Now - TapeAt < 4.0 && H.Result.IsEmpty())	// a match over in under 4 s: the result wins
 	{
-		const float Y = 266.f * S;
+		const float Y = 286.f * S;
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 8.f * S, Y, 524.f * S, 92.f * S);
 		Text(TEXT("TALE OF THE TAPE"), Cx, Y + 4.f * S, Grey, 0.9f * S, true);
 		for (int32 a = 0; a < 2; ++a)
@@ -459,9 +486,9 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	if (!H.Result.IsEmpty())
 	{
 		const bool KO = H.Result.Contains(TEXT("KO"));
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 0, 266.f * S, Canvas->ClipX, 70.f * S);	// below the panel
-		Text(KO ? TEXT("KNOCKOUT") : TEXT("DECISION"), Cx, 272.f * S, KO ? FColor(250, 80, 60) : Gold, 1.6f * S, true, Big);
-		Text(H.Result, Cx, 308.f * S, FColor::White, 1.2f * S, true);
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 0, 286.f * S, Canvas->ClipX, 70.f * S);	// below the panel and the momentum bar
+		Text(KO ? TEXT("KNOCKOUT") : TEXT("DECISION"), Cx, 292.f * S, KO ? FColor(250, 80, 60) : Gold, 1.6f * S, true, Big);
+		Text(H.Result, Cx, 328.f * S, FColor::White, 1.2f * S, true);
 	}
 
 	// commentary, bottom: the latest line for 8 s, wrapped at ~44 characters

@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Momentum bar</title>
+<style>body{font:15px system-ui;max-width:900px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:260px;margin:0}img{width:100%;border:1px solid #ccc}</style>
+<h1>Momentum bar (2026-10-22)</h1>
+<p>After: a red/blue bar under the match panel. Each brain's critic (its own expected reward over the next ~2 s) is compared with what that brain usually expects in its current role (an 8 s running average and spread per role, since a guard expects thousands and a striker about nothing); the bar is the logistic of the difference, smoothed. It shows who is doing better than usual right now, not a calibrated win probability: here red has just been knocked down (80 % blue) although red wins the match on cards.</p>
+<p>Also: the tale of the tape now gives way to the result banner when a match ends inside its 4 s, and the commentary line only shows lines written after the game started. The tape and the banner moved 20 px down to make room.</p>
+<p>Brains: red <code>grandpa_L1_best</code>, blue <code>grandpa_final</code> (per-corner brains).</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after.png"><figcaption>After</figcaption></figure></div>

@@ -651,7 +651,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		const float Role = !Match ? 0.f : a == Turn.Striker ? 1.f : (float)DefenderRole;
 		BuildObs(m, d, A, Role, Clock, Match ? &Athletes[1 - a] : nullptr, Obs);
 		if (!A.Net) continue;
-		float Value = 0.f;	// trained brains also output the critic's value
+		float Value = 0.f;	// trained brains also output the critic's value (the HUD's momentum bar)
 		const UE::NNE::FTensorBindingCPU In{ Obs, (uint64)A.NumIn * sizeof(float) };
 		const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
 		if (A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) != UE::NNE::EResultStatus::Ok) continue;
@@ -669,6 +669,8 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
+		A.Value = A.NumOut > 1 ? Value : 0.f;
+		A.Role = (int32)Role;
 	}
 	if (Match)	// broadcast telemetry at 50 Hz: striker's palm, defender's head, both athletes' balance
 	{
@@ -688,6 +690,8 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 				H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
 				H.Stamina[a] = X.Stamina;
 				H.Neck[a] = X.NeckStrength;
+				H.Value[a] = X.Value;
+				H.Role[a] = X.Role;
 			}
 		});
 	}
