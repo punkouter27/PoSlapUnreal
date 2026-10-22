@@ -15,11 +15,11 @@ import torch
 import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
-from brain_cpu import video
+from brain_cpu import LAGS, OBS, video
 from envs.arena import ArenaEnv
 from envs.slap import SlapEnv
 from levels import LEVELS
-from ppo import PPO, PPOConfig, export_onnx
+from ppo import PPO, PPOConfig, export_onnx, obs_dim_of
 
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
@@ -178,8 +178,12 @@ def main():
     env = (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)   # arena: 2 agents per world
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(108, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
-    extra = ppo.load(a.resume) if a.resume else {}
+    ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
+    extra = ppo.load(a.resume, widen=True) if a.resume else {}
+    if a.resume and obs_dim_of(a.resume) == 108:   # memory inputs start with the scale of what they remember (102-107)
+        for i in range(len(LAGS)):
+            ppo.obs_rms.mean[108 + 6 * i:114 + 6 * i] = ppo.obs_rms.mean[102:108]
+            ppo.obs_rms.var[108 + 6 * i:114 + 6 * i] = ppo.obs_rms.var[102:108]
     unseen = ppo.obs_rms.var < 1e-6                     # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
     ppo.obs_rms.var[unseen], ppo.obs_rms.mean[unseen] = 1.0, 0.0
     with torch.no_grad():
@@ -284,7 +288,7 @@ def main():
             if ok and not graduated:
                 graduated = res
                 out = HERE / "models" / "brains" / f"{a.char}_{a.level}.onnx"
-                export_onnx(ppo, str(out), 108, fixed_batch=True)
+                export_onnx(ppo, str(out), OBS, fixed_batch=True)
                 print(f"GRADUATED -> {out}", flush=True)
                 if not a.keep_going:
                     break

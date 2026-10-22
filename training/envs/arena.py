@@ -5,6 +5,8 @@ picks the striker (role +1, BRAIN_IO's striker inputs, the defender's head as ta
 striker's head and right hand). The turn ends 5 s after the striker first touches the defender's head (the recovery window),
 at 30 s, or on any knockdown / foot-box exit. KO = the defender knocked down after that touch.
 Same observation, action rule, timing and randomisation as envs/slap.py; the model is the arena Unreal runs.
+Memory: each world's turns follow on like a match's (a new match 1 in 6), so the opponent's last strike (BRAIN_IO 126-127)
+is real. Feints: the striker earns a bonus when the defender's head had already moved (flinched, committed) at the touch.
 """
 from __future__ import annotations
 
@@ -16,7 +18,8 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from envs.slap import DECIM, OBS, quat_mat
+from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
+from envs.slap import DECIM, quat_mat
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -44,6 +47,7 @@ class ArenaEnv:
         self.jq = t([[m.jnt_qposadr[j] for j in js] for js in jid])            # (2, A)
         self.jv = t([[m.jnt_dofadr[j] for j in js] for js in jid])
         self.act_id = t([[m.actuator(p + n).id for n in order] for p in PREFIX])
+        self.neck_act = t([[m.actuator(p + n).id for n in order if n.startswith("neck")] for p in PREFIX])   # (2, 3)
         self.rq = t([m.jnt_qposadr[m.joint(p + "root").id] for p in PREFIX])  # (2,)
         self.rv = t([m.jnt_dofadr[m.joint(p + "root").id] for p in PREFIX])
         self.pelvis = t([m.body(p + "pelvis").id for p in PREFIX])
@@ -111,6 +115,8 @@ class ArenaEnv:
         self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(W, 3), z(W, 3), z(W)
         self.com0, self.com_err = z(W, 2), z(W)
         self.force_striker = None   # exams: None = coin toss
+        self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
+        self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
 
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
         with wp.ScopedCapture() as c:
@@ -151,8 +157,16 @@ class ArenaEnv:
             s = self._u((n, self.mass.shape[1]), 0.95, 1.05)
             self.mass[mask], self.inertia[mask] = self.mass0 * s, self.inertia0 * s[..., None]
             k = self._u((n, self.gain.shape[1]), 0.9, 1.1)
-            self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], self.frange0 * k[..., None]
+            tired, hurt = torch.rand(n, 2, device=self.device) < 0.7, torch.rand(n, 2, device=self.device) < 0.7
+            self.stamina[mask] = torch.where(tired, self._u((n, 2), MIN_STAMINA, 1.0), 1.0)
+            self.neck[mask] = torch.where(hurt, self._u((n, 2), MIN_NECK, 1.0), 1.0)
+            fr = self.frange0 * k[..., None]
+            for a in range(2):
+                fr[:, self.neck_act[a]] *= self.neck[mask][:, a, None, None]
+            self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], fr
             self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
+        self.mem[mask & (torch.rand(self.W, device=self.device) < 1 / 6)] = 0.0   # a new match
+        self.fresh |= mask
         self.striker[mask] = torch.randint(0, 2, (n,), device=self.device) if self.force_striker is None else self.force_striker
         am = mask.repeat_interleave(2)
         self.goal[am], self.prev_action[am], self.ret[am], self.left_box[am] = self.stand, 0.0, 0.0, False
@@ -170,7 +184,8 @@ class ArenaEnv:
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
         tgt = torch.clamp(self.stand + a * self.scale, self.lo, self.hi)
-        tgt = torch.max(torch.min(tgt, self.goal + self.max_step), self.goal - self.max_step)
+        ms = self.max_step * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
+        tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
         tw, ow = tgt.view(self.W, 2, self.A), old.view(self.W, 2, self.A)
         for s in range(DECIM):
@@ -195,6 +210,8 @@ class ArenaEnv:
         timeout = done & ~stop
         self.ko_now, self.self_fall_now = done & ko, done & s_fell
         if done.any():
+            w = (done & self.struck).nonzero().squeeze(-1)    # the striker's strike, remembered by his next opponent
+            self.mem[w, self.striker[w]] = torch.stack([self.t_hit[w].float() / self.T, self.hit_speed[w] / 10.0], -1)
             dd = done.repeat_interleave(2)
             cols = (self.ret[dd], self.t.repeat_interleave(2)[dd], self._pair(fell)[dd], self._pair(out)[dd],
                     self.hit_ok.repeat_interleave(2)[dd], self.hit_speed.repeat_interleave(2)[dd], self._pair(role)[dd],
@@ -243,6 +260,8 @@ class ArenaEnv:
             clean = good[new] & (v >= self.hit_v)
             self.hit_ok[new], self.hit_speed[new] = clean, v
             self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
+            dh = self._sd(self.geom_xpos[:, self.head_g])[1][new] - self._sd(self.head0)[1][new]   # feint: he had flinched
+            self.bonus[new] += torch.where(good[new], 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15), torch.zeros_like(v))
             self.struck |= new
             self.t_hit[new] = self.t[new]
             self.com0[new] = self._sd(self.com[:, self.pelvis, :2])[1][new]
@@ -316,6 +335,8 @@ class ArenaEnv:
         role = self._role()
         clock = (1.0 - self.t.float() / self.T)[:, None].expand(-1, 2)
         head, hand = self.geom_xpos[:, self.head_g], self.geom_xpos[:, self.hand_g]
+        fresh = self.fresh.repeat_interleave(2)
+        self.fresh[:] = False
         rows = []
         for k in range(2):
             rq, rv = self.rq[k], self.rv[k]
@@ -325,6 +346,7 @@ class ArenaEnv:
             hd = lambda x: torch.stack([c * x[:, 0] + s * x[:, 1], -s * x[:, 0] + c * x[:, 1], x[:, 2]], -1)
             pel = self.xpos[:, self.pelvis[k]]
             opp_hand = torch.where((role[:, k] < 0)[:, None], hand[:, 1 - k] - pel, torch.zeros_like(pel))
+            cur = torch.cat([hd(head[:, 1 - k] - pel), hd(opp_hand)], -1)
             rows.append(torch.cat([
                 q[:, self.jq[k]] - self.stand,
                 v[:, self.jv[k]] * 0.1,
@@ -334,10 +356,14 @@ class ArenaEnv:
                 v[:, rv + 3:rv + 6] * 0.25,
                 self.prev_action.view(W, 2, -1)[:, k],
                 role[:, k:k + 1], clock[:, k:k + 1],
-                hd(head[:, 1 - k] - pel),          # the opponent's head centre - own pelvis
-                hd(opp_hand),                      # defender: the striker's right hand; striker: 0 (as L2/L3 trained)
+                cur,                               # the opponent's head centre - own pelvis; defender: the striker's
+                                                   # right hand (striker: 0, as L2/L3 trained)
+                self.mem[:, 1 - k], self.stamina[:, k:k + 1], self.neck[:, k:k + 1],
             ], -1))
-        obs = torch.stack(rows, 1).reshape(self.N, OBS)
+        obs = torch.stack(rows, 1).reshape(self.N, -1)   # (2W, 108 + 4): memory history goes in below
+        cur = obs[:, 102:108]
+        self.hist = torch.where(fresh[:, None, None], cur[:, None].expand(-1, 16, -1), torch.cat([self.hist[:, 1:], cur[:, None]], 1))
+        obs = torch.cat([obs[:, :108], *[self.hist[:, -1 - lag] for lag in LAGS], obs[:, 108:]], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)
             noise[:30], noise[30:60], noise[61:64] = 0.005, 0.05, 0.01

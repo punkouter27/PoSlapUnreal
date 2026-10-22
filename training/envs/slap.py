@@ -1,6 +1,6 @@
 """Slap training env on MuJoCo Warp: N worlds of one athlete, on the GPU (levels L0-L3).
 
-Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same 108 numbers.
+Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same 130 numbers.
 One brain, every role (Blueprint 7): each world plays one role per episode, drawn from the level's `roles` mix, so a
 level keeps the earlier ones' skills (2026-10-22: L2 trained on strikes alone had forgotten how to guard).
     0  guard   (L0, L1): stand in the foot box under random pushes, 30 s
@@ -9,6 +9,9 @@ level keeps the earlier ones' skills (2026-10-22: L2 trained on strikes alone ha
                          ends 5 s after it: still up, centre of mass back within 5 cm
 Randomised every episode (Blueprint 6): floor friction, +-5 % mass per part, +-10 % strength, 0-20 ms action
 delay, a little sensor noise; guard worlds get pushes of 150-300 N (x push_scale) on chest or head.
+Fatigue (card): 70 % of episodes start tired (stamina 0.7-1 scales joint speed) and/or hurt (neck 0.5-1 scales the neck
+motors' strength); both are inputs. Memory: the 0.1-0.3 s history of inputs 102-107, and the opponent's last strike: the
+scripted slap keeps its timing from one episode to the next half the time (a habit worth remembering).
 A fall is Unreal's knockdown rule: any non-foot geom touching the floor or podium (MuJoCo contacts, not a height guess).
 """
 from __future__ import annotations
@@ -22,11 +25,11 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
+from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
-OBS = 108           # DOCS/BRAIN_IO.md
 OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
 
 
@@ -58,6 +61,7 @@ class SlapEnv:
         self.jq = torch.tensor([m.jnt_qposadr[j] for j in jid], device=dev)
         self.jv = torch.tensor([m.jnt_dofadr[j] for j in jid], device=dev)
         self.act_id = torch.tensor([m.actuator(n).id for n in order], device=dev)
+        self.neck_act = torch.tensor([m.actuator(n).id for n in order if n.startswith("neck")], device=dev)
         self.stand = torch.tensor([fp["stand_pose_rad"].get(n, 0.0) for n in order], device=dev)
         rng = torch.tensor(fp["ctrl_range_rad"], device=dev)   # listed in joint order
         self.lo, self.hi = rng[:, 0], rng[:, 1]
@@ -133,6 +137,8 @@ class SlapEnv:
         self.settle = zl()   # strike: control steps left after the strike
         self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
         self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
+        self.stamina, self.neck = torch.ones(N, device=dev), torch.ones(N, device=dev)
+        self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
 
         # CUDA graphs: compile once, then replay
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
@@ -152,6 +158,13 @@ class SlapEnv:
         n = int(mask.sum())
         if n == 0:
             return
+        # memory of the opponent's last strike: an absorb episode's slap (time, ~palm speed); a new "match" 1 in 6
+        was = mask & (self.role == -1)
+        j = self.slap_f.norm(dim=-1) * 0.01
+        self.mem[was] = torch.stack([self.t_hit.float() / self.T, 0.8 * j / 15.0], -1)[was]
+        self.mem[mask & (torch.rand(self.N, device=self.device) < 1 / 6)] = 0.0
+        prev_hit = self.t_hit.clone()
+        self.fresh |= mask
         mjw.reset_data(self.mw, self.dw, reset=wp.from_torch(mask))
         q = self.q0.repeat(n, 1)
         q[:, self.jq] += self._u((n, self.A), -0.05, 0.05)          # never the same start twice
@@ -161,7 +174,12 @@ class SlapEnv:
             s = self._u((n, self.mass.shape[1]), 0.95, 1.05)
             self.mass[mask], self.inertia[mask] = self.mass0 * s, self.inertia0 * s[..., None]
             k = self._u((n, self.gain.shape[1]), 0.9, 1.1)
-            self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], self.frange0 * k[..., None]
+            tired, hurt = torch.rand(n, device=self.device) < 0.7, torch.rand(n, device=self.device) < 0.7
+            self.stamina[mask] = torch.where(tired, self._u(n, MIN_STAMINA, 1.0), 1.0)
+            self.neck[mask] = torch.where(hurt, self._u(n, MIN_NECK, 1.0), 1.0)
+            fr = self.frange0 * k[..., None]
+            fr[:, self.neck_act] *= self.neck[mask][:, None, None]
+            self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], fr
             self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
         if self.force_role is not None:
             self.role[mask] = self.force_role
@@ -184,7 +202,9 @@ class SlapEnv:
         self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
         self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
         # absorb: one slap at 1.5-3 s, from the striker's right (+Y here) across the face, a little away from him
-        self.t_hit[mask] = torch.randint(75, 150, (n,), device=self.device)
+        habit = (self.mem[mask, 0] > 0) & (torch.rand(n, device=self.device) < 0.5)   # same timing as last time
+        again = (prev_hit[mask] + torch.randint(-5, 6, (n,), device=self.device)).clamp(75, 149)
+        self.t_hit[mask] = torch.where(habit, again, torch.randint(75, 150, (n,), device=self.device))
         j = self.slap_j * (torch.ones(n, device=self.device) if self.exam else self._u(n, 0.6, 1.4))
         ang = self._u(n, -0.26, 0.26)                       # +-15 deg around the swing direction
         dx, dy = -0.3 * torch.cos(ang) + torch.sin(ang), -0.3 * torch.sin(ang) - torch.cos(ang)
@@ -226,7 +246,8 @@ class SlapEnv:
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
         tgt = torch.clamp(self.stand + a * self.scale, self.lo, self.hi)
-        tgt = torch.max(torch.min(tgt, self.goal + self.max_step), self.goal - self.max_step)
+        ms = self.max_step * self.stamina[:, None]                 # fatigue: a tired athlete moves slower
+        tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
         for s in range(DECIM):
             self.ctrl[:, self.act_id] = torch.where((s >= self.delay)[:, None], tgt, old)
@@ -371,6 +392,9 @@ class SlapEnv:
         box = torch.where((self.role == 0)[:, None], b, tgt - q[:, 0:3])
         clock = torch.where(self.role != 0, 1.0 - self.t.float() / self.T, torch.zeros_like(role))
         hand = torch.where((self.role == -1)[:, None], self.opp_hand() - q[:, 0:3], torch.zeros_like(b))
+        cur = torch.cat([self._heading(box, c, s), self._heading(hand, c, s)], -1)
+        self.hist = torch.where(self.fresh[:, None, None], cur[:, None].expand(-1, 16, -1), torch.cat([self.hist[:, 1:], cur[:, None]], 1))
+        self.fresh[:] = False
         obs = torch.cat([
             q[:, self.jq] - self.stand,
             v[:, self.jv] * 0.1,
@@ -380,8 +404,10 @@ class SlapEnv:
             v[:, 3:6] * 0.25,
             self.prev_action,
             role[:, None], clock[:, None],                # role, turn clock remaining
-            self._heading(box, c, s),                     # role 0: own foot-box centre; else target / opponent head - pelvis
-            self._heading(hand, c, s),                    # opponent hand - pelvis (absorb only; 0 otherwise)
+            cur,                                          # role 0: own foot-box centre; else target / opponent head - pelvis;
+                                                          # opponent hand - pelvis (absorb only; 0 otherwise)
+            *[self.hist[:, -1 - lag] for lag in LAGS],    # the same 0.1, 0.2, 0.3 s ago
+            self.mem, self.stamina[:, None], self.neck[:, None],
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

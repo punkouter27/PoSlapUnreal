@@ -3,6 +3,7 @@
     .venv/Scripts/python.exe match.py play models/brains/grandpa_L4.onnx [--first 0] [--mjb ../Saved/URLab/scene_compiled.mjb]
     .venv/Scripts/python.exe match.py exam models/brains/grandpa_L4.onnx --matches 100        (L5: no sim blow-ups)
     .venv/Scripts/python.exe match.py compare models/brains/grandpa_L4.onnx <unreal match .jsonl> --mjb ...  (same events)
+    --blue <onnx>: blue's own brain (red plays the first one); tournament.py plays brains against each other this way.
 
 Rules (v1): a coin toss picks who strikes first; 3 rounds, each athlete strikes once per round, same order every round.
 A turn starts with both athletes reset to the stand pose in their foot boxes. The striker (role +1) has 30 s; the first
@@ -15,6 +16,10 @@ the defender staggered (COM more than 5 cm off its pre-strike spot at the end of
 absorbing a clean strike he survived: 10 if he did not stagger + (10 - 5 x head speed, at least 0). Each judge weighs
 (speed, head, stagger, defence) differently: (2,1,1,1), (1,2,1,1), (1,1,2,2). Per round: the bigger total gets 10, the
 other 9; 10-8 when the winner staggered him and has at least twice the total; 10-10 within 5 %.
+Fatigue (character card, BRAIN_IO 128-129): every turn struck costs the striker stamina_per_strike (joint speed x stamina,
+floor 0.7); a defender who absorbs a strike loses neck_damage_per_snap per m/s of head snap from his neck motors' strength
+(floor 0.5). Memory (BRAIN_IO 126-127): the defender remembers that strike's touch time and palm speed for his next turns.
+Both reset each match; a "condition" event after every turn logs them.
 Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, turn/round summaries, and every 5th
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
@@ -24,7 +29,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from brain_cpu import Athlete, onnx_policy, stand
+from brain_cpu import MIN_NECK, MIN_STAMINA, Athlete, card, onnx_policy, stand
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -53,8 +58,9 @@ def load(mjb=None, character="grandpa"):
 class Side:
     """One athlete in the arena: brain I/O (brain_cpu.Athlete) plus the geoms the referee watches."""
 
-    def __init__(self, m, fp, prefix):
-        self.a = Athlete(m, fp, prefix)
+    def __init__(self, m, fp, prefix, policy):
+        self.a, self.policy, self.card = Athlete(m, fp, prefix), policy, card(fp)
+        self.fr0 = m.actuator_forcerange[self.a.neck].copy()
         self.name = prefix.split("_")[-2] if prefix.count("_") >= 1 else prefix
         g = lambda n: m.geom(prefix + n).id
         self.head, self.hand, self.feet = g("head"), g("hand_r"), (g("foot_l"), g("foot_r"))
@@ -62,10 +68,10 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fp, prefixes, policy, first, log=None):
-        self.m, self.fp, self.policy, self.first, self.log = m, fp, policy, first, log
+    def __init__(self, m, fp, prefixes, policies, first, log=None):
+        self.m, self.fp, self.first, self.log = m, fp, first, log
         self.d = mujoco.MjData(m)
-        self.sides = [Side(m, fp, p) for p in prefixes]
+        self.sides = [Side(m, fp, p, pol) for p, pol in zip(prefixes, policies)]
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
         self.blowup = False
 
@@ -89,7 +95,8 @@ class Match:
         S, D = self.sides[s], self.sides[1 - s]
         stand(m, d, self.fp)
         for x in self.sides:
-            x.a.goal, x.a.prev = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32)
+            x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
+            m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength   # damage: a weaker neck
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}
         hand_prev = d.geom_xpos[S.hand].copy()
@@ -111,30 +118,30 @@ class Match:
                         else:
                             rec["fouls"].append((x.name, "knocked down" if x is S else "down before the strike"))
                             rec["end"] = "knockdown"
-                        return self.finish(rec, D, com0)
+                        return self.finish(rec, S, D, com0)
                 for x in self.sides:
                     off = np.abs(np.array([d.geom_xpos[f][:2] for f in x.feet]) - feet0[id(x)])
                     if (off[:, 0] > BOX[0]).any() or (off[:, 1] > BOX[1]).any():
                         rec["fouls"].append((x.name, "out of the box"))
                         rec["end"] = "out of the box"
                         self.emit(type="foul", t=round(t, 3), athlete=x.name, why="out of the box")
-                        return self.finish(rec, D, com0)
+                        return self.finish(rec, S, D, com0)
             if touch_k is None and t >= STRIKE_CLOCK:
                 rec["fouls"].append((S.name, "no strike in 30 s"))
                 rec["end"] = "clock"
-                return self.finish(rec, D, com0)
+                return self.finish(rec, S, D, com0)
             if touch_k is not None and (k - touch_k) * m.opt.timestep >= RECOVERY:
                 rec["end"] = "recovered"
-                return self.finish(rec, D, com0)
+                return self.finish(rec, S, D, com0)
             if k % 4 == 0:
                 mujoco.mj_kinematics(m, d)
                 clock = 1.0 - t / STRIKE_CLOCK
                 hs, hd = d.geom_xpos[S.head].copy(), d.geom_xpos[D.head].copy()
-                S.a.decide(self.policy(S.a.obs(d, 1.0, clock, hd)))
+                S.a.decide(S.policy(S.a.obs(d, 1.0, clock, hd)))
                 if DEFENDER_ROLE < 0:
-                    D.a.decide(self.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, d.geom_xpos[S.hand].copy())))
+                    D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, d.geom_xpos[S.hand].copy())))
                 else:
-                    D.a.decide(self.policy(D.a.obs(d)))
+                    D.a.decide(D.policy(D.a.obs(d)))
                 if k % 20 == 0:
                     self.emit(type="frame", t=round(t, 3), **{x.name: dict(
                         pelvis=np.round(d.xpos[x.a.pelvis], 3).tolist(), head=np.round(d.geom_xpos[x.head], 3).tolist(),
@@ -171,11 +178,17 @@ class Match:
                                 rec["fouls"].append((S.name, "clubbing (not the palm)"))
                             break
 
-    def finish(self, rec, D, com0):
+    def finish(self, rec, S, D, com0):
         if com0 is not None:
             rec["stagger"] = dist(self.d.subtree_com[D.a.pelvis][:2], com0) > 0.05
         rec["head_peak"] = round(rec["head_peak"], 2)
         self.emit(type="turn_end", **{k: v for k, v in rec.items() if k != "fouls"}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
+        S.a.stamina = max(MIN_STAMINA, S.a.stamina - S.card["stamina_per_strike"])
+        if rec["touch"] is not None:
+            D.a.mem = (rec["touch"] / 30.0, rec["speed"] / 10.0)
+            if not rec["ko"]:
+                D.a.neck_strength = max(MIN_NECK, D.a.neck_strength - D.card["neck_damage_per_snap"] * rec["head_peak"])
+        self.emit(type="condition", **{x.name: [round(x.a.stamina, 3), round(x.a.neck_strength, 3)] for x in self.sides})
         return rec
 
     def play(self):
@@ -233,11 +246,12 @@ def log_path(first):
     return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True):
+def play(onnx, first, mjb=None, log=True, blue=None):
     m, fp, pre = load(mjb)
     f = open(log_path(first), "w") if log else None
+    red = onnx_policy(onnx)
     try:
-        res, turns = Match(m, fp, pre, onnx_policy(onnx), first, f).play()
+        res, turns = Match(m, fp, pre, (red, onnx_policy(blue) if blue else red), first, f).play()
     finally:
         if f:
             f.close()
@@ -268,13 +282,13 @@ def exam(onnx, matches, mjb=None):
     return ok
 
 
-def compare(onnx, ue_log, mjb):
+def compare(onnx, ue_log, mjb, blue=None):
     """Unreal's match log vs this simulator, same first striker, same model: every event must match."""
     ue = [json.loads(l) for l in Path(ue_log).read_text().splitlines() if l.strip()]
     first = next(e for e in ue if e["type"] == "match_start")["first"]
-    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb)
+    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue)
     py = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
-    keys = ("strike", "knockdown", "foul", "turn_end", "round", "result")
+    keys = ("strike", "knockdown", "foul", "turn_end", "condition", "round", "result")
     a = [e for e in py if e["type"] in keys]
     b = [e for e in ue if e["type"] in keys]
     bad = [(x, y) for x, y in zip(a, b) if x != y]
@@ -291,13 +305,14 @@ if __name__ == "__main__":
     ap.add_argument("--first", type=int, default=0)
     ap.add_argument("--matches", type=int, default=100)
     ap.add_argument("--mjb", default=None)
+    ap.add_argument("--blue", default=None, help="blue's own brain (default: the same as red's)")
     x = ap.parse_args()
     if x.cmd == "play":
-        res, turns, path = play(x.onnx, x.first, x.mjb)
+        res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue)
         for t in turns:
             print(t)
         print(res, "\nlog:", path)
     elif x.cmd == "exam":
         sys.exit(0 if exam(x.onnx, x.matches, x.mjb) else 1)
     else:
-        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb) else 1)
+        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue) else 1)

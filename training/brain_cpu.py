@@ -11,6 +11,14 @@ import mujoco
 import numpy as np
 
 HERE = Path(__file__).parent
+OBS = 130                          # DOCS/BRAIN_IO.md (108 before memory and fatigue; older brains read the first 108)
+LAGS = (5, 10, 15)                 # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
+MIN_STAMINA, MIN_NECK = 0.7, 0.5   # fatigue floors (the card sets how fast an athlete gets there)
+
+
+def card(fp):
+    """The character card (training/characters/<name>.json): the source of truth, the fingerprint keeps a build-time copy."""
+    return json.loads((HERE / "characters" / f"{fp['card']['name']}.json").read_text())
 
 
 class Athlete:
@@ -26,10 +34,14 @@ class Athlete:
         self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
         self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
+        self.neck = np.array([a for a, n in zip(self.act, self.order) if n.startswith("neck")])
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
+        self.hist = []                       # inputs 102-107 of earlier decisions this turn (memory)
+        self.mem = (0.0, 0.0)                # the opponent's last strike this match: touch time / 30, palm speed / 10
+        self.stamina, self.neck_strength = 1.0, 1.0
 
     def obs(self, d, role=0.0, clock=0.0, target=None, hand=None):
-        o = np.zeros(108)
+        o = np.zeros(OBS)
         N = len(self.order)
         o[:N] = d.qpos[self.qa] - self.stand
         o[N:2 * N] = d.qvel[self.va] * 0.1
@@ -52,12 +64,18 @@ class Athlete:
         if hand is not None:   # defender: the opponent's right hand - pelvis, heading frame
             r = hand - d.xpos[self.pelvis]
             o[105:108] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
+        self.hist = (self.hist or [o[102:108].copy()] * 16)[-15:] + [o[102:108].copy()]
+        for i, lag in enumerate(LAGS):
+            o[108 + 6 * i:114 + 6 * i] = self.hist[-1 - lag]
+        o[126:128] = self.mem
+        o[128], o[129] = self.stamina, self.neck_strength
         return o.astype(np.float32)
 
     def decide(self, action):
         a = np.clip(np.asarray(action, float), -1.0, 1.0)
         t = np.clip(self.stand + a * 0.5 * (self.hi - self.lo), self.lo, self.hi)
-        self.goal = np.clip(t, self.goal - self.max_step, self.goal + self.max_step)
+        step = self.max_step * self.stamina   # fatigue: a tired athlete moves slower
+        self.goal = np.clip(t, self.goal - step, self.goal + step)
         self.prev = a.astype(np.float32)
 
 
@@ -73,7 +91,8 @@ def stand(m, d, fp):
 def onnx_policy(path):
     import onnxruntime as ort
     s = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    return lambda o: s.run(None, {"obs": o[None]})[0][0]
+    n = s.get_inputs()[0].shape[1]   # brains from before memory read the first 108 numbers
+    return lambda o: s.run(None, {"obs": o[None, :n]})[0][0]
 
 
 def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, setup=None):

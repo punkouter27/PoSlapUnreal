@@ -14,6 +14,7 @@ from pathlib import Path
 
 import torch
 
+from brain_cpu import OBS
 from ppo import PPO, PPOConfig, export_onnx
 
 HERE = Path(__file__).parent
@@ -85,11 +86,11 @@ def main():
             best_exam=meta.get("best_exam"), episode_return=meta.get("episode_return"), steps=meta.get("steps"))
 
     if carry:   # final weights: the last stage's best brain
-        ppo = PPO(108, 30, 8, "cuda", PPOConfig())
-        ppo.load(str(carry))
+        ppo = PPO(OBS, 30, 8, "cuda", PPOConfig())
+        ppo.load(str(carry), widen=True)
         final = HERE / "models" / "brains" / f"{a.char}_final"
         ppo.save(str(final.with_suffix(".pt")))
-        export_onnx(ppo, str(final.with_suffix(".onnx")), 108, fixed_batch=True)
+        export_onnx(ppo, str(final.with_suffix(".onnx")), OBS, fixed_batch=True)
         log(event="final", from_=str(carry), pt=str(final.with_suffix(".pt")), onnx=str(final.with_suffix(".onnx")))
 
     rows = "".join(f"<tr><td>{s['level']}</td><td>{s.get('run')}</td><td>{s.get('graduated') or 'no'}</td>"
