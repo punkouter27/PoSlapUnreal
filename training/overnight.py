@@ -64,11 +64,13 @@ def main():
         run = RUNS / f"{a.char}_{stage['level']}_night{len(done) + 1}_{time.strftime('%H%M')}"
         resume = stage.get("resume") or carry
         log(event="stage", level=stage["level"], run=run.name, minutes=round(minutes, 1), resume=str(resume))
+        end = time.time() + minutes * 60
         code = train(stage, run, minutes, resume, a.char)
-        if code != 0 and brain(run) and time.time() < deadline - 300:      # one retry from where it got to
+        for _ in range(5):   # retries from where it got to (a crash, or a trainer restarted to pick up a fix)
+            if code == 0 or not (run / "latest.pt").exists() or time.time() > end - 300:
+                break
             log(event="crash", run=run.name, code=code)
-            code = train(stage, run, (deadline - time.time()) / 60 - 1 if stage["minutes"] > minutes else
-                         max(1.0, minutes - 5), run / "latest.pt", a.char)
+            code = train(stage, run, (end - time.time()) / 60, run / "latest.pt", a.char)
         meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
         carry = brain(run) or carry
         stage.update(done=True, run=run.name, code=code, graduated=meta.get("graduated"), best_exam=meta.get("best_exam"))

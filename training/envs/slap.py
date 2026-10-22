@@ -114,7 +114,7 @@ class SlapEnv:
         self.hit_ok = torch.zeros(N, dtype=torch.bool, device=dev)
         self.done_hit = torch.zeros(N, dtype=torch.bool, device=dev)
         self.settle = torch.zeros(N, dtype=torch.long, device=dev)   # control steps left after the strike
-        self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl = z(N), z(N), z(N, 3), z(N, 3)
+        self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
 
         # CUDA graphs: compile once, then replay
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
@@ -157,6 +157,7 @@ class SlapEnv:
             self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
             self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
             self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
+            self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
 
     # ------------------------------------------------------------------ step
     def _pushes(self, dt):
@@ -211,6 +212,14 @@ class SlapEnv:
             self.reset(done)
         return self.observe(), rew, done, timeout
 
+    def _palm_phi(self, hand, tgt):
+        """L2 v4: 2 x closeness x how squarely the palm faces the target (every first touch had been back/edge/fingers)."""
+        to = tgt - hand
+        d = to.norm(dim=-1)
+        palm_dir = -self.geom_xmat[:, self.hand][:, :, 2]
+        face = ((to / d[:, None].clamp(min=1e-6)) * palm_dir).sum(-1).clamp(min=0)
+        return 2.0 * torch.exp(-d ** 2 / 0.08) * face
+
     def _strike_check(self):
         """After each physics step: the first contact with the target decides the strike (Blueprint L2)."""
         hand = self.geom_xpos[:, self.hand]
@@ -237,7 +246,7 @@ class SlapEnv:
             v = speed[new]
             clean = good[new] & (v >= self.hit_v)
             self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -10.0)))
+            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
             self.struck |= new
             self.settle[new] = 75
 
@@ -264,7 +273,9 @@ class SlapEnv:
             hand, tgt = self.geom_xpos[:, self.hand], self.mocap[:, 0]
             d = (tgt - hand).norm(dim=-1)
             d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
-            before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) - 0.01 * smooth
+            phi = self._palm_phi(hand, tgt)
+            before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth
+            self.phi_prev = phi
             after = torch.zeros_like(upright)   # v3: no pay for standing after a tap (a soft touch + 1.5 s stand was worth ~110)
             r = torch.where(self.struck, after, before) + self.bonus
             r = r - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
