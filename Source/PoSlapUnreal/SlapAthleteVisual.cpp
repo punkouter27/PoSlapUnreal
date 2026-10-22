@@ -1,11 +1,13 @@
 #include "SlapAthleteVisual.h"
 
+#include "AnimationRuntime.h"
 #include "Components/PoseableMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "SlapNames.h"
 
 ASlapAthleteVisual::ASlapAthleteVisual()
 {
@@ -30,31 +32,23 @@ bool ASlapAthleteVisual::Init()
 	mj_kinematics(m, d);
 
 	const FReferenceSkeleton& Ref = Asset->GetRefSkeleton();
-	const TArray<FTransform>& Local = Ref.GetRefBonePose();
-	TArray<FTransform> CS;	// component space, parents come first
-	CS.SetNum(Local.Num());
+	TArray<FTransform> CS;	// component space
+	FAnimationRuntime::FillUpComponentSpaceTransforms(Ref, Ref.GetRefBonePose(), CS);
+	TArray<int32> RefIdx;	// driven bone -> reference-skeleton index
 	TArray<FQuat> BodyRest;
 	TMap<FName, TPair<FVector, FVector>> Anchor;	// bone -> (mesh position, MuJoCo position)
-	Bones.Reset(); BodyIds.Reset();
-	for (int32 i = 0; i < Local.Num(); ++i)
+	BodyIds.Reset(); Bones.Reset();
+	RefToDriven.Init(INDEX_NONE, CS.Num());
+	for (int32 i = 0; i < CS.Num(); ++i)
 	{
-		const int32 P = Ref.GetParentIndex(i);
-		CS[i] = P == INDEX_NONE ? Local[i] : Local[i] * CS[P];
-		const FName Bone = Ref.GetBoneName(i);
-		const FString Want = BodyPrefix + Bone.ToString();
-		for (int32 b = 0; b < m->nbody; ++b)
-		{
-			const char* N = mj_id2name(m, mjOBJ_BODY, b);
-			const FString Body = N ? UTF8_TO_TCHAR(N) : TEXT("");
-			if (Body == Want || Body.EndsWith(TEXT("_") + Want))
-			{
-				Bones.Add(Bone);
-				BodyIds.Add(b);
-				BodyRest.Add(MjUtils::MjToUERotation(d->xquat + 4 * b));
-				Anchor.Add(Bone, { CS[i].GetLocation(), MjUtils::MjToUEPosition(d->xpos + 3 * b) });
-				break;
-			}
-		}
+		const int32 b = Slap::Find(m, mjOBJ_BODY, m->nbody, BodyPrefix + Ref.GetBoneName(i).ToString());
+		if (b < 0) continue;
+		RefToDriven[i] = BodyIds.Num();
+		RefIdx.Add(i);
+		Bones.Add(Ref.GetBoneName(i));
+		BodyIds.Add(b);
+		BodyRest.Add(MjUtils::MjToUERotation(d->xquat + 4 * b));
+		Anchor.Add(Ref.GetBoneName(i), { CS[i].GetLocation(), MjUtils::MjToUEPosition(d->xpos + 3 * b) });
 	}
 	mj_deleteData(d);
 	const TCHAR* Need[] = { TEXT("pelvis"), TEXT("head"), TEXT("hand_l"), TEXT("hand_r") };
@@ -63,7 +57,7 @@ bool ASlapAthleteVisual::Init()
 		if (!Anchor.Contains(N))
 		{
 			UE_LOG(LogTemp, Error, TEXT("SlapAthleteVisual: no body/bone '%s%s'"), *BodyPrefix, N);
-			return true;	// stop retrying; nothing to drive
+			return false;	// retry next frame (the model may still be compiling)
 		}
 	}
 
@@ -76,16 +70,14 @@ bool ASlapAthleteVisual::Init()
 	const FQuat MeshToWorld = Frame(true) * Frame(false).Inverse();
 	Offsets.Reset();
 	Scales.Reset();
-	RefToDriven.Init(INDEX_NONE, Local.Num());
-	for (int32 k = 0; k < Bones.Num(); ++k)
+	for (int32 k = 0; k < BodyIds.Num(); ++k)
 	{
-		RefToDriven[Ref.FindBoneIndex(Bones[k])] = k;
-		const FTransform& Rest = CS[Ref.FindBoneIndex(Bones[k])];
+		const FTransform& Rest = CS[RefIdx[k]];
 		Offsets.Add(BodyRest[k].Inverse() * MeshToWorld * Rest.GetRotation());
 		Scales.Add(Rest.GetScale3D() * Mesh->GetComponentScale());	// FBX unit scale lives on the bones; keep it
 	}
 	bReady = true;
-	UE_LOG(LogTemp, Log, TEXT("SlapAthleteVisual %s: driving %d bones, rest bone scale %s"), *BodyPrefix, Bones.Num(), *Scales[0].ToString());
+	UE_LOG(LogTemp, Log, TEXT("SlapAthleteVisual %s: driving %d bones, rest bone scale %s"), *BodyPrefix, BodyIds.Num(), *Scales[0].ToString());
 	return true;
 }
 
@@ -93,9 +85,8 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (!bReady && !Init()) return;
-	if (!bReady) return;
 
-	if (!bChecked && LastPose.Num() && GetWorld()->GetTimeSeconds() > 2.0)	// one-off self-check (tasks B3, B4)
+	if (!bChecked && LastPose.Num() && GetWorld()->GetTimeSeconds() > 2.0)	// one-off self-check (Blueprint 3; tasks B3, B4)
 	{
 		bChecked = true;	// the engine has refreshed last frame's pose by now: compare it with what we set
 		double MaxErr = 0;
@@ -107,14 +98,15 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 		UE_LOG(LogTemp, Log, TEXT("B3 MuJoCo (0,0,0) (1,0,0) (0,1,0) m -> UE %s | %s | %s cm.  B4 %s: max bone-body gap %.4f cm"),
 			*MjUtils::MjToUEPosition(O).ToString(), *MjUtils::MjToUEPosition(X).ToString(), *MjUtils::MjToUEPosition(Y).ToString(),
 			*BodyPrefix, MaxErr);
+		LastPose.Empty();
 	}
 
 	TArray<FTransform> Pose;
 	AAMjManager::GetManager()->PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& S)
 	{
 		if (S.XPos.Num() == 0) return;
-		Pose.SetNum(Bones.Num());
-		for (int32 k = 0; k < Bones.Num(); ++k)
+		Pose.SetNum(BodyIds.Num());
+		for (int32 k = 0; k < BodyIds.Num(); ++k)
 		{
 			const int32 b = BodyIds[k];
 			Pose[k] = FTransform(MjUtils::MjToUERotation(&S.XQuat[4 * b]) * Offsets[k], MjUtils::MjToUEPosition(&S.XPos[3 * b]), Scales[k]);
@@ -143,5 +135,5 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 		}
 	}
 	Mesh->MarkRefreshTransformDirty();
-	LastPose = MoveTemp(Pose);
+	if (!bChecked) LastPose = MoveTemp(Pose);
 }

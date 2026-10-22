@@ -10,7 +10,7 @@ public class PoSlapUnreal : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "URLab" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "URLab" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "NNE", "Json" });
 

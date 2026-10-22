@@ -12,9 +12,11 @@ class POSLAPUNREAL_API ASlapHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	virtual void BeginPlay() override;
 	virtual void DrawHUD() override;
 
 private:
+	float ShotAt = -1.f;
 	bool bShotTaken = false;
 };
 

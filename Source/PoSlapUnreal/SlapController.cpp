@@ -10,6 +10,7 @@
 #include "NNERuntimeCPU.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "SlapNames.h"
 
 #include <cmath>
 
@@ -35,27 +36,6 @@ namespace
 		return Obj;
 	}
 
-	FString Name(const mjModel* m, mjtObj Type, int32 Id)
-	{
-		const char* N = mj_id2name(m, Type, Id);
-		return N ? UTF8_TO_TCHAR(N) : FString();
-	}
-
-	/** Model names carry URLab's "{Actor}_" prefix; match a training name as the whole name or a "_"-suffix. */
-	bool Matches(const FString& Full, const FString& Short)
-	{
-		return Full == Short || Full.EndsWith(TEXT("_") + Short);
-	}
-
-	int32 Find(const mjModel* m, mjtObj Type, int32 Count, const FString& Short)
-	{
-		for (int32 i = 0; i < Count; ++i)
-		{
-			if (Matches(Name(m, Type, i), Short)) return i;
-		}
-		return -1;
-	}
-
 	/** One name per qpos slot; same as joint_names() in training/replay_check.py. */
 	TArray<FString> QposNames(const mjModel* m)
 	{
@@ -65,7 +45,7 @@ namespace
 			const int32 N = m->jnt_type[j] == mjJNT_FREE ? 7 : m->jnt_type[j] == mjJNT_BALL ? 4 : 1;
 			for (int32 k = 0; k < N; ++k)
 			{
-				Out.Add(N > 1 ? FString::Printf(TEXT("%s[%d]"), *Name(m, mjOBJ_JOINT, j), k) : Name(m, mjOBJ_JOINT, j));
+				Out.Add(N > 1 ? FString::Printf(TEXT("%s[%d]"), *Slap::Name(m, mjOBJ_JOINT, j), k) : Slap::Name(m, mjOBJ_JOINT, j));
 			}
 		}
 		return Out;
@@ -85,7 +65,8 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 
 	// URLab attaches our MJCF as a child spec, whose <option> is dropped (root spec defaults: 0.002 s, Euler),
 	// and its own override is single-precision. Set the training options exactly, from the fingerprint.
-	if (const TSharedPtr<FJsonObject> Fp = LoadJson(Fingerprint))
+	const TSharedPtr<FJsonObject> Fp = LoadJson(Fingerprint);
+	if (Fp)
 	{
 		const TSharedPtr<FJsonObject> Opt = Fp->GetObjectField(TEXT("option"));
 		m->opt.timestep = Opt->GetNumberField(TEXT("timestep"));
@@ -97,7 +78,9 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 		UE_LOG(LogSlap, Log, TEXT("MuJoCo options from %s: timestep %.17g, integrator %d"), *Fingerprint, m->opt.timestep, m->opt.integrator);
 	}
 	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state
-	if (Mode == ESlapControlMode::Policy) BindPolicy(m);
+	Athletes.Reset();
+	Striker = -1;	// no match flow until BindPolicy finds both athletes
+	if (Mode == ESlapControlMode::Policy && Fp) BindPolicy(m, *Fp);
 }
 
 void USlapController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
@@ -112,13 +95,12 @@ void USlapController::BindReplay(mjModel* m)
 {
 	ReplayAct.Reset(); ReplayCtrl.Reset(); ReplayQ0.Reset(); Recorded.Reset();
 	ReplaySteps = 0;
-	bReplayDone = false;
 	const TSharedPtr<FJsonObject> Ref = LoadJson(ReplayFile);
-	if (!Ref) { bReplayDone = true; return; }
+	if (!Ref) return;
 
 	for (const TSharedPtr<FJsonValue>& V : Ref->GetArrayField(TEXT("actuators")))
 	{
-		const int32 Id = Find(m, mjOBJ_ACTUATOR, m->nu, V->AsString());
+		const int32 Id = Slap::Find(m, mjOBJ_ACTUATOR, m->nu, V->AsString());
 		UE_CLOG(Id < 0, LogSlap, Error, TEXT("Replay: no actuator %s"), *V->AsString());
 		ReplayAct.Add(Id);
 	}
@@ -131,7 +113,7 @@ void USlapController::BindReplay(mjModel* m)
 	const TArray<TSharedPtr<FJsonValue>>& Q0 = Ref->GetArrayField(TEXT("qpos"))[0]->AsArray();
 	for (int32 i = 0; i < RefNames.Num(); ++i)
 	{
-		const int32 Slot = Mine.IndexOfByPredicate([&](const FString& N) { return Matches(N, RefNames[i]->AsString()); });
+		const int32 Slot = Mine.IndexOfByPredicate([&](const FString& N) { return Slap::Matches(N, RefNames[i]->AsString()); });
 		UE_CLOG(Slot < 0, LogSlap, Error, TEXT("Replay: no qpos slot %s"), *RefNames[i]->AsString());
 		if (Slot >= 0) ReplayQ0.Emplace(Slot, Q0[i]->AsNumber());
 	}
@@ -142,14 +124,9 @@ void USlapController::BindReplay(mjModel* m)
 void USlapController::StepReplay(mjModel* m, mjData* d)
 {
 	const int32 NumCtrl = ReplayCtrl.Num() / FMath::Max(1, ReplayAct.Num());
-	if (bReplayDone || NumCtrl == 0) return;	// d->ctrl keeps the last values
+	if (ReplaySteps >= NumCtrl * ControlEvery) return;	// done (or nothing loaded); d->ctrl keeps the last values
 
-	if (ReplaySteps == 0)	// same start as Python: reset, stand pose, forward
-	{
-		mj_resetData(m, d);
-		for (const TPair<int32, double>& Q : ReplayQ0) d->qpos[Q.Key] = Q.Value;
-		mj_forward(m, d);
-	}
+	if (ReplaySteps == 0) StartFromRecordedPose(m, d);
 	const int32 C = ReplaySteps / ControlEvery;
 	for (int32 a = 0; a < ReplayAct.Num(); ++a)
 	{
@@ -157,11 +134,14 @@ void USlapController::StepReplay(mjModel* m, mjData* d)
 	}
 	Recorded.Append(d->qpos, m->nq);
 
-	if (++ReplaySteps == NumCtrl * ControlEvery)
-	{
-		bReplayDone = true;
-		WriteQposDump(m, ReplayDump);
-	}
+	if (++ReplaySteps == NumCtrl * ControlEvery) WriteQposDump(m, ReplayDump);
+}
+
+void USlapController::StartFromRecordedPose(const mjModel* m, mjData* d) const	// same start as Python: reset, stand pose, forward
+{
+	mj_resetData(m, d);
+	for (const TPair<int32, double>& Q : ReplayQ0) d->qpos[Q.Key] = Q.Value;
+	mj_forward(m, d);
 }
 
 void USlapController::WriteQposDump(const mjModel* m, const FString& RelPath)
@@ -185,19 +165,17 @@ void USlapController::WriteQposDump(const mjModel* m, const FString& RelPath)
 
 // ---------------------------------------------------------------- policy (DOCS/BRAIN_IO.md)
 
-void USlapController::BindPolicy(mjModel* m)
+void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 {
-	Athletes.Reset();
-	const TSharedPtr<FJsonObject> Fp = LoadJson(Fingerprint);
-	if (!Fp) return;
-	MaxStep = Fp->GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
-	const TArray<TSharedPtr<FJsonValue>>& Order = Fp->GetArrayField(TEXT("joint_order"));
-	const TArray<TSharedPtr<FJsonValue>>& Range = Fp->GetArrayField(TEXT("ctrl_range_rad"));
-	const TSharedPtr<FJsonObject> StandRad = Fp->GetObjectField(TEXT("stand_pose_rad"));
+	MaxStep = Fp.GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
+	const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
+	const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
+	const TSharedPtr<FJsonObject> StandRad = Fp.GetObjectField(TEXT("stand_pose_rad"));
+	Action.SetNumZeroed(Order.Num());
 
 	for (int32 b = 0; b < m->nbody; ++b)
 	{
-		const FString BodyName = Name(m, mjOBJ_BODY, b);
+		const FString BodyName = Slap::Name(m, mjOBJ_BODY, b);
 		if (!BodyName.EndsWith(TEXT("pelvis"))) continue;
 		FAthlete& A = Athletes.AddDefaulted_GetRef();
 		A.Prefix = BodyName.LeftChop(6);
@@ -224,12 +202,12 @@ void USlapController::BindPolicy(mjModel* m)
 		A.Root0 = TArray<double>(m->qpos0 + A.RootQ, 7);	// foot-box position the athlete resets to
 		for (int32 g = 0; g < m->ngeom; ++g)	// the foot box is the sole (Blueprint 2.1)
 		{
-			const FString Body = Name(m, mjOBJ_BODY, m->geom_bodyid[g]);
+			const FString Body = Slap::Name(m, mjOBJ_BODY, m->geom_bodyid[g]);
 			if (Body == A.Prefix + TEXT("foot_l") || Body == A.Prefix + TEXT("foot_r")) A.Feet.Add(g);
 		}
 	}
-	Floor = Find(m, mjOBJ_GEOM, m->ngeom, TEXT("floor"));
-	Podium = Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium"));
+	Floor = Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("floor"));
+	Podium = Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium"));
 	for (FAthlete& A : Athletes) A.Head = mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + TEXT("head"))));
 	Striker = Athletes.Num() == 2 ? FMath::RandRange(0, 1) : -1;	// coin toss
 	TurnStart = 0.0;
@@ -264,7 +242,7 @@ int32 USlapController::Fallen(const mjModel* m, const mjData* d, FString& Why) c
 		{
 			if (Athletes[a].Pelvis == m->body_rootid[m->geom_bodyid[G]] && !Athletes[a].Feet.Contains(G))
 			{
-				Why = FString::Printf(TEXT("knockdown: %s on %s"), *Name(m, mjOBJ_GEOM, G), *Name(m, mjOBJ_GEOM, S0 ? C.geom[0] : C.geom[1]));
+				Why = FString::Printf(TEXT("knockdown: %s on %s"), *Slap::Name(m, mjOBJ_GEOM, G), *Slap::Name(m, mjOBJ_GEOM, S0 ? C.geom[0] : C.geom[1]));
 				return a;
 			}
 		}
@@ -305,9 +283,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	{
 		if (StepCount == 0)	// Python's exact start state (URLab's own qpos0 differs by 1 ulp in blue's root quat)
 		{
-			mj_resetData(m, d);
-			for (const TPair<int32, double>& Q : ReplayQ0) d->qpos[Q.Key] = Q.Value;
-			mj_forward(m, d);
+			StartFromRecordedPose(m, d);
 			Recorded.Reset();
 		}
 		Recorded.Append(d->qpos, m->nq);	// before this step, as Python records it
@@ -324,10 +300,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		if (Down >= 0)
 		{
 			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s%s -> reset both athletes (#%d)"), d->time, *Athletes[Down].Prefix, *Why, ++Resets);
-			ResetAthletes(m, d);
-			if (Striker >= 0) Striker = 1 - Striker;	// a knockdown ends the turn too
-			TurnStart = d->time;
-			StruckAt = -1.0;
+			NextTurn(m, d);	// a knockdown ends the turn too
 		}
 	}
 	if (RecordFile.IsEmpty() && Striker >= 0) MatchFlow(m, d);
@@ -337,14 +310,12 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		float Obs[NumObs];
 		for (FAthlete& A : Athletes)
 		{
-			TArray<float> Action;
-			Action.SetNumZeroed(A.Act.Num());
 			float Value = 0.f;	// trained brains also output the critic's value (later: the HUD's win bar)
 			BuildObs(m, d, A, Obs);
 			const UE::NNE::FTensorBindingCPU In{ Obs, sizeof(Obs) };
-			TArray<UE::NNE::FTensorBindingCPU> Out = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) } };
-			if (Instance->GetOutputTensorDescs().Num() > 1) Out.Add({ &Value, sizeof(float) });
-			if (Instance->RunSync({ In }, Out) != UE::NNE::EResultStatus::Ok) continue;
+			const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
+			const int32 NumOut = Instance->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+			if (Instance->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, NumOut)) != UE::NNE::EResultStatus::Ok) continue;
 			if (!RecordFile.IsEmpty() && StepCount == 0)	// live check diagnostics: first decision at full precision
 			{
 				FString S;
@@ -380,14 +351,19 @@ void USlapController::MatchFlow(const mjModel* m, mjData* d)
 		if (Other >= 0 && m->body_rootid[m->geom_bodyid[Other]] == S.Pelvis)
 		{
 			StruckAt = d->time;
-			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s %s hits the head"), d->time, *S.Prefix, *Name(m, mjOBJ_GEOM, Other));
+			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s %s hits the head"), d->time, *S.Prefix, *Slap::Name(m, mjOBJ_GEOM, Other));
 		}
 	}
 	const bool Settled = StruckAt >= 0 && d->time - StruckAt >= 1.5, Timeout = d->time - TurnStart >= 30.0;
 	if (!Settled && !Timeout) return;
 	UE_LOG(LogSlap, Log, TEXT("t=%.3f turn over (%s) -> %s strikes"), d->time, Settled ? TEXT("hit") : TEXT("clock"), *Athletes[1 - Striker].Prefix);
+	NextTurn(m, d);
+}
+
+void USlapController::NextTurn(const mjModel* m, mjData* d)
+{
 	ResetAthletes(m, d);	// both back to the stand pose in their boxes, as every training episode starts
-	Striker = 1 - Striker;
+	if (Striker >= 0) Striker = 1 - Striker;
 	TurnStart = d->time;
 	StruckAt = -1.0;
 }

@@ -31,6 +31,12 @@ void ASlapGameMode::StartPlay()
 	UE_LOG(LogTemp, Log, TEXT("Chaos audit: %d primitive components, %d had collision/physics and were turned off"), Total, Turned);
 }
 
+void ASlapHUD::BeginPlay()
+{
+	Super::BeginPlay();
+	FParse::Value(FCommandLine::Get(), TEXT("SlapShot="), ShotAt);
+}
+
 void ASlapHUD::DrawHUD()
 {
 	Super::DrawHUD();
@@ -49,8 +55,7 @@ void ASlapHUD::DrawHUD()
 	Canvas->SetDrawColor(FColor(255, 255, 255, 160));
 	Canvas->DrawText(GEngine->GetSmallFont(), Stamp, Canvas->ClipX - W - 12.f, Canvas->ClipY - H - 12.f);
 
-	float ShotAt = -1.f;
-	if (FParse::Value(FCommandLine::Get(), TEXT("SlapShot="), ShotAt) && GetWorld()->GetTimeSeconds() >= ShotAt)
+	if (ShotAt >= 0.f && GetWorld()->GetTimeSeconds() >= ShotAt)
 	{
 		if (!bShotTaken)
 		{

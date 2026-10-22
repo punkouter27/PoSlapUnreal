@@ -32,10 +32,10 @@ private:
 
 	bool bReady = false;
 	bool bChecked = false;
-	TArray<FName> Bones;
-	TArray<int32> BodyIds;
+	TArray<FName> Bones;	// driven bones
+	TArray<int32> BodyIds;	// MuJoCo body per driven bone
 	TArray<FQuat> Offsets;	// bone rotation relative to its body, fixed at the rest pose
 	TArray<FVector> Scales;	// bone world scale at the rest pose
-	TArray<int32> RefToDriven;	// reference-skeleton index -> index into Bones, or INDEX_NONE
-	TArray<FTransform> LastPose;	// world pose set last frame (self-check)
+	TArray<int32> RefToDriven;	// reference-skeleton index -> driven-bone index, or INDEX_NONE
+	TArray<FTransform> LastPose;	// world pose set last frame, kept only until the self-check runs
 };

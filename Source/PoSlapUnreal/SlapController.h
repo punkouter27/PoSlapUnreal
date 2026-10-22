@@ -1,10 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include <atomic>
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
 #include "SlapController.generated.h"
 
+class FJsonObject;
 class UNNEModelData;
 namespace UE::NNE { class IModelInstanceCPU; }
 
@@ -47,10 +47,10 @@ public:
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
 	virtual FString GetKindName() const override { return TEXT("poslap"); }
 
-	/** Knockdowns + out-of-bounds seen so far (policy mode); each one resets both athletes in place. */
-	std::atomic<int32> Resets{0};
-
 private:
+	/** Knockdowns + out-of-bounds seen so far (policy mode); each one resets both athletes in place. */
+	int32 Resets = 0;
+
 	struct FAthlete
 	{
 		FString Prefix;
@@ -69,9 +69,11 @@ private:
 	int32 Striker = -1;
 	double TurnStart = 0.0, StruckAt = -1.0;
 	void MatchFlow(const mjModel* m, mjData* d);
+	void NextTurn(const mjModel* m, mjData* d);
 
 	void BindReplay(mjModel* m);
-	void BindPolicy(mjModel* m);
+	void BindPolicy(mjModel* m, const FJsonObject& Fp);
+	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
 	void BuildObs(const mjModel* m, const mjData* d, const FAthlete& A, float* Obs) const;
@@ -85,6 +87,7 @@ private:
 	double MaxStep = 0.0;
 	TArray<FAthlete> Athletes;
 	TSharedPtr<UE::NNE::IModelInstanceCPU> Instance;
+	TArray<float> Action;	// brain output scratch, sized once
 
 	// replay
 	TArray<int32> ReplayAct;
@@ -92,5 +95,4 @@ private:
 	TArray<TPair<int32, double>> ReplayQ0;
 	TArray<double> Recorded;
 	int32 ReplaySteps = 0;
-	bool bReplayDone = false;
 };
