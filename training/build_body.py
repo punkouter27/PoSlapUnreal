@@ -232,9 +232,10 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
             j = f"{pre}{jn}{side}"
             rng = fmt([math.radians(lo * flex), math.radians(hi * flex)])
             out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{rng}"/>')
-            kp = tq * S * KP_PER_NM
+            st = S * card.get("toughness", 1.0) if seg(n) == "neck" else S   # toughness: neck bracing (KO resistance)
+            kp = tq * st * KP_PER_NM
             acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kp * KV_RATIO)}" '
-                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * S, tq * S])}"/>')
+                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}"/>')
         for gg in g["geoms"]:
             out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"/>'))
         if n == "head":

@@ -11,9 +11,10 @@ Knockdown (Blueprint 9) = any non-sole part on floor or podium: the defender dow
 Fouls (-1 point on every card, that round): striker's first touch not with the palm (clubbing), no strike in 30 s,
 striker knocked down, defender knocked down before the strike, either athlete's feet out of the foot box.
 Judges: 3 cards, 10-point must. A strike's effect = palm speed (m/s) + 5 x peak defender head speed (m/s) + 10 if
-the defender staggered (COM more than 5 cm off its pre-strike spot at the end of the window). Each judge weighs the three
-parts differently (speed, head, stagger) = (2,1,1), (1,2,1), (1,1,2). Per round: the bigger effect gets 10, the other
-9; 10-8 when the winner staggered him and has at least twice the effect; 10-10 within 5 %.
+the defender staggered (COM more than 5 cm off its pre-strike spot at the end of the window). The defender scores for
+absorbing a clean strike he survived: 10 if he did not stagger + (10 - 5 x head speed, at least 0). Each judge weighs
+(speed, head, stagger, defence) differently: (2,1,1,1), (1,2,1,1), (1,1,2,2). Per round: the bigger total gets 10, the
+other 9; 10-8 when the winner staggered him and has at least twice the total; 10-10 within 5 %.
 Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, turn/round summaries, and every 5th
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
@@ -28,7 +29,7 @@ from brain_cpu import Athlete, onnx_policy, stand
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
 BOX = (0.20, 0.25)
-WEIGHTS = ((2, 1, 1), (1, 2, 1), (1, 1, 2))
+WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, defence
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
 
 
@@ -196,10 +197,12 @@ class Match:
             for j, w in enumerate(WEIGHTS):
                 eff = [0.0, 0.0]
                 stag = [False, False]
-                for s, r in recs:
+                for s, r in recs:   # in turn order (Unreal adds in the same order)
                     if r["touch"] is not None and r["palm"]:
-                        eff[s] = w[0] * r["speed"] + w[1] * 5 * r["head_peak"] + w[2] * 10 * r["stagger"]
+                        eff[s] += w[0] * r["speed"] + w[1] * 5 * r["head_peak"] + w[2] * 10 * r["stagger"]
                         stag[s] = r["stagger"]
+                        if not r["ko"]:   # the defender absorbed it: stayed put, small head snap
+                            eff[1 - s] += w[3] * (10 * (not r["stagger"]) + max(0.0, 10.0 - 5 * r["head_peak"]))
                 hi = int(eff[1] > eff[0])
                 pts = [10, 10]
                 if abs(eff[0] - eff[1]) > 0.05 * max(eff):

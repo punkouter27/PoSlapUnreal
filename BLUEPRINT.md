@@ -19,6 +19,7 @@ Every athlete is a mesh plus a card. New meshes later = new card, same pipeline,
 | Strength | 0.50 × trained adult | Max motor force at every joint |
 | Speed | 0.75 × trained adult | Max joint speed |
 | Flexibility | 0.85 × adult range | Joint limits shrink toward neutral |
+| Toughness | 1.0 | KO resistance: neck motors' strength on top of Strength (braces the head; a slap snaps it less). Added 2026-10-22 (user: every mesh gets unique characteristics) |
 | Tint | Red / Blue | Two copies of the same athlete |
 
 ## 2. Body Setup

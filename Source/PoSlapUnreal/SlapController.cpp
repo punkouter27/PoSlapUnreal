@@ -262,7 +262,7 @@ namespace
 
 	constexpr int32 Rounds = 3;
 	constexpr double StrikeClock = 30.0, Recovery = 5.0, BoxX = 0.20, BoxY = 0.25;
-	constexpr int32 Weights[3][3] = { { 2, 1, 1 }, { 1, 2, 1 }, { 1, 1, 2 } };	// judges: speed, head, stagger
+	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };	// judges: speed, head, stagger, defence
 }
 
 void USlapController::SetHud(TFunctionRef<void(FSlapHud&)> Edit)
@@ -501,15 +501,19 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 
 void USlapController::Score()
 {
-	for (int32 j = 0; j < 3; ++j)	// 10-point must, three judges weighing (speed, head, stagger) differently
+	for (int32 j = 0; j < 3; ++j)	// 10-point must, three judges weighing (speed, head, stagger, defence) differently
 	{
 		double Eff[2] = { 0.0, 0.0 };
 		bool Stag[2] = { false, false };
 		for (const FTurn& R : RoundTurns)
 		{
 			if (R.TouchStep < 0 || !R.bPalm) continue;
-			Eff[R.Striker] = Weights[j][0] * R.Speed + (Weights[j][1] * 5) * R.HeadPeak + (double)(Weights[j][2] * 10 * (R.bStagger ? 1 : 0));
+			Eff[R.Striker] += Weights[j][0] * R.Speed + (Weights[j][1] * 5) * R.HeadPeak + (double)(Weights[j][2] * 10 * (R.bStagger ? 1 : 0));
 			Stag[R.Striker] = R.bStagger;
+			if (!R.bKO)	// the defender absorbed it: stayed put, small head snap
+			{
+				Eff[1 - R.Striker] += Weights[j][3] * ((double)(10 * (R.bStagger ? 0 : 1)) + FMath::Max(0.0, 10.0 - 5 * R.HeadPeak));
+			}
 		}
 		const int32 Hi = Eff[1] > Eff[0] ? 1 : 0;
 		int32 Pts[2] = { 10, 10 };
