@@ -49,6 +49,7 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
 ## Step 4 — Training & Verification (after Phase C)
 - [x] L0 Stand trained and graduated in MuJoCo — 46 min (+13 min before the noise cap), exam 97 % no-fall under full 150–300 N pushes; `training/models/brains/grandpa_L0.onnx`
 - [x] **Matching Check** (Blueprint §8): replay 0.017 mm, **live 0.000 cm** (bit-identical vs URLab's model), same outcome
+- [x] Physics/brain audit (2026-10-22, e73efa1): action rule reaches every joint's range (Grandpa's slap needed shoulder raise +57°, the old rule capped +4°), damping ratio 0.8 from each joint's load, arm armature 0.005, per-joint speed caps (arms 20/25 rad/s × card), solver iterations 20, own palm inputs (BRAIN_IO 136), L4 approach 30, queue stops on a non-graduation. Grandpa rebuilt; Unreal = URLab model 0.000 mm, live 0.000 cm (130- and 136-input brains). Replay vs XML 5.4 mm, but only after the stream's fall at 3.9 s (a 1e-6 rad nudge alone gives 36–85 mm). Kim not yet rebuilt (her L0 run was live)
 - [ ] L1 → L5 in order, each graduating before the next
   - 2026-10-22: last night's L2 "graduation" predates the podium in the training model (run loaded 03:03, podium added 04:14): its left hand hits the podium (knockdown), and L1 best drops 94 → 28 % with the podium. Strike-only training had also wiped out the guard.
   - Fix: **one brain, every role**: each world plays guard / strike / absorb per the level's mix; a level passes only when every role's exam passes
