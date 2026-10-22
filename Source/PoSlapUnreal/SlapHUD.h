@@ -5,7 +5,9 @@
 #include "GameFramework/HUD.h"
 #include "SlapHUD.generated.h"
 
-/** Build stamp bottom-right. `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits (automated checks). */
+class USlapController;
+
+/** Match HUD top-left (round, clocks, strike telemetry, judges' cards), build stamp bottom-right. `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits (automated checks). */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
 {
@@ -16,6 +18,8 @@ public:
 	virtual void DrawHUD() override;
 
 private:
+	void DrawMatch();
+	TWeakObjectPtr<USlapController> Controller;
 	float ShotAt = -1.f;
 	bool bShotTaken = false;
 };

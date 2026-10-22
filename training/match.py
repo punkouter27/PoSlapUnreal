@@ -32,6 +32,10 @@ WEIGHTS = ((2, 1, 1), (1, 2, 1), (1, 1, 2))
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
 
 
+def dist(a, b):   # spelled out so Unreal's C++ rounds identically (np.linalg.norm may sum in another order)
+    return math.sqrt(sum((float(x) - float(y)) * (float(x) - float(y)) for x, y in zip(a, b)))
+
+
 def load(mjb=None, character="grandpa"):
     fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
     if mjb:   # the model Unreal runs (URLab's compiled .mjb), with our options (URLab drops a child model's <option>)
@@ -100,7 +104,7 @@ class Match:
                 for x in (D, S):
                     part = self.down(x)
                     if part:
-                        self.emit(type="knockdown", t=round(t, 3), athlete=x.name, part=part)
+                        self.emit(type="knockdown", t=round(t, 3), athlete=x.name, part=re.sub(r"^.*?(red|blue)_", "", part))
                         if x is D and touch_k is not None:
                             rec["ko"], rec["end"] = True, "KO"
                         else:
@@ -144,19 +148,20 @@ class Match:
                 self.emit(type="blowup", t=round(k * m.opt.timestep, 3))
                 return rec
             hand = d.geom_xpos[S.hand].copy()
-            speed = float(np.linalg.norm(hand - hand_prev)) / m.opt.timestep
+            speed = dist(hand, hand_prev) / m.opt.timestep
             hand_prev = hand
             head = d.geom_xpos[D.head].copy()
             if touch_k is not None:
-                rec["head_peak"] = max(rec["head_peak"], float(np.linalg.norm(head - head_prev)) / m.opt.timestep)
+                rec["head_peak"] = max(rec["head_peak"], dist(head, head_prev) / m.opt.timestep)
             head_prev = head
             if touch_k is None:
                 for c in d.contact[:d.ncon]:
                     if D.head in (c.geom[0], c.geom[1]):
                         other = c.geom[1] if c.geom[0] == D.head else c.geom[0]
                         if other in S.geoms:
-                            normal = c.frame[:3] * (1.0 if c.geom[0] == other else -1.0)   # from the striker's part
-                            palm = other == S.hand and float(normal @ -d.geom_xmat[S.hand].reshape(3, 3)[:, 2]) > 0.5
+                            sign = 1.0 if c.geom[0] == other else -1.0   # normal from the striker's part to the head
+                            z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
+                            palm = other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5
                             touch_k, com0 = k, d.subtree_com[D.a.pelvis][:2].copy()
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2))
@@ -167,7 +172,7 @@ class Match:
 
     def finish(self, rec, D, com0):
         if com0 is not None:
-            rec["stagger"] = bool(np.linalg.norm(self.d.subtree_com[D.a.pelvis][:2] - com0) > 0.05)
+            rec["stagger"] = dist(self.d.subtree_com[D.a.pelvis][:2], com0) > 0.05
         rec["head_peak"] = round(rec["head_peak"], 2)
         self.emit(type="turn_end", **{k: v for k, v in rec.items() if k != "fouls"}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
         return rec
