@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Mobile UI</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:200px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:4px 0}</style>
+<h1>Mobile portrait UI: corner anchors, safe zone, menu sheet (2026-10-22)</h1>
+<p>Before: the broadcast panels started at the very top edge, the build stamp sat alone bottom-right, and there was no menu or FPS readout.
+After: a Slate layer inside the device safe zone puts the title top-left, live FPS top-centre (green / amber / red), MENU top-right,
+a debug line bottom-left (match, round, camera shot, worst frame) and the build stamp bottom-right. The Canvas panels now start
+below the top bar and end above the bottom bar. Nothing scrolls.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after.png"><figcaption>After</figcaption></figure></div>
+<h2>Menu: tabbed bottom sheet</h2>
+<p>MENU opens a sheet over a dimmed scrim. The tabs are MATCH (round, striker, tale of the tape and brain per corner, series, last result),
+VIEW (show or hide telemetry, commentary and the debug line) and ABOUT (what the overlays mean, build). Tapping the scrim or X closes it.
+The match keeps running underneath.</p>
+<div class="row"><figure><img src="menu_match.png"><figcaption>MATCH</figcaption></figure><figure><img src="menu_view.png"><figcaption>VIEW</figcaption></figure><figure><img src="menu_about.png"><figcaption>ABOUT</figcaption></figure></div>
+<h2>Aspect ratios and safe zone</h2>
+<p>The camera holds the picture at 9:16, so the Canvas panels never clip. Taller phones get a letterbox and landscape screens get a pillarbox.
+The corner anchors follow the screen's own corners. Safe zone: simulated with <code>r.DebugSafeZone.TitleRatio=0.85</code>. The engine
+shrinks the Canvas into the title-safe box, and the Slate layer uses the same title-safe inset.</p>
+<div class="row"><figure><img src="aspect_9x21.png"><figcaption>9:21 portrait</figcaption></figure><figure><img src="safezone.png"><figcaption>Safe zone 85 %</figcaption></figure></div>
+<div class="row"><figure><img src="aspect_16x9.png"><figcaption>16:9 landscape</figcaption></figure><figure><img src="aspect_21x9.png"><figcaption>21:9 landscape</figcaption></figure></div>
+<h2>State flow check</h2>
+<p><code>-SlapUiTest</code> sends synthetic Slate clicks to the real widgets: MENU, VIEW, the telemetry toggle, the scrim, MENU, then X.
+It checks the state after each click, then waits for one match to end and the next to start (Menu → Gameplay → Win/Loss → Loop Reset).
+<b>Result: PASS.</b> All 6 clicks left the expected state, match 1 ended and match 2 began, and the log has no assertions or crashes. An earlier run crashed in AudioMixer teardown during an exit requested mid-startup (engine frames only, at a 478 s startup under training load). It did not happen again.</p>
+<div class="row"><figure style="max-width:320px"><img src="flow_end.png"><figcaption>End of the check: menu closed, telemetry hidden by the toggle</figcaption></figure></div>

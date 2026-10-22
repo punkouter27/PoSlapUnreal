@@ -13,6 +13,7 @@ class UNiagaraSystem;
 class USoundAttenuation;
 class USoundBase;
 class USlapController;
+class SWidget;
 struct FSlapHud;
 
 /**
@@ -22,6 +23,8 @@ struct FSlapHud;
  * skin (cheek flush from neck damage, greyer when tired). All cosmetic: MuJoCo decides everything.
  * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
+ * Slate layer inside the safe zone: title, FPS, menu, debug line, build stamp at the corners; the menu is a tabbed bottom
+ * sheet (match, view toggles, legend). `-SlapMenu=<tab>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it.
  */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
@@ -30,6 +33,7 @@ class POSLAPUNREAL_API ASlapHUD : public AHUD
 
 public:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void DrawHUD() override;
 
 private:
@@ -41,13 +45,28 @@ private:
 	void Direct(ACameraActor* Cam, const FSlapHud& H);
 	void Cues(const FSlapHud& H);			// one-shot effects when the controller's counters move on
 	void Stage(double Now);					// light flare on a strike, chase on a KO
-	void Text(const FString& S, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
+	void Text(const FString& Str, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
+	void BuildUi();
+	void UiTest(const FSlapHud& H);
 
 	TWeakObjectPtr<USlapController> Controller;
 	TArray<float> Frames;
 	double FpsSince = 0.0;
 	float ShotAt = -1.f, FxTestAt = -1.f;
 	bool bShotTaken = false;
+
+	// layout: canvas scale (authored at 540 x 960) and the free rows between the Slate bars, in canvas pixels
+	float S = 1.f, Top = 0.f, Bot = 0.f;
+	float Fps = 60.f, WorstMs = 0.f;
+
+	// Slate layer and menu
+	TSharedPtr<SWidget> Ui;
+	int32 Tab = 0;
+	bool bMenu = false, bShowTelemetry = true, bShowCommentary = true, bShowDebug = true;
+	TSharedPtr<SWidget> Hit[6];	// click targets for -SlapUiTest: menu, VIEW tab, telemetry toggle, scrim, X, other tabs
+	bool bUiTest = false, bUiChecked = false, bUiDone = false;
+	int32 UiStep = 0, UiFails = 0, UiMatch0 = 0;
+	double UiAt = 0.0;
 
 	// cue state (game time)
 	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0;
