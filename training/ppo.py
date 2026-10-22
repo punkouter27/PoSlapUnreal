@@ -106,6 +106,7 @@ class PPOConfig:
     desired_kl: float = 0.01
     max_grad_norm: float = 1.0
     obs_clip: float = 10.0
+    group_obs: int = -1      # obs index holding the role: advantages normalised per role (-1: one batch)
     # Step size of the KL-adaptive learning rate, applied once per minibatch. At the rsl_rl
     # default of 1.5 and 5 epochs x 8 minibatches, one iteration can move the rate by 1.5^40 --
     # and measurably does: the baseline run swung between 1e-5 and 3.4e-3 from iteration to
@@ -148,6 +149,7 @@ class PPO:
             "val": torch.zeros(T, N, device=device),
             "mu": torch.zeros(T, N, act_dim, device=device),
             "sigma": torch.zeros(T, N, act_dim, device=device),
+            "group": torch.zeros(T, N, device=device),
         }
         self.t = 0
 
@@ -163,6 +165,8 @@ class PPO:
         b["val"][self.t] = v
         b["mu"][self.t] = mu
         b["sigma"][self.t] = sigma
+        if self.cfg.group_obs >= 0:
+            b["group"][self.t] = raw_obs[:, self.cfg.group_obs]
         return a
 
     def record(self, rew: torch.Tensor, done: torch.Tensor, timeout: torch.Tensor) -> None:
@@ -194,7 +198,13 @@ class PPO:
         with torch.no_grad():
             last_val = self.model.critic(self.obs_rms.normalize(last_raw_obs, c.obs_clip)).squeeze(-1)
         adv, ret = self._gae(last_val)
-        adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
+        if c.group_obs >= 0:   # per group (role): a guard's returns (~3000) must not drown a striker's (~0)
+            adv_n = torch.empty_like(adv)
+            for g in b["group"].unique():
+                sel = b["group"] == g
+                adv_n[sel] = (adv[sel] - adv[sel].mean()) / (adv[sel].std(unbiased=False) + 1e-8)
+        else:
+            adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
 
         T, N = c.steps_per_env, self.num_envs
         flat = lambda x: x.reshape(T * N, *x.shape[2:])

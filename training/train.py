@@ -177,7 +177,7 @@ def main():
     env = (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)   # arena: 2 agents per world
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(108, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy))
+    ppo = PPO(108, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
     extra = ppo.load(a.resume) if a.resume else {}
     unseen = ppo.obs_rms.var < 1e-6                     # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
     ppo.obs_rms.var[unseen], ppo.obs_rms.mean[unseen] = 1.0, 0.0
