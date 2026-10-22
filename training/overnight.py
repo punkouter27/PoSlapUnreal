@@ -40,6 +40,7 @@ def train(stage, run, minutes, resume, char):
            "--envs", str(stage.get("envs", 8192)), "--run", run.name]
     if resume:
         cmd += ["--resume", str(resume)]
+    cmd += stage.get("args", [])
     if stage.get("keep_going"):
         cmd.append("--keep-going")
     with open(RUNS / f"{run.name}.log", "a") as out:

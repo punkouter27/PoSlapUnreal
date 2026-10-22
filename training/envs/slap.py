@@ -104,7 +104,8 @@ class SlapEnv:
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
         self.tbase = self.q0[:3] + torch.tensor(OPP_HEAD, device=dev)                 # the arena opponent's head
-        self.teasy = self.q0[:3] + torch.tensor([0.43, -0.08, 0.53], device=dev)     # ~0.45 m in front of the right shoulder
+        self.teasy = self.q0[:3] + torch.tensor([0.25, -0.10, 0.62], device=dev)     # in front of the podium (x 0.305-0.505), head high;
+                                                                                    # at 0.43 it sat over the podium: every reach risked a knockdown
         self.tpark = self.q0[:3] + torch.tensor([5.0, 0.0, 0.7], device=dev)
         # absorb: the opponent's right hand (their right = our +Y), at rest, wound up; it lands on our left cheek
         self.hrest = self.q0[:3] + torch.tensor([0.80, 0.20, -0.05], device=dev)

@@ -163,6 +163,7 @@ def main():
     ap.add_argument("--resume", default=None)
     ap.add_argument("--max-std", type=float, default=0.3, help="cap on exploration noise (it ran away to 0.47 in grandpa_L0_v1)")
     ap.add_argument("--entropy", type=float, default=0.001)
+    ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
@@ -184,6 +185,10 @@ def main():
     with torch.no_grad():
         ppo.model.log_std.clamp_(max=float(torch.log(torch.tensor(a.max_std))))
     L = LEVELS[a.level]
+    if a.roles:
+        L = {**L, "roles": {int(r): float(p) for r, p in (x.split(":") for x in a.roles.split(","))}}
+        env.roles = L["roles"]
+        env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
     roles = list(L["roles"])
     # curricula, carried in checkpoints. Guard: pushes from 0 up to the level's cap (graduation only at the cap).
     # Strike: target from easy to the real head, then the clean-hit speed bar. Absorb: slap impulse up to the median.
