@@ -57,11 +57,21 @@ def cpu_policy(ppo):
     return act
 
 
+_exam_envs = {}
+
+
 @torch.no_grad()
 def exam(ppo, character, level):
     """The level's pass/fail check on the deterministic policy, 100 fresh randomised worlds."""
     chk = LEVELS[level]["check"]
-    env = SlapEnv(character, level, num_envs=chk["episodes"], seed=12345)
+    env = _exam_envs.get((character, level))
+    if env is None:   # built once: a fresh env (and CUDA stream) per exam broke Warp's capture after ~30 exams
+        env = _exam_envs[(character, level)] = SlapEnv(character, level, num_envs=chk["episodes"], seed=12345)
+    else:
+        torch.cuda.set_stream(env.stream)
+        wp.set_stream(wp.stream_from_torch(env.stream))
+        env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
+    env.episodes.clear()
     env.push_scale = LEVELS[level].get("max_push", 1.0)
     obs = env.observe()
     fell_any = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # each world's first episode only
@@ -120,7 +130,7 @@ def main():
     target = LEVELS[a.level]["reward_target"]
     recent = deque(maxlen=100)
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
-    last_video = time.time()
+    last_video, best_exam = time.time(), -1.0
     (run / "videos").mkdir(exist_ok=True)
     print(f"run {run.name}: {a.level}, {a.envs} worlds, {a.minutes} min, graduate at return {target} over 100 episodes")
 
@@ -165,8 +175,12 @@ def main():
         if len(recent) == 100 and ret >= target and env.push_scale >= LEVELS[a.level].get("max_push", 1.0) and time.time() - last_exam > 120:
             last_exam = time.time()
             ok, res = exam(ppo, a.char, a.level)
-            print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}")
+            print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
             tb.add_scalar("exam_no_fall", res["no_fall"], steps)
+            score = min(res.values())
+            if score > best_exam:   # the best exam so far, kept for a deadline that ends before graduation
+                best_exam = score
+                ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "exam": res})
             if ok:
                 graduated = res
                 break
