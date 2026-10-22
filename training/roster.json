@@ -1,0 +1,4 @@
+[
+ {"name": "Grandpa Red", "card": "grandpa", "brain": "models/brains/grandpa_L1_best.onnx"},
+ {"name": "Grandpa Blue", "card": "grandpa", "brain": "models/brains/grandpa_final.onnx"}
+]

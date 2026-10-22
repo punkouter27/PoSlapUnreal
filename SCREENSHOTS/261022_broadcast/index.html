@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Broadcast HUD</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:240px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:4px 0}</style>
+<h1>Broadcast HUD, director camera, impact effects (2026-10-22)</h1>
+<p>Before: the match panel only, a fixed side-on camera, no effects. After:</p>
+<ul>
+<li><b>Telemetry:</b> palm-speed gauge on the right (team colour, a white line at the clean 8 m/s), the defender's head acceleration over the last 2 s (bottom left, g over 20 ms windows), a balance ring under each athlete's soles with a dot for his centre of mass (green within 5 cm, yellow 10, red beyond), and condition bars (stamina, neck strength) bottom right.</li>
+<li><b>Overlays:</b> tale of the tape for 4 s at each match start (card, brain per corner), the judges' round cards sliding in top right, a KNOCKOUT/DECISION banner during the new 4 s post-match hold, the series tally in the panel, and the commentary line above the bottom boxes (when <code>Scripts/commentator.py</code> runs).</li>
+<li><b>Director camera:</b> wide, a close-up on the defender's face while the palm closes in, a whip onto the contact at the strike, and a crane after a KO. The "after" strike frame shows the strike shot.</li>
+<li><b>Impact (cosmetic; MuJoCo decides everything):</b> a spray along the palm's path, a shockwave ring and a white flash, a ripple on the struck cheek, camera shake and colour fringe, plus a slap crack, crowd reaction, crowd bed and KO bell (all synthesised).</li>
+</ul>
+<p>The brain in the "after" shots is <code>grandpa_L1_best</code> (a guard brain): its only contact is a head clash, a clubbing foul at 0.3 m/s, so the effects fire at their smallest. No brain lands a palm strike yet (that is L2-L4's job).</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after_match_start.png"><figcaption>After: match start (tale of the tape, strike shot, telemetry)</figcaption></figure><figure><img src="after_strike.png"><figcaption>After: second turn's contact (head g 118, condition bars dropping)</figcaption></figure></div>

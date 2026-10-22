@@ -20,6 +20,8 @@ Every athlete is a mesh plus a card. New meshes later = new card, same pipeline,
 | Speed | 0.75 × trained adult | Max joint speed |
 | Flexibility | 0.85 × adult range | Joint limits shrink toward neutral |
 | Toughness | 1.0 | KO resistance: neck motors' strength on top of Strength (braces the head; a slap snaps it less). Added 2026-10-22 (user: every mesh gets unique characteristics) |
+| Stamina per strike | 0.05 | Each turn struck costs this much stamina (joint speed × stamina, floor 0.7); resets each match. Added 2026-10-22 |
+| Neck damage per snap | 0.04 | Each strike absorbed costs this × head snap (m/s) of neck strength (neck motors' strength × neck, floor 0.5); resets each match. Added 2026-10-22 |
 | Tint | Red / Blue | Two copies of the same athlete |
 
 ## 2. Body Setup
@@ -138,7 +140,7 @@ Training starts in plain MuJoCo (fast, on the GPU). A brain is only brought into
 | **L1** | **Guard hold** | Stand in the foot box facing the opponent, head in target zone, 30 s, under pushes **capped at 90–180 N** (decided 2026-10-21: full 300 N head shoves with planted feet are beyond a 0.5-strength Grandpa; slap impacts are L3's test). **Pass:** feet never leave the box in ≥ 95 %. |
 | **L2** | **Strike** (fixed target) | Open-palm lateral swing hits a fixed head target. **Pass:** palm touches first (not wrist), hand ≥ 8 m/s, striker stays up, ≥ 90 % of attempts, inside the 30 s clock. |
 | **L3** | **Absorb** (scripted hits) | Defender takes scripted strikes of rising strength. **Pass:** survives a median strike ≥ 90 %, centre of mass back within 5 cm in ≤ 5 s. |
-| **L4** | **Duel** (self-play) | Trained striker vs trained defender. **Pass:** KO rate 10–40 % per strike, striker self-falls ≤ 5 %. |
+| **L4** | **Duel** (self-play) | Trained striker vs trained defender. **Pass:** KO rate 10–40 % per strike, striker self-falls ≤ 5 %. Feints pay: a touch on a defender who already flinched earns the striker a bonus (2026-10-22). |
 | **L5** | **Full match** | 3 rounds, turn clock, recovery window, judges. **Pass:** 100 matches end-to-end with no sim blow-ups, Unreal replay matches MuJoCo. |
 
 **One brain, two roles:** a striking/defending flag is one of its inputs. Grandpa's brain is trained from scratch.

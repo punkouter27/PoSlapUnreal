@@ -5,3 +5,4 @@ numpy
 onnx
 tensorboard
 # torch: uv pip install torch --index-url https://download.pytorch.org/whl/cu128
+anthropic

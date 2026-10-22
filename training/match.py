@@ -169,7 +169,7 @@ class Match:
                         if other in S.geoms:
                             sign = 1.0 if c.geom[0] == other else -1.0   # normal from the striker's part to the head
                             z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
-                            palm = other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5
+                            palm = bool(other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
                             touch_k, com0 = k, d.subtree_com[D.a.pelvis][:2].copy()
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2))

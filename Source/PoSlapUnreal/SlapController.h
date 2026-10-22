@@ -9,7 +9,7 @@ class FJsonObject;
 class UNNEModelData;
 namespace UE::NNE { class IModelInstanceCPU; }
 
-/** What the HUD shows; copied from the physics thread under a lock (USlapController::GetHud). */
+/** What the HUD shows; copied from the physics thread under a lock (USlapController::GetHud). Index 0 = red, 1 = blue. */
 struct FSlapHud
 {
 	int32 Match = 0, Round = 0;
@@ -19,7 +19,24 @@ struct FSlapHud
 	double Speed = 0.0, HeadPeak = 0.0;	// last strike: palm speed at the touch, defender head peak speed (m/s)
 	FString Part, Event;				// last strike's part; last referee call
 	int32 Cards[3][2] = {};				// judges' running totals (red, blue)
+	int32 RoundCards[3][2] = {};		// the last scored round's points per judge (the slide-in card)
+	int32 ScoredRound = 0;				// which round RoundCards holds (0 = none yet this match)
 	FString Result;						// last match's result
+
+	// live telemetry (50 Hz)
+	double HandSpeed = 0.0, HandDist = 0.0;	// striker's palm speed (m/s), palm to the defender's head (m)
+	double HeadG = 0.0;						// defender's head acceleration over the last 20 ms (g)
+	FVector Com[2], Feet[2];				// centre of mass, midpoint of the soles (Unreal cm)
+	double Stamina[2] = { 1.0, 1.0 }, Neck[2] = { 1.0, 1.0 };
+
+	// broadcast cues: a counter that changes once per event
+	int32 StrikeSeq = 0, KOSeq = 0, MatchSeq = 0;
+	FVector StrikePos, StrikeDir;			// contact point (Unreal cm), the palm's direction of travel
+	int32 StrikeDefender = 0;
+
+	// tale of the tape, series
+	FString Name[2], Brain[2], Tape[2];
+	int32 Wins[2] = {}, Draws = 0;
 };
 
 UENUM(BlueprintType)
@@ -49,13 +66,21 @@ public:
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	FString ReplayDump = TEXT("Saved/URLab/replay_ue.json");
 
-	/** Policy: the brain (imported .onnx). */
+	/** Policy: the brain (imported .onnx); red's, and blue's too unless BlueBrain is set. `-SlapRedBrain=<.onnx>` overrides. */
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	TObjectPtr<UNNEModelData> Brain;
 
-	/** Policy: joint order, ranges, stand pose, speed limit. */
+	/** Policy: blue's own brain (roster: every athlete its own). `-SlapBlueBrain=<.onnx>` overrides. */
+	UPROPERTY(EditAnywhere, Category = "PoSlap")
+	TObjectPtr<UNNEModelData> BlueBrain;
+
+	/** Policy: joint order, ranges, stand pose, speed limit; its card names the character card (fatigue, display name). */
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	FString Fingerprint = TEXT("training/models/grandpa_fingerprint.json");
+
+	/** Seconds both athletes stay where the match ended (the KO, the decision) before the next one starts. */
+	UPROPERTY(EditAnywhere, Category = "PoSlap")
+	double PostMatchHold = 4.0;
 
 	virtual void Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*>& ActuatorIdMap) override;
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
@@ -74,9 +99,16 @@ private:
 	{
 		FString Prefix, Name;	// "Arena_red_", "red"
 		int32 Pelvis = -1, RootQ = -1, RootV = -1, Head = -1, Hand = -1;
-		TArray<int32> Act, Qadr, Vadr, Feet;
-		TArray<double> Stand, Lo, Hi, Goal;
+		TArray<int32> Act, Qadr, Vadr, Feet, NeckAct;
+		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
+		TSharedPtr<UE::NNE::IModelInstanceCPU> Net;
+		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130)
+		int32 NumOut = 1;
+		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
+		bool bFresh = true;
+		double Mem[2] = {}, Stamina = 1.0, NeckStrength = 1.0;
+		double StaminaPerStrike = 0.0, NeckDamage = 0.0;	// character card
 	};
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
@@ -92,31 +124,38 @@ private:
 	};
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0;
+	int64 HoldLeft = 0;	// physics steps of the post-match hold
 	bool bInTurn = false;
 	FTurn Turn;
 	int32 Cards[3][2] = {};
 	TArray<FTurn> RoundTurns;
 	FArchive* Log = nullptr;
 	FString Down(const mjModel* m, const mjData* d, const FAthlete& A) const;	// non-foot part on floor/podium, else ""
-	void StartMatch(const mjModel* m, mjData* d);
-	void StartTurn(const mjModel* m, mjData* d);
+	void StartMatch(mjModel* m, mjData* d);
+	void StartTurn(mjModel* m, mjData* d);
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
-	void Score();
+	void EndMatch(int32 Winner);	// series tally, HUD, post-match hold; -1 = draw / no contest
+	void Score(int32 (&Pts)[3][2]);
 	void Emit(const FString& Json);
 	void Decide(const mjModel* m, mjData* d);
+	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);
 
 	mutable FCriticalSection HudLock;
 	FSlapHud Hud;
 	void SetHud(TFunctionRef<void(FSlapHud&)> Edit);
+
+	// live telemetry, physics thread
+	double TelHeadPrev[3] = {}, TelHeadVel[3] = {}, TelHeadG = 0.0;
+	bool bTelReady = false;
 
 	void BindReplay(mjModel* m);
 	void BindPolicy(mjModel* m, const FJsonObject& Fp);
 	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
-	void BuildObs(const mjModel* m, const mjData* d, const FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const;
+	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const;
 	void WriteQposDump(const mjModel* m, const FString& RelPath);
 
 	// live matching check (-SlapRecord=<file>): record qpos for RecordSteps physics steps from the stand pose
@@ -126,8 +165,11 @@ private:
 	int64 StepCount = 0;
 	double MaxStep = 0.0;
 	TArray<FAthlete> Athletes;
-	TSharedPtr<UE::NNE::IModelInstanceCPU> Instance;
 	TArray<float> Action;	// brain output scratch, sized once
+
+	/** Runtime brains from -SlapRedBrain= / -SlapBlueBrain= (.onnx files), kept alive here. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UNNEModelData>> LoadedBrains;
 
 	// replay
 	TArray<int32> ReplayAct;

@@ -69,6 +69,10 @@ for i, (key, prop, out) in enumerate((("color", unreal.MaterialProperty.MP_BASE_
         s.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
         MEL.connect_material_property(s, "B", unreal.MaterialProperty.MP_METALLIC)  # glTF: G roughness, B metallic
     MEL.connect_material_property(s, out, prop)
+import sys
+sys.path.insert(0, os.path.join(PROJ, "Scripts"))
+import broadcast_fx
+broadcast_fx.add_ripple(skin)   # the cheek ripple on a strike (display only)
 MEL.recompile_material(skin)
 ASSETS.save_loaded_asset(skin)
 mats = grandpa.get_editor_property("materials")
@@ -164,9 +168,7 @@ for team, prefix in (("Red", "red_"), ("Blue", "blue_")):
     mesh.set_editor_property("overlay_material", overlay[team])
 
 # arena look: env meshes (Content/Art/Raw/Arena_v2.blend -> Exports/Arena.glb), lights, haze (Scripts/arena_env.py)
-import sys
-sys.path.insert(0, os.path.join(PROJ, "Scripts"))
-import arena_env
+import arena_env   # Scripts/ is on sys.path (broadcast_fx above)
 arena_env.build(spawn)
 
 # portrait 9:16 camera, side-on to the X axis the athletes face along (Blueprint 3)

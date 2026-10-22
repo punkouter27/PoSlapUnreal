@@ -21,7 +21,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogSlap, Log, All);
 namespace
 {
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
-	constexpr int32 NumObs = 108;		// DOCS/BRAIN_IO.md
+	constexpr int32 NumObs = 130;		// DOCS/BRAIN_IO.md (brains from before memory read the first 108)
+	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
+	constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors (brain_cpu.py)
 
 	TSharedPtr<FJsonObject> LoadJson(const FString& RelPath)
 	{
@@ -173,6 +175,14 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 	const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
 	const TSharedPtr<FJsonObject> StandRad = Fp.GetObjectField(TEXT("stand_pose_rad"));
 	Action.SetNumZeroed(Order.Num());
+	// the character card is the source of truth (the fingerprint keeps a build-time copy): fatigue, display name
+	const TSharedPtr<FJsonObject> Card = LoadJson(TEXT("training/characters/") + Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name")) + TEXT(".json"));
+	FString Tape = TEXT("?");
+	if (Card)
+	{
+		Tape = FString::Printf(TEXT("%.2f m  %.0f kg  STR %.2f  SPD %.2f  TGH %.1f"), Card->GetNumberField(TEXT("height_m")), Card->GetNumberField(TEXT("mass_kg")),
+			Card->GetNumberField(TEXT("strength")), Card->GetNumberField(TEXT("speed")), Card->GetNumberField(TEXT("toughness")));
+	}
 
 	for (int32 b = 0; b < m->nbody; ++b)
 	{
@@ -199,9 +209,19 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 			double Rad = 0.0;	// exact radians from Python; a degree conversion here can differ in the last bit
 			StandRad->TryGetNumberField(J, Rad);
 			A.Stand.Add(Rad);
+			if (J.StartsWith(TEXT("neck")))
+			{
+				A.NeckAct.Add(Act);
+				A.Fr0.Append({ m->actuator_forcerange[2 * Act], m->actuator_forcerange[2 * Act + 1] });
+			}
 		}
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
+		if (Card)
+		{
+			A.StaminaPerStrike = Card->GetNumberField(TEXT("stamina_per_strike"));
+			A.NeckDamage = Card->GetNumberField(TEXT("neck_damage_per_snap"));
+		}
 		auto Geom = [&](const TCHAR* N) { return mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + N))); };
 		A.Feet = { Geom(TEXT("foot_l")), Geom(TEXT("foot_r")) };	// the foot box is the sole (Blueprint 2.1)
 		A.Head = Geom(TEXT("head"));
@@ -211,21 +231,61 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 	Podium = Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium"));
 	bInTurn = false;
 	MatchNo = 0;
+	HoldLeft = 0;
 
-	Instance.Reset();
-	if (Brain)
+	// one brain per corner (roster): the asset, or an .onnx file from the command line (tournament replays, checks)
+	auto FromFile = [this](const TCHAR* Key, UNNEModelData* Asset, FString& Label) -> UNNEModelData*
 	{
-		TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
-		TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() ? Runtime->CreateModelCPU(Brain) : nullptr;
-		Instance = Model ? Model->CreateModelInstanceCPU() : nullptr;
-		if (Instance)
+		FString Path;
+		TArray<uint8> Bytes;
+		Label = Asset ? Asset->GetName() : TEXT("-");
+		if (!FParse::Value(FCommandLine::Get(), Key, Path)) return Asset;
+		if (!FFileHelper::LoadFileToArray(Bytes, *FPaths::Combine(FPaths::ProjectDir(), Path)))
 		{
-			const uint32 Shape[] = { 1, NumObs };
-			Instance->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
+			UE_LOG(LogSlap, Error, TEXT("%s%s: no such file"), Key, *Path);
+			return Asset;
 		}
+		UNNEModelData* Data = NewObject<UNNEModelData>(this);
+		Data->Init(TEXT("onnx"), Bytes);
+		LoadedBrains.Add(Data);
+		Label = FPaths::GetBaseFilename(Path);
+		return Data;
+	};
+	FString Labels[2];
+	UNNEModelData* Red = FromFile(TEXT("SlapRedBrain="), Brain.Get(), Labels[0]);
+	UNNEModelData* Blue = FromFile(TEXT("SlapBlueBrain="), BlueBrain.Get(), Labels[1]);
+	if (!Blue)	// no brain of his own: red's
+	{
+		Blue = Red;
+		Labels[1] = Labels[0];
 	}
-	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes, %d joints each, brain %s, defender role %d"),
-		Athletes.Num(), Order.Num(), Instance ? TEXT("loaded") : TEXT("MISSING (holding stand pose)"), DefenderRole);
+	TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
+	for (int32 a = 0; a < Athletes.Num(); ++a)
+	{
+		FAthlete& A = Athletes[a];
+		UNNEModelData* Data = a == 1 ? Blue : Red;	// athletes bind in body order: red, then blue
+		TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() && Data ? Runtime->CreateModelCPU(Data) : nullptr;
+		A.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
+		if (!A.Net) continue;
+		const TConstArrayView<int32> In = A.Net->GetInputTensorDescs()[0].GetShape().GetData();
+		A.NumIn = FMath::Min(NumObs, In.Num() > 1 && In[1] > 0 ? In[1] : 108);
+		const uint32 Shape[] = { 1, (uint32)A.NumIn };
+		A.Net->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
+		A.NumOut = A.Net->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+		UE_LOG(LogSlap, Log, TEXT("Policy: %s brain %s reads %d inputs"), *A.Name, *Labels[FMath::Min(a, 1)], A.NumIn);
+	}
+	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes, %d joints each, brain %s, defender role %d"), Athletes.Num(), Order.Num(),
+		Athletes.Num() && Athletes[0].Net ? TEXT("loaded") : TEXT("MISSING (holding stand pose)"), DefenderRole);
+	const FString Display = Card ? Card->GetStringField(TEXT("display")) : TEXT("?");
+	SetHud([&](FSlapHud& H)
+	{
+		for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+		{
+			H.Name[a] = Display + TEXT(" ") + Athletes[a].Name.ToUpper();
+			H.Brain[a] = Labels[a];
+			H.Tape[a] = Tape;
+		}
+	});
 }
 
 void USlapController::BeginDestroy()
@@ -292,7 +352,7 @@ FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete&
 	return FString();
 }
 
-void USlapController::StartMatch(const mjModel* m, mjData* d)
+void USlapController::StartMatch(mjModel* m, mjData* d)
 {
 	++MatchNo;
 	int32 Forced = -1;	// -SlapFirst=0|1: the first match's coin toss (match.py compare)
@@ -302,18 +362,27 @@ void USlapController::StartMatch(const mjModel* m, mjData* d)
 	TurnInRound = 0;
 	FMemory::Memzero(Cards);
 	RoundTurns.Reset();
+	for (FAthlete& A : Athletes)	// fatigue and memory last one match
+	{
+		A.Mem[0] = A.Mem[1] = 0.0;
+		A.Stamina = A.NeckStrength = 1.0;
+	}
 	delete Log;
 	const FString Dir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Logs/Gameplay"), FDateTime::Now().ToString(TEXT("%y%m%d")));
 	IFileManager::Get().MakeDirectory(*Dir, true);
-	Log = IFileManager::Get().CreateFileWriter(*FPaths::Combine(Dir, FString::Printf(TEXT("match_%s_%d_ue.jsonl"), *FDateTime::Now().ToString(TEXT("%H%M%S")), First)));
+	Log = IFileManager::Get().CreateFileWriter(*FPaths::Combine(Dir, FString::Printf(TEXT("match_%s_%d_ue.jsonl"), *FDateTime::Now().ToString(TEXT("%H%M%S")), First)), FILEWRITE_AllowRead);	// commentator/clipper tail it live
 	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}}"), *Str(Athletes[First].Name), Rounds));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
 	const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
-	SetHud([&](FSlapHud& H) { H.Match = MatchNo; FMemory::Memzero(H.Cards); H.Event = Toss; H.Speed = H.HeadPeak = 0.0; H.Part.Reset(); });
+	SetHud([&](FSlapHud& H)
+	{
+		H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
+		FMemory::Memzero(H.Cards); H.Event = Toss; H.Speed = H.HeadPeak = 0.0; H.Part.Reset();
+	});
 	StartTurn(m, d);
 }
 
-void USlapController::StartTurn(const mjModel* m, mjData* d)
+void USlapController::StartTurn(mjModel* m, mjData* d)
 {
 	Turn = FTurn();
 	Turn.Round = Round;
@@ -324,7 +393,14 @@ void USlapController::StartTurn(const mjModel* m, mjData* d)
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->qpos[A.Qadr[j]] = A.Stand[j];
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, A.Act.Num());
+		A.bFresh = true;
+		for (int32 k = 0; k < A.NeckAct.Num(); ++k)	// damage: a weaker neck (match.py: forcerange = own x neck strength)
+		{
+			m->actuator_forcerange[2 * A.NeckAct[k]] = A.Fr0[2 * k] * A.NeckStrength;
+			m->actuator_forcerange[2 * A.NeckAct[k] + 1] = A.Fr0[2 * k + 1] * A.NeckStrength;
+		}
 	}
+	bTelReady = false;
 	mj_forward(m, d);
 	mj_forward(m, d);
 	for (int32 a = 0; a < 2; ++a)
@@ -421,7 +497,9 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 	const FAthlete& D = Athletes[1 - Turn.Striker];
 	const double* Hand = d->geom_xpos + 3 * S.Hand;
 	const double Speed = Dist(Hand, Turn.HandPrev, 3) / m->opt.timestep;
+	const double Travel[3] = { Hand[0] - Turn.HandPrev[0], Hand[1] - Turn.HandPrev[1], Hand[2] - Turn.HandPrev[2] };	// broadcast cue only
 	FMemory::Memcpy(Turn.HandPrev, Hand, sizeof(Turn.HandPrev));
+	Telemetry(m, d, Speed);
 	const double* Head = d->geom_xpos + 3 * D.Head;
 	if (Turn.TouchStep >= 0) Turn.HeadPeak = FMath::Max(Turn.HeadPeak, Dist(Head, Turn.HeadPrev, 3) / m->opt.timestep);
 	FMemory::Memcpy(Turn.HeadPrev, Head, sizeof(Turn.HeadPrev));
@@ -444,7 +522,13 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2)));
 		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm: foul)"));
 		if (!Turn.bPalm) Turn.Fouls.Emplace(Turn.Striker, TEXT("clubbing (not the palm)"));
-		SetHud([&](FSlapHud& H) { H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.bPalm ? TEXT("Clean palm") : TEXT("Foul: not the palm"); });
+		const FVector Pos = MjUtils::MjToUEPosition(C.pos);
+		const FVector Dir = MjUtils::MjToUEPosition(Travel).GetSafeNormal();
+		SetHud([&](FSlapHud& H)
+		{
+			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.bPalm ? TEXT("Clean palm") : TEXT("Foul: not the palm");
+			++H.StrikeSeq; H.StrikePos = Pos; H.StrikeDir = Dir; H.StrikeDefender = 1 - Turn.Striker;
+		});
 		break;
 	}
 }
@@ -463,8 +547,25 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 		Turn.Round, *Str(S.Name), Touched ? *Num(Turn.TouchStep * m->opt.timestep, 3) : TEXT("null"), Touched ? *Str(Turn.Part) : TEXT("null"),
 		*Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(Turn.HeadPeak, 2), *Bool(Turn.bStagger), *Bool(Turn.bKO), *Str(End), *Fouls));
 	UE_LOG(LogSlap, Log, TEXT("round %d, %s's turn over: %s"), Turn.Round, *S.Name, *End);
+	FAthlete& Sm = Athletes[Turn.Striker];	// fatigue and memory (match.py finish(): same order, same arithmetic)
+	FAthlete& Dm = Athletes[1 - Turn.Striker];
+	Sm.Stamina = FMath::Max(MinStamina, Sm.Stamina - Sm.StaminaPerStrike);
+	if (Touched)
+	{
+		Dm.Mem[0] = RoundTo(Turn.TouchStep * m->opt.timestep, 3) / 30.0;
+		Dm.Mem[1] = Turn.Speed / 10.0;
+		if (!Turn.bKO) Dm.NeckStrength = FMath::Max(MinNeck, Dm.NeckStrength - Dm.NeckDamage * Turn.HeadPeak);
+	}
+	FString Cond;
+	for (const FAthlete& A : Athletes) Cond += FString::Printf(TEXT(", %s: [%s, %s]"), *Str(A.Name), *Num(A.Stamina, 3), *Num(A.NeckStrength, 3));
+	Emit(TEXT("{\"type\": \"condition\"") + Cond + TEXT("}"));
 	const FString Call = Turn.bKO ? FString(TEXT("KNOCKOUT")) : Turn.Fouls.Num() ? TEXT("Foul: ") + Turn.Fouls.Last().Value : End;
-	SetHud([&](FSlapHud& H) { H.HeadPeak = Turn.HeadPeak; H.Event = Call; });
+	SetHud([&](FSlapHud& H)
+	{
+		H.HeadPeak = Turn.HeadPeak; H.Event = Call;
+		for (int32 a = 0; a < 2; ++a) { H.Stamina[a] = Athletes[a].Stamina; H.Neck[a] = Athletes[a].NeckStrength; }
+		if (Turn.bKO) ++H.KOSeq;
+	});
 	RoundTurns.Add(Turn);
 	bInTurn = false;
 
@@ -475,12 +576,14 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 		const FString Res = FString::Printf(TEXT("%s wins by KO, round %d"), *S.Name.ToUpper(), Round);
 		SetHud([&](FSlapHud& H) { H.Result = Res; });
 		Round = Rounds + 1;	// match over; the next turn starts a new one
+		EndMatch(Turn.Striker);
 		return;
 	}
 	if (++TurnInRound < 2) return;
-	Score();
+	int32 Pts[3][2];
+	Score(Pts);
 	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson()));
-	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Cards, sizeof(Cards)); });
+	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Cards, sizeof(Cards)); FMemory::Memcpy(H.RoundCards, Pts, sizeof(Pts)); H.ScoredRound = Round; });
 	RoundTurns.Reset();
 	TurnInRound = 0;
 	if (++Round <= Rounds) return;
@@ -497,9 +600,16 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Top].Name), Rounds, *CardsJson()));
 	const FString Res = Draw ? FString(TEXT("Draw")) : FString::Printf(TEXT("%s wins by %s"), *Athletes[Top].Name.ToUpper(), *How);
 	SetHud([&](FSlapHud& H) { H.Result = Res; });
+	EndMatch(Draw ? -1 : Top);
 }
 
-void USlapController::Score()
+void USlapController::EndMatch(int32 Winner)
+{
+	HoldLeft = FMath::RoundToInt64(PostMatchHold / ControlEvery / 0.005) * ControlEvery;	// whole brain steps (200 Hz physics)
+	SetHud([&](FSlapHud& H) { Winner < 0 ? ++H.Draws : ++H.Wins[Winner]; });
+}
+
+void USlapController::Score(int32 (&Out)[3][2])
 {
 	for (int32 j = 0; j < 3; ++j)	// 10-point must, three judges weighing (speed, head, stagger, defence) differently
 	{
@@ -524,6 +634,8 @@ void USlapController::Score()
 		}
 		Cards[j][0] += Pts[0];
 		Cards[j][1] += Pts[1];
+		Out[j][0] = Pts[0];
+		Out[j][1] = Pts[1];
 	}
 }
 
@@ -538,24 +650,46 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		FAthlete& A = Athletes[a];
 		const float Role = !Match ? 0.f : a == Turn.Striker ? 1.f : (float)DefenderRole;
 		BuildObs(m, d, A, Role, Clock, Match ? &Athletes[1 - a] : nullptr, Obs);
-		float Value = 0.f;	// trained brains also output the critic's value (later: the HUD's win bar)
-		const UE::NNE::FTensorBindingCPU In{ Obs, sizeof(Obs) };
+		if (!A.Net) continue;
+		float Value = 0.f;	// trained brains also output the critic's value
+		const UE::NNE::FTensorBindingCPU In{ Obs, (uint64)A.NumIn * sizeof(float) };
 		const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
-		const int32 NumOut = Instance->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
-		if (Instance->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, NumOut)) != UE::NNE::EResultStatus::Ok) continue;
+		if (A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) != UE::NNE::EResultStatus::Ok) continue;
 		if (!RecordFile.IsEmpty() && StepCount == 0)	// live check diagnostics: first decision at full precision
 		{
 			FString S;
-			for (int32 k = 0; k < NumObs; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
+			for (int32 k = 0; k < A.NumIn; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
 			UE_LOG(LogSlap, Log, TEXT("first obs %s: %s"), *A.Prefix, *S);
 		}
+		const double Step = MaxStep * A.Stamina;	// fatigue: a tired athlete moves slower
 		for (int32 j = 0; j < A.Act.Num(); ++j)
 		{
 			const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
 			const double Tgt = FMath::Clamp(A.Stand[j] + Act * 0.5 * (A.Hi[j] - A.Lo[j]), A.Lo[j], A.Hi[j]);
-			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - MaxStep, A.Goal[j] + MaxStep);
+			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
+	}
+	if (Match)	// broadcast telemetry at 50 Hz: striker's palm, defender's head, both athletes' balance
+	{
+		const FAthlete& S = Athletes[Turn.Striker];
+		const FAthlete& D = Athletes[1 - Turn.Striker];
+		const double HandDist = Dist(d->geom_xpos + 3 * S.Hand, d->geom_xpos + 3 * D.Head, 3);
+		const double HeadG = TelHeadG;
+		TelHeadG = 0.0;
+		SetHud([&](FSlapHud& H)
+		{
+			H.HandDist = HandDist;
+			H.HeadG = HeadG;
+			for (int32 a = 0; a < 2; ++a)
+			{
+				const FAthlete& X = Athletes[a];
+				H.Com[a] = MjUtils::MjToUEPosition(d->subtree_com + 3 * X.Pelvis);
+				H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
+				H.Stamina[a] = X.Stamina;
+				H.Neck[a] = X.NeckStrength;
+			}
+		});
 	}
 	if (Match && Turn.Step % 20 == 0)	// gameplay log: both athletes' pelvis, head, actions at 10 Hz
 	{
@@ -575,6 +709,21 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 	}
 }
 
+void USlapController::Telemetry(const mjModel* m, const mjData* d, double HandSpeed)
+{
+	// every brain step (20 ms) of a turn: the defender's head acceleration, the striker's palm speed. Over 5 ms steps a
+	// hard contact differentiates into thousands of g; the 20 ms average is what a mouthguard sensor would report.
+	if (Turn.Step % ControlEvery) return;
+	const double* Head = d->geom_xpos + 3 * Athletes[1 - Turn.Striker].Head;
+	const double Dt = m->opt.timestep * ControlEvery;
+	const double Vel[3] = { (Head[0] - TelHeadPrev[0]) / Dt, (Head[1] - TelHeadPrev[1]) / Dt, (Head[2] - TelHeadPrev[2]) / Dt };
+	if (bTelReady) TelHeadG = Dist(Vel, TelHeadVel, 3) / Dt / 9.81;
+	bTelReady = true;
+	FMemory::Memcpy(TelHeadPrev, Head, sizeof(TelHeadPrev));
+	FMemory::Memcpy(TelHeadVel, Vel, sizeof(TelHeadVel));
+	SetHud([&](FSlapHud& H) { H.HandSpeed = HandSpeed; });
+}
+
 void USlapController::StepPolicy(mjModel* m, mjData* d)
 {
 	if (!RecordFile.IsEmpty())	// live matching check: same start as training/brain_cpu.py, record 5 s, no match
@@ -590,31 +739,31 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 			WriteQposDump(m, RecordFile);
 			RecordFile.Reset();
 		}
-		if (Instance && StepCount % ControlEvery == 0) Decide(m, d);
+		if (StepCount % ControlEvery == 0) Decide(m, d);
 	}
 	else if (Athletes.Num() == 2)	// the match (training/match.py)
 	{
 		if (bInTurn) PostStep(m, d);
-		if (!bInTurn)
+		for (;;)	// a turn that ends here starts the next at once (match.py's loop), checks included
 		{
-			if (MatchNo == 0 || Round > Rounds) StartMatch(m, d);
-			else StartTurn(m, d);
+			if (!bInTurn)
+			{
+				if (MatchNo > 0 && Round > Rounds && HoldLeft > 0) break;	// the match is over: let the crowd see how it ended
+				if (MatchNo == 0 || Round > Rounds) StartMatch(m, d);
+				else StartTurn(m, d);
+			}
+			if (PreStep(m, d)) break;
 		}
-		while (!PreStep(m, d))	// a turn that ends here starts the next at once (match.py's loop), checks included
-		{
-			if (Round > Rounds) StartMatch(m, d);
-			else StartTurn(m, d);
-		}
-		if (Instance && Turn.Step % ControlEvery == 0) Decide(m, d);
+		if (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0) Decide(m, d);	// the hold: both stand (role 0)
 	}
-	else if (Instance && StepCount % ControlEvery == 0) Decide(m, d);
+	else if (StepCount % ControlEvery == 0) Decide(m, d);
 	for (const FAthlete& A : Athletes)
 	{
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->ctrl[A.Act[j]] = A.Goal[j];
 	}
 }
 
-void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const
+void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const
 {
 	const int32 N = A.Act.Num();
 	for (int32 j = 0; j < N; ++j)
@@ -646,15 +795,35 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete
 	{
 		const double Box[3] = { m->qpos0[A.RootQ] - d->qpos[A.RootQ], m->qpos0[A.RootQ + 1] - d->qpos[A.RootQ + 1], 0.0 };
 		Heading(Box, O + 12 + N);
-		return;
 	}
-	const double* P = d->geom_xpos + 3 * Opp->Head;	// the opponent's head centre - pelvis
-	const double Rel[3] = { P[0] - Pelvis[0], P[1] - Pelvis[1], P[2] - Pelvis[2] };
-	Heading(Rel, O + 12 + N);
-	if (Role < 0.f)	// defender: the striker's right hand - pelvis
+	else
 	{
-		const double* H = d->geom_xpos + 3 * Opp->Hand;
-		const double Rh[3] = { H[0] - Pelvis[0], H[1] - Pelvis[1], H[2] - Pelvis[2] };
-		Heading(Rh, O + 15 + N);
+		const double* P = d->geom_xpos + 3 * Opp->Head;	// the opponent's head centre - pelvis
+		const double Rel[3] = { P[0] - Pelvis[0], P[1] - Pelvis[1], P[2] - Pelvis[2] };
+		Heading(Rel, O + 12 + N);
+		if (Role < 0.f)	// defender: the striker's right hand - pelvis
+		{
+			const double* H = d->geom_xpos + 3 * Opp->Hand;
+			const double Rh[3] = { H[0] - Pelvis[0], H[1] - Pelvis[1], H[2] - Pelvis[2] };
+			Heading(Rh, O + 15 + N);
+		}
 	}
+
+	// memory (108-127) and fatigue (128-129)
+	const float* Cur = O + 12 + N;	// inputs 102-107
+	if (A.bFresh)
+	{
+		for (float* Row : A.Hist) FMemory::Memcpy(Row, Cur, 6 * sizeof(float));
+	}
+	else
+	{
+		FMemory::Memmove(A.Hist[0], A.Hist[1], 15 * 6 * sizeof(float));
+		FMemory::Memcpy(A.Hist[15], Cur, 6 * sizeof(float));
+	}
+	A.bFresh = false;
+	for (int32 i = 0; i < 3; ++i) FMemory::Memcpy(O + 18 + N + 6 * i, A.Hist[15 - Lags[i]], 6 * sizeof(float));
+	O[36 + N] = (float)A.Mem[0];
+	O[37 + N] = (float)A.Mem[1];
+	O[38 + N] = (float)A.Stamina;
+	O[39 + N] = (float)A.NeckStrength;
 }

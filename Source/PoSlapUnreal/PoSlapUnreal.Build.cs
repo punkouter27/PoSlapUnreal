@@ -12,7 +12,7 @@ public class PoSlapUnreal : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "URLab" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "NNE", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "NNE", "Json", "Niagara" });
 
 		// Build stamp YYMMDD (AGENTS.md): last git commit date, else today.
 		string Stamp = DateTime.Now.ToString("yyMMdd");
