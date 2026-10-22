@@ -118,7 +118,7 @@ private:
 		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
 		TSharedPtr<UE::NNE::IModelInstanceCPU> Net;
-		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130)
+		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130 before the own palm, 136)
 		int32 NumOut = 1;
 		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
 		bool bFresh = true;
@@ -126,7 +126,7 @@ private:
 		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0;	// character card
-		double MaxStep = 0.0;	// joint speed limit per brain step (card speed)
+		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 	};
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)

@@ -21,7 +21,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSlap, Log, All);
 namespace
 {
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
-	constexpr int32 NumObs = 130;		// DOCS/BRAIN_IO.md (brains from before memory read the first 108)
+	constexpr int32 NumObs = 136;		// DOCS/BRAIN_IO.md (brains from before memory read the first 108, before the own palm 130)
 	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 	constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors (brain_cpu.py)
 
@@ -197,7 +197,10 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			Display[c] = Card->GetStringField(TEXT("display"));
 		}
 		FAthlete& A = Athletes.AddDefaulted_GetRef();
-		A.MaxStep = Fp.GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
+		const TArray<TSharedPtr<FJsonValue>>* Speeds;	// per joint, joint order (a single number in older fingerprints)
+		const bool bPerJoint = Fp.TryGetArrayField(TEXT("max_joint_speed_rad_s"), Speeds);
+		for (int32 j = 0; j < Order.Num(); ++j)
+			A.MaxStep.Add((bPerJoint ? (*Speeds)[j]->AsNumber() : Fp.GetNumberField(TEXT("max_joint_speed_rad_s"))) * 0.02);
 		A.Prefix = BodyName.LeftChop(6);
 		A.Name = A.Prefix.LeftChop(1);
 		A.Name = A.Name.Mid(A.Name.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);	// "Arena_red" -> "red"
@@ -724,11 +727,12 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 			for (int32 k = 0; k < A.NumIn; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
 			UE_LOG(LogSlap, Log, TEXT("first obs %s: %s"), *A.Prefix, *S);
 		}
-		const double Step = A.MaxStep * A.Stamina;	// fatigue: a tired athlete moves slower
 		for (int32 j = 0; j < A.Act.Num(); ++j)
 		{
+			const double Step = A.MaxStep[j] * A.Stamina;	// fatigue: a tired athlete moves slower
 			const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
-			const double Tgt = FMath::Clamp(A.Stand[j] + Act * 0.5 * (A.Hi[j] - A.Lo[j]), A.Lo[j], A.Hi[j]);
+			// a = +-1 reaches the range ends from the stand pose (each side its own scale)
+			const double Tgt = FMath::Clamp(A.Stand[j] + (Act > 0.0 ? Act * (A.Hi[j] - A.Stand[j]) : Act * (A.Stand[j] - A.Lo[j])), A.Lo[j], A.Hi[j]);
 			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
@@ -894,4 +898,12 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 	O[37 + N] = (float)A.Mem[1];
 	O[38 + N] = (float)A.Stamina;
 	O[39 + N] = (float)A.NeckStrength;
+
+	// own palm (130-135): centre - pelvis, facing (the hand box's -z), heading frame
+	const double* H = d->geom_xpos + 3 * A.Hand;
+	const double Rp[3] = { H[0] - Pelvis[0], H[1] - Pelvis[1], H[2] - Pelvis[2] };
+	const double* X = d->geom_xmat + 9 * A.Hand;
+	const double Palm[3] = { -X[2], -X[5], -X[8] };
+	Heading(Rp, O + 40 + N);
+	Heading(Palm, O + 43 + N);
 }

@@ -11,7 +11,7 @@ import mujoco
 import numpy as np
 
 HERE = Path(__file__).parent
-OBS = 130                          # DOCS/BRAIN_IO.md (108 before memory and fatigue; older brains read the first 108)
+OBS = 136                          # DOCS/BRAIN_IO.md (108 before memory and fatigue, 130 before the own palm; older brains read their first n)
 LAGS = (5, 10, 15)                 # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
 MIN_STAMINA, MIN_NECK = 0.7, 0.5   # fatigue floors (the card sets how fast an athlete gets there)
 
@@ -30,10 +30,11 @@ class Athlete:
         root = m.joint(prefix + "root").id
         self.rq, self.rv = m.jnt_qposadr[root], m.jnt_dofadr[root]
         self.pelvis = m.body(prefix + "pelvis").id
+        self.hand = m.geom(prefix + "hand_r").id
         self.box = m.qpos0[self.rq:self.rq + 2].copy()   # foot-box centre = start pelvis x, y
         self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
         self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
-        self.max_step = fp["max_joint_speed_rad_s"] * 0.02
+        self.max_step = np.asarray(fp["max_joint_speed_rad_s"]) * 0.02   # per joint (a scalar in older fingerprints)
         self.neck = np.array([a for a, n in zip(self.act, self.order) if n.startswith("neck")])
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
         self.hist = []                       # inputs 102-107 of earlier decisions this turn (memory)
@@ -69,11 +70,14 @@ class Athlete:
             o[108 + 6 * i:114 + 6 * i] = self.hist[-1 - lag]
         o[126:128] = self.mem
         o[128], o[129] = self.stamina, self.neck_strength
+        r, n = d.geom_xpos[self.hand] - d.xpos[self.pelvis], -d.geom_xmat[self.hand].reshape(3, 3)[:, 2]   # own palm: centre, facing
+        o[130:133] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
+        o[133:136] = [c * n[0] + s * n[1], -s * n[0] + c * n[1], n[2]]
         return o.astype(np.float32)
 
     def decide(self, action):
         a = np.clip(np.asarray(action, float), -1.0, 1.0)
-        t = np.clip(self.stand + a * 0.5 * (self.hi - self.lo), self.lo, self.hi)
+        t = np.clip(self.stand + np.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)   # a = +-1: the range ends
         step = self.max_step * self.stamina   # fatigue: a tired athlete moves slower
         self.goal = np.clip(t, self.goal - step, self.goal + step)
         self.prev = a.astype(np.float32)

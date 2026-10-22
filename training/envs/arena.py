@@ -57,8 +57,7 @@ class ArenaEnv:
         self.stand = t([fp["stand_pose_rad"].get(n, 0.0) for n in order])
         rng = t(fp["ctrl_range_rad"])
         self.lo, self.hi = rng[:, 0], rng[:, 1]
-        self.scale = 0.5 * (self.hi - self.lo)
-        self.max_step = fp["max_joint_speed_rad_s"] * 0.02
+        self.max_step = t(fp["max_joint_speed_rad_s"]) * 0.02   # per joint (scalar in older fingerprints)
         self.T = 1500
 
         d0 = mujoco.MjData(m)
@@ -191,7 +190,7 @@ class ArenaEnv:
     # ------------------------------------------------------------------ step
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
-        tgt = torch.clamp(self.stand + a * self.scale, self.lo, self.hi)
+        tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
         ms = self.max_step * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
@@ -330,7 +329,7 @@ class ArenaEnv:
         su = self._sd(upright)[0]
         ss = self._sd(smooth)[0]
         go = (self.t >= WAIT).float()   # the 4 s stand first
-        before = go * (-0.05 + 10.0 * (d_prev - dist) + 5.0 * (phi - self.phi_prev)) + 0.04 * su.clamp(min=0) - 0.01 * ss
+        before = go * (-0.05 + 30.0 * (d_prev - dist) + 5.0 * (phi - self.phi_prev)) + 0.04 * su.clamp(min=0) - 0.01 * ss
         self.phi_prev = phi
         self.hand_prev_ctrl = hand.clone()
         ko = self.struck & self._sd(fell)[1] & self.hit_ok
@@ -373,8 +372,9 @@ class ArenaEnv:
                 cur,                               # the opponent's head centre - own pelvis; defender: the striker's
                                                    # right hand (striker: 0, as L2/L3 trained)
                 self.mem[:, 1 - k], self.stamina[:, k:k + 1], self.neck[:, k:k + 1],
+                hd(hand[:, k] - pel), hd(-self.geom_xmat[:, self.hand_g[k]][:, :, 2]),   # own palm: centre, facing (130-135)
             ], -1))
-        obs = torch.stack(rows, 1).reshape(self.N, -1)   # (2W, 108 + 4): memory history goes in below
+        obs = torch.stack(rows, 1).reshape(self.N, -1)   # (2W, 108 + 10): memory history goes in below
         cur = obs[:, 102:108]
         self.hist = torch.where(fresh[:, None, None], cur[:, None].expand(-1, 16, -1), torch.cat([self.hist[:, 1:], cur[:, None]], 1))
         obs = torch.cat([obs[:, :108], *[self.hist[:, -1 - lag] for lag in LAGS], obs[:, 108:]], -1)

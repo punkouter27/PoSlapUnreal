@@ -66,8 +66,7 @@ class SlapEnv:
         self.stand = torch.tensor([fp["stand_pose_rad"].get(n, 0.0) for n in order], device=dev)
         rng = torch.tensor(fp["ctrl_range_rad"], device=dev)   # listed in joint order
         self.lo, self.hi = rng[:, 0], rng[:, 1]
-        self.scale = 0.5 * (self.hi - self.lo)
-        self.max_step = fp["max_joint_speed_rad_s"] * 0.02
+        self.max_step = torch.tensor(fp["max_joint_speed_rad_s"], device=dev) * 0.02   # per joint (scalar in older fingerprints)
         self.T = 1500   # 30 s turn clock, every role
 
         d0 = mujoco.MjData(m)
@@ -244,32 +243,30 @@ class SlapEnv:
         if self.randomize and self.push_scale > 0 and self.cfg.get("pushes"):
             guard = self.role == 0
             self.push_wait -= dt
+            # whole-batch masks, no .any()/.sum() host syncs (they ran every physics step)
             start = (self.push_wait <= 0) & (self.push_left <= 0) & guard
-            n = int(start.sum())
-            if n:
-                ang = self._u(n, -math.pi, math.pi)
-                mag = self._u(n, 150.0, 300.0) * self.push_scale
-                self.push_f[start] = torch.stack([torch.cos(ang) * mag, torch.sin(ang) * mag, torch.zeros_like(mag)], -1)
-                self.push_left[start] = self._u(n, 0.1, 0.2)
-                self.push_wait[start] = self._u(n, 1.0, 3.0)
-                self.push_body[start] = torch.where(torch.rand(n, device=self.device) < 0.5, self.chest, self.head)
+            N = self.N
+            ang = self._u(N, -math.pi, math.pi)
+            mag = self._u(N, 150.0, 300.0) * self.push_scale
+            f = torch.stack([torch.cos(ang) * mag, torch.sin(ang) * mag, torch.zeros_like(mag)], -1)
+            self.push_f = torch.where(start[:, None], f, self.push_f)
+            self.push_left = torch.where(start, self._u(N, 0.1, 0.2), self.push_left)
+            self.push_wait = torch.where(start, self._u(N, 1.0, 3.0), self.push_wait)
+            body = torch.where(torch.rand(N, device=self.device) < 0.5, self.chest, self.head)
+            self.push_body = torch.where(start, body, self.push_body)
             on = (self.push_left > 0) & guard
-            if on.any():
-                w = on.nonzero().squeeze(-1)
-                self.xfrc[w, self.push_body[w], :3] = self.push_f[w]
+            self.xfrc[torch.arange(N, device=self.device), self.push_body, :3] = self.push_f * on[:, None]
             self.push_left -= dt
         if s < 2:
-            slap = (self.role == -1) & (self.t == self.t_hit)
-            if slap.any():
-                w = slap.nonzero().squeeze(-1)
-                self.xfrc[w, self.head, :3] = self.slap_f[w]
-                self.xfrc[w, self.head, 3:] = torch.cross(self.slap_r[w], self.slap_f[w], dim=-1)
-                if s == 0:
-                    self.com0[w] = self.com[w, self.pelvis, :2]
+            slap = ((self.role == -1) & (self.t == self.t_hit))[:, None]
+            self.xfrc[:, self.head, :3] += self.slap_f * slap
+            self.xfrc[:, self.head, 3:] += torch.cross(self.slap_r, self.slap_f, dim=-1) * slap
+            if s == 0:
+                self.com0 = torch.where(slap, self.com[:, self.pelvis, :2], self.com0)
 
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
-        tgt = torch.clamp(self.stand + a * self.scale, self.lo, self.hi)
+        tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
         ms = self.max_step * self.stamina[:, None]                 # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
@@ -319,28 +316,25 @@ class SlapEnv:
         g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
         on = (idx < n) & (((g0 == self.tgeom) & (g1 == self.hand)) | ((g1 == self.tgeom) & (g0 == self.hand)))   # the hand only:
         # a head/chest/arm bump used to end the attempt for ~-3, cheaper than the clock (-95): he learned to head-butt it
-        if not bool(on.any()):
-            return
-        w = self.con_world.long()[on]
-        other = torch.where(g0[on] == self.tgeom, g1[on], g0[on])
-        sign = torch.where(g0[on] == self.tgeom, -1.0, 1.0)[:, None]
-        normal = self.con_frame[on][:, 0, :] * sign                       # from the hand towards the target
+        # every contact slot at once, scattered to its world: no host sync per physics step
+        w = self.con_world.long().clamp(0, self.N - 1)                     # slots past nacon hold stale ids (masked by on)
+        sign = torch.where(g0 == self.tgeom, -1.0, 1.0)[:, None]
+        normal = self.con_frame[:, 0, :] * sign                            # from the hand towards the target
         palm_dir = -self.geom_xmat[w, self.hand][:, :, 2]                   # hand box -z = palm
-        palm = (other == self.hand) & ((normal * palm_dir).sum(-1) > 0.5)
-        hit = torch.zeros(self.N, dtype=torch.bool, device=self.device)
-        hit[w] = True
-        good = torch.zeros_like(hit)
-        good[w[palm]] = True
+        palm = on & ((normal * palm_dir).sum(-1) > 0.5)
+        hit = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()
+        good = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, palm.float(), "amax").bool()
         early = self.t < WAIT                                # before the 4 s stand is over: a foul, not the strike
-        self.bonus[hit & early & ~self.struck] -= 0.5
+        self.bonus -= 0.5 * (hit & early & ~self.struck).float()
         new = hit & ~self.struck & ~early
-        if bool(new.any()):
-            v = speed[new]
-            clean = good[new] & (v >= self.hit_v)
-            self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
-            self.struck |= new
-            self.settle[new] = 75
+        v = speed
+        clean = good & (v >= self.hit_v)
+        self.hit_ok = torch.where(new, clean, self.hit_ok)
+        self.hit_speed = torch.where(new, v, self.hit_speed)
+        pay = torch.where(clean, 50.0 + 8.0 * v, torch.where(good, 3.0 * v + v * v, torch.full_like(v, -2.0)))
+        self.bonus += torch.where(new, pay, torch.zeros_like(v))
+        self.struck |= new
+        self.settle = torch.where(new, torch.full_like(self.settle, 75), self.settle)
 
     def _fallen(self):
         n = self.nacon[0]
@@ -459,6 +453,8 @@ class SlapEnv:
                                                           # opponent hand - pelvis (absorb only; 0 otherwise)
             *[self.hist[:, -1 - lag] for lag in LAGS],    # the same 0.1, 0.2, 0.3 s ago
             self.mem, self.stamina[:, None], self.neck[:, None],
+            self._heading(self.geom_xpos[:, self.hand] - self.xpos[:, self.pelvis], c, s),   # own palm: centre - pelvis,
+            self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),                     # facing (BRAIN_IO 130-135)
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

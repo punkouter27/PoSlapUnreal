@@ -44,8 +44,17 @@ JOINTS = {
     "foot":     [("ankle_flex", (0, -1, 0), (-45, 20), 180), ("ankle_roll", (1, 0, 0), (-20, 20), 60)],
 }
 KP_PER_NM = 1 / 0.35   # full torque at 0.35 rad error
-KV_RATIO = 0.05        # damping = 5 % of stiffness
-ADULT_JOINT_SPEED = 12.0  # rad/s, scaled by card speed; enforced by the env, recorded here
+KV_RATIO = 0.05        # damping = 5 % of stiffness: the floor for trunk and legs
+ZETA = 0.8             # damping ratio aimed for, from each joint's inertia in the stand pose (2026-10-22 audit: 5 % of
+                       # stiffness gave 0.18-0.27 at waist and hips, a 1-2 Hz trunk sway, and 1.5-2.2 at shoulder and ankle)
+FREE = {"neck", "upperarm", "forearm", "hand"}   # carry nothing below them: their stand-pose inertia is the real load, so
+                                                 # ZETA exactly. Trunk and legs carry the body in stance (more than that
+                                                 # inertia shows): damping only raised to ZETA, never lowered
+JOINT_SEG = {jn: sg for sg, js in JOINTS.items() for jn, *_ in js}
+ARM_ARMATURE = 0.005   # arm joints; the default 0.02 was 49-84 % of wrist/shoulder inertia and slowed the whip
+ADULT_JOINT_SPEED = 12.0  # rad/s, scaled by card speed; enforced by the env, recorded here per joint
+SEG_SPEED = {"upperarm": 20.0, "forearm": 25.0, "hand": 25.0}   # rad/s: a strike's arm outruns its trunk and legs
+                                                                # (throwing peaks: trunk ~15, elbow ~40)
 LENGTH_RATIO = {"thigh": (0.20, 0.28), "shin": (0.17, 0.27), "upperarm": (0.13, 0.20), "forearm": (0.09, 0.17)}   # Kim's
 # auto-rigged scan sits low on shin (0.182) and forearm (0.096): ranges are a sanity check for scale/axes, not anatomy
 
@@ -215,7 +224,8 @@ def geom_xml(g, mass, pre, scale):
             f'mass="{fmt(mass)}"/>')
 
 
-def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
+def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
+    """inertia: joint -> stand-pose joint-space inertia (joint_inertia); None = KV_RATIO everywhere (the first pass)."""
     S = card["strength"]
     flex = card["flexibility"]
     kids = {n: [c for c, p in PARENT.items() if p == n] for n in PARENT}
@@ -234,10 +244,15 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
             axis = np.array(ax) * ([-1, 1, -1] if side == "_r" else 1)  # rotation axes mirror as (-x, y, -z)
             j = f"{pre}{jn}{side}"
             rng = fmt([math.radians(lo * flex), math.radians(hi * flex)])
-            out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{rng}"/>')
+            arm = f' armature="{fmt(ARM_ARMATURE)}"' if seg(n) in ("upperarm", "forearm", "hand") else ""
+            out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{rng}"{arm}/>')
             st = S * card.get("toughness", 1.0) if seg(n) == "neck" else S   # toughness: neck bracing (KO resistance)
             kp = tq * st * KP_PER_NM
-            acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kp * KV_RATIO)}" '
+            kv = kp * KV_RATIO
+            if inertia:   # minus the joint's own damping (0.5, <default>)
+                aim = max(0.0, 2 * ZETA * math.sqrt(kp * inertia[jn + side]) - 0.5)
+                kv = aim if seg(n) in FREE else max(kv, aim)
+            acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kv)}" '
                         f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}"/>')
         for gg in g["geoms"]:
             out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"/>'))
@@ -255,7 +270,7 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba):
 
 HEADER = f"""<mujoco model="{{model}}">
   <compiler angle="radian" autolimits="true"/>
-  <option timestep="0.005" integrator="implicitfast"/>
+  <option timestep="0.005" integrator="implicitfast" iterations="20"/>
   <default>
     <joint armature="{fmt(0.02)}" damping="0.5"/>
     <geom condim="3" friction="{fmt([0.8, 0.02, 0.01])}"/>
@@ -365,6 +380,17 @@ def sole_gap(xml, stand, card):
     return low
 
 
+def joint_inertia(xml, stand, card):
+    """Joint-space inertia (diagonal of M, armature included) of every hinge in the stand pose, pelvis held."""
+    m = mujoco.MjModel.from_xml_string(xml)
+    d = mujoco.MjData(m)
+    set_pose(m, d, stand_pose(stand, card))
+    mujoco.mj_forward(m, d)
+    M = np.zeros((m.nv, m.nv))
+    mujoco.mj_fullM(m, d, M)
+    return {m.joint(j).name: float(M[m.jnt_dofadr[j], m.jnt_dofadr[j]]) for j in range(m.njnt) if m.jnt_type[j] == 3}
+
+
 def balance_and_drop(xml, stand, card):
     m = mujoco.MjModel.from_xml_string(xml)
     d = mujoco.MjData(m)
@@ -419,6 +445,8 @@ def main():
             root = root - [0, 0, sole_gap(solo, stand, card) - 0.001]
             solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
             print(f"style stance: root lowered to {root[2]:.3f} m, soles {sole_gap(solo, stand, card) * 1000:.1f} mm")
+        inertia = joint_inertia(solo, stand, card)   # second pass: damping from each joint's own load
+        solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target)
         (out / f"{card['name']}_solo.xml").write_text(solo)
         m, off, up = balance_and_drop(solo, stand, card)
         joints = [m.joint(m.actuator_trnid[i, 0]).name for i in range(m.nu)]
@@ -433,24 +461,25 @@ def main():
               "joint_order": joints,
               "ctrl_range_rad": m.actuator_ctrlrange.tolist(),
               "torque_limit_nm": m.actuator_forcerange[:, 1].tolist(),
-              "max_joint_speed_rad_s": ADULT_JOINT_SPEED * card["speed"],
+              "max_joint_speed_rad_s": [SEG_SPEED.get(JOINT_SEG[seg(j) if j.endswith(("_l", "_r")) else j], ADULT_JOINT_SPEED)
+                                        * card["speed"] for j in joints],   # per joint, in joint order
               "stand_pose_deg": stand_pose(stand, card), "stand_pose_rad": {k: math.radians(v) for k, v in stand_pose(stand, card).items()},
               "root_height_m": float(root[2]),
               "geom_scale": scale, "balance_offset_m": off.tolist(), "drop_test_upright_s": up,
               "card": card}
         (out / f"{card['name']}_fingerprint.json").write_text(json.dumps(fp, indent=1))
-        built[path] = (card, geo, scale, root)
+        built[path] = (card, geo, scale, root, inertia)
         print(f"A12 fingerprint: MuJoCo {fp['mujoco']}, {fp['sizes']}, {fp['mass_kg']} kg, sha {fp['sha256'][:12]}")
 
     # arena: red at -X facing +X, blue at +X facing -X, podium between (Blueprint 5)
-    (rc, rg, rs, rr), (bc, bg, bs, br) = built[a.card], built[a.blue or a.card]
+    (rc, rg, rs, rr, ri), (bc, bg, bs, br, bi) = built[a.card], built[a.blue or a.card]
     gap = GAP
     pod_h = round(0.59 * min(rc["height_m"], bc["height_m"]), 3)  # below the belly bulge
     world = (f'    <geom name="podium" type="box" pos="0 0 {fmt(pod_h / 2)}" size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n'
              f'    <site name="footbox_red" type="box" pos="{fmt([-gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.8 0.1 0.1 0.4"/>\n'
              f'    <site name="footbox_blue" type="box" pos="{fmt([gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.1 0.2 0.8 0.4"/>\n')
-    red = athlete_xml(rg, rc, "red_", [-gap / 2, 0, rr[2]], (1, 0, 0, 0), rs, "0.85 0.3 0.3 1")
-    blue = athlete_xml(bg, bc, "blue_", [gap / 2, 0, br[2]], (0, 0, 0, 1), bs, "0.3 0.4 0.85 1")
+    red = athlete_xml(rg, rc, "red_", [-gap / 2, 0, rr[2]], (1, 0, 0, 0), rs, "0.85 0.3 0.3 1", ri)
+    blue = athlete_xml(bg, bc, "blue_", [gap / 2, 0, br[2]], (0, 0, 0, 1), bs, "0.3 0.4 0.85 1", bi)
     arena = scene_xml(f"{rc['name']}_vs_{bc['name']}", [red, blue], world)
     name = f"{rc['name']}_vs_{bc['name']}_arena.xml"
     (out / name).write_text(arena)

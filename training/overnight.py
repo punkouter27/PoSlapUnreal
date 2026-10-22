@@ -6,7 +6,8 @@
 Stages come from runs/overnight_queue.json, re-read before every stage (a stage can be appended while one runs):
     [{"level": "L2", "minutes": 360, "keep_going": false, "resume": "<optional .pt>"}, ...]
 Each stage resumes from the previous stage's brain (its best.pt, else latest.pt) unless it names one. A stage that
-crashes is retried once from its own latest.pt. Milestones go to runs/overnight.jsonl; every stage keeps train.py's
+crashes is retried once from its own latest.pt. A stage that ends without graduating stops the queue (the ladder;
+"no_gate": true on a stage lets the queue go on after it). Milestones go to runs/overnight.jsonl; every stage keeps train.py's
 TensorBoard, telemetry, checkpoints, videos and report. At the end: models/brains/<char>_final.pt + .onnx and
 runs/overnight_summary.html.
 """
@@ -91,6 +92,9 @@ def main():
         done.append(stage)
         log(event="milestone", level=stage["level"], run=run.name, code=code, graduated=meta.get("graduated"),
             best_exam=meta.get("best_exam"), episode_return=meta.get("episode_return"), steps=meta.get("steps"))
+        if not meta.get("graduated") and not stage.get("no_gate"):   # the ladder: no level before the last one graduates
+            log(event="stopped", level=stage["level"], run=run.name, reason="not graduated; later stages wait")
+            break
 
     if carry:   # final weights: the last stage's best brain
         ppo = PPO(OBS, 30, 8, "cuda", PPOConfig())

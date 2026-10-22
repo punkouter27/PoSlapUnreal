@@ -184,7 +184,10 @@ def main():
         for i in range(len(LAGS)):
             ppo.obs_rms.mean[108 + 6 * i:114 + 6 * i] = ppo.obs_rms.mean[102:108]
             ppo.obs_rms.var[108 + 6 * i:114 + 6 * i] = ppo.obs_rms.var[102:108]
-    unseen = ppo.obs_rms.var < 1e-6                     # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
+    if a.resume and obs_dim_of(a.resume) <= 130:   # own palm (130-135, new in BRAIN_IO): the scale of the first batch
+        o = env.observe()
+        ppo.obs_rms.mean[130:], ppo.obs_rms.var[130:] = o[:, 130:].mean(0), o[:, 130:].var(0) + 1e-4
+    unseen = ppo.obs_rms.var < 1e-6                    # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
     ppo.obs_rms.var[unseen], ppo.obs_rms.mean[unseen] = 1.0, 0.0
     with torch.no_grad():
         ppo.model.log_std.clamp_(max=float(torch.log(torch.tensor(a.max_std))))

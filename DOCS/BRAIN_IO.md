@@ -7,9 +7,9 @@ Order of the 30 joints = `joint_order` in `training/models/<name>_fingerprint.js
 Heading frame = world rotated by the pelvis yaw only (pelvis x-axis projected on the floor).
 Positions (xpos, site_xpos) come from `mj_kinematics` on the current qpos (mj_step leaves them one step behind).
 
-## Observation — 130 floats, ONNX input `obs` shape [1, 130]
+## Observation — 136 floats, ONNX input `obs` shape [1, 136]
 
-Brains from before 2026-10-22 read the first 108; both sides feed a brain only as many numbers as its input has.
+Older brains read the first 108 (before memory) or 130 (before the own palm); both sides feed a brain only as many numbers as its input has.
 
 | Index | What | Units / scale |
 |---|---|---|
@@ -28,6 +28,8 @@ Brains from before 2026-10-22 read the first 108; both sides feed a brain only a
 | 126–127 | **memory:** the opponent's last strike this match: touch time / 30 s, palm speed / 10 (both 0 until he has struck; reset each match) | |
 | 128 | own **stamina**: 1 fresh, − card `stamina_per_strike` per turn struck, floor 0.7. Scales the action rule's speed limit | |
 | 129 | own **neck strength**: 1 fresh, − card `neck_damage_per_snap` × head snap (m/s) per strike absorbed (not a KO), floor 0.5. Scales the neck motors' `forcerange` | |
+| 130–132 | own **palm**: `hand_r` geom centre − own pelvis, heading frame (every role) | m |
+| 133–135 | own **palm facing**: the `hand_r` box's −z axis (world), heading frame | unit |
 
 **Unreal's match flow (v1):** coin toss picks the striker (role +1, clock, defender's head); the defender plays role 0 (guard).
 The turn ends 1.5 s after any striker part touches the defender's head, at 30 s, or on a knockdown; both athletes then reset
@@ -38,6 +40,9 @@ remembers the strike (126–127) and, unless knocked out, his neck strength drop
 ## Action — 30 floats, ONNX output 0 `actions` shape [1, 30] (output 1 `value` [1, 1], the critic)
 
 `a = clip(action, −1, 1)`;
-`target = clip(stand + a · ½(hi − lo), lo, hi)` with `lo, hi` = `ctrl_range_rad`;
-then rate-limit: `|target − previous target| ≤ max_joint_speed_rad_s × 0.02 × stamina`.
+`target = clip(stand + (a > 0 ? a · (hi − stand) : a · (stand − lo)), lo, hi)` with `lo, hi` = `ctrl_range_rad`: a = ±1 reaches
+the range ends (until 2026-10-22 `stand + a · ½(hi − lo)`, which left up to half of a range out of reach, e.g. Grandpa's
+right shoulder raise above +4°);
+then rate-limit per joint: `|target − previous target| ≤ max_joint_speed_rad_s[j] × 0.02 × stamina` (a list in joint
+order; older fingerprints hold one number for every joint).
 `ctrl = target` (position actuators) for the next 4 physics steps.
