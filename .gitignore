@@ -23,3 +23,7 @@ Plugins/UnrealRoboticsLab/
 training/replays/
 Scripts/__pycache__/
 Logs/
+
+# Blender backups; FBX importers re-extract embedded textures
+*.blend1
+Content/Art/Exports/Kim_rigged.fbm/

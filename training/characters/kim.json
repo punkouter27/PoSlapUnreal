@@ -1,6 +1,7 @@
 {
   "name": "kim",
   "display": "KIM",
+  "slot": 2,
   "mesh": "Content/Art/Exports/Kim_rigged.fbx",
   "skeleton": "characters/kim_skeleton.json",
   "height_m": 1.63,

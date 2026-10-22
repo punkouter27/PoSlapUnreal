@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>Kim vs Grandpa</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:220px;margin:0}img{width:100%;border:1px solid #ccc}</style>
+<h1>Kim vs Grandpa, and a 16-slot roster (2026-10-22)</h1>
+<p>Before: one arena (Grandpa vs Grandpa), and the roster was a list of two cards. After: a pairing level, <code>/Game/Levels/Arena_grandpa_vs_kim</code>.
+MuJoCo runs both bodies, each with its own fingerprint (joint ranges, stand pose, speed, card), and Unreal draws each with its own mesh and skin
+(bone-body gap 0.0000 cm for both). Kim stands in her crouch with a high guard. Her brain is an early L0 checkpoint: she can stand, but as the striker
+she walks out of her box. Grandpa (L2 work in progress) strikes but still clubs instead of using the palm.
+The ROSTER tab is now 16 slots. A card takes its <code>"slot"</code>; open slots explain how to add an athlete.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before: roster list, Grandpa vs Grandpa</figcaption></figure><figure><img src="after.png"><figcaption>After: Kim (blue) vs Grandpa (red)</figcaption></figure><figure><img src="roster.png"><figcaption>After: 16-slot roster</figcaption></figure></div>
+<p>Check on this level: <code>-SlapUiTest</code> PASS, 10/10 clicks. Red's picker offered only Grandpa's brains, and a match ended normally (Kim won it after Grandpa fouled himself out).</p>

@@ -43,6 +43,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSafeZone.h"
+#include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
@@ -239,6 +240,8 @@ void ASlapHUD::BuildUi()
 	Brains.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UNNEModelData::StaticClass()->GetClassPathName(); });
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 
+	LoadRoster();
+
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	TSharedPtr<SWidget> Spare;	// SAssignNew needs somewhere to put the widgets the test doesn't click
 	static const FSlateRoundedBoxBrush SheetBrush(FLinearColor(0.02f, 0.02f, 0.03f, 0.95f), FVector4(18.f, 18.f, 0.f, 0.f));
@@ -320,6 +323,17 @@ void ASlapHUD::BuildUi()
 			+ SHorizontalBox::Slot().AutoWidth()
 			[SAssignNew(a == 0 ? Hit[HitRedNext] : Spare, SButton).OnClicked_Lambda([Step, a] { return Step(a, 1); })[Label(FText::FromString(TEXT(" > ")), 18, White)]];
 	};
+	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f));	// the roster: 4 x 4 slots
+	for (int32 i = 0; i < RosterSize; ++i)
+	{
+		const bool bOpen = Slots[i].Key.IsEmpty();
+		Grid->AddSlot(i % 4, i / 4)
+		[
+			SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda([Self, i] { if (Self.IsValid()) Self->RosterSel = i; return FReply::Handled(); })
+			[Label(FText::FromString(FString::Printf(TEXT("%d\n%s"), i + 1, bOpen ? TEXT("open") : *Slots[i].Key)), 14,
+				TAttribute<FSlateColor>::CreateLambda([Self, i, bOpen, Hi, White, Dim] { return FSlateColor(Self.IsValid() && Self->RosterSel == i ? Hi : bOpen ? Dim * 0.7f : White); }))]
+		];
+	}
 	auto Start = [Self, Menu]
 	{
 		if (!Self.IsValid() || !Self->Controller.IsValid()) return FReply::Handled();
@@ -407,7 +421,13 @@ void ASlapHUD::BuildUi()
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
 								[SAssignNew(Hit[HitStart], SButton).HAlign(HAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START NEW MATCH")), 18, White)]]
 							]
-							+ SWidgetSwitcher::Slot()[Label(FText::FromString(RosterText()), 16, White, true)]
+							+ SWidgetSwitcher::Slot()
+							[
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight()[Grid]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 12.f, 0.f, 0.f)
+								[Label(TAttribute<FText>::CreateLambda([Self] { return Self.IsValid() ? FText::FromString(Self->Slots[Self->RosterSel].Value) : FText(); }), 15, White, true)]
+							]
 							+ SWidgetSwitcher::Slot()
 							[
 								SNew(SVerticalBox)
@@ -430,15 +450,16 @@ void ASlapHUD::BuildUi()
 	VC->AddViewportWidgetContent(Ui.ToSharedRef(), 10);
 }
 
-FString ASlapHUD::RosterText() const
+void ASlapHUD::LoadRoster()
 {
-	// every character card: the tape, its style, the brains made for it (a new one shows "in training" until it graduates)
+	// every character card in its slot ("slot": 1-16, else the first open one): the tape, its style, the brains made for it
+	// (a new one shows "in training" until it graduates); the other slots are placeholders for athletes still to come
 	// ponytail: read from training/ beside the project; a packaged (Android) build needs the cards staged with the content
 	const FString Dir = FPaths::ProjectDir() / TEXT("training/characters");
 	TArray<FString> Files;
 	IFileManager::Get().FindFiles(Files, *(Dir / TEXT("*.json")), true, false);
 	Files.Sort();
-	FString T;
+	Slots.Init({}, RosterSize);
 	for (const FString& F : Files)
 	{
 		FString Raw;
@@ -452,12 +473,21 @@ FString ASlapHUD::RosterText() const
 		}
 		const TSharedPtr<FJsonObject>* Style = nullptr;
 		const FString Summary = C->TryGetObjectField(TEXT("style"), Style) ? (*Style)->GetStringField(TEXT("summary")) : FString();
-		T += FString::Printf(TEXT("%s%s   %.2f m  %.0f kg\nSTR %.2f  SPD %.2f  FLX %.2f  TGH %.2f\n%s\nBrains: %s\n"), T.IsEmpty() ? TEXT("") : TEXT("\n"),
-			*C->GetStringField(TEXT("display")), C->GetNumberField(TEXT("height_m")), C->GetNumberField(TEXT("mass_kg")), C->GetNumberField(TEXT("strength")),
+		int32 Slot = INDEX_NONE;
+		if (C->TryGetNumberField(TEXT("slot"), Slot)) Slot -= 1;
+		if (!Slots.IsValidIndex(Slot) || !Slots[Slot].Key.IsEmpty()) Slot = Slots.IndexOfByPredicate([](const TPair<FString, FString>& X) { return X.Key.IsEmpty(); });
+		if (Slot == INDEX_NONE) break;	// more cards than slots
+		Slots[Slot].Key = C->GetStringField(TEXT("display"));
+		Slots[Slot].Value = FString::Printf(TEXT("%s   %.2f m  %.0f kg\nSTR %.2f  SPD %.2f  FLX %.2f  TGH %.2f\n%s\nBrains: %s"),
+			*Slots[Slot].Key, C->GetNumberField(TEXT("height_m")), C->GetNumberField(TEXT("mass_kg")), C->GetNumberField(TEXT("strength")),
 			C->GetNumberField(TEXT("speed")), C->GetNumberField(TEXT("flexibility")), C->GetNumberField(TEXT("toughness")), *Summary,
 			Mine.IsEmpty() ? TEXT("none yet (in training)") : *Mine);
 	}
-	return T;
+	for (int32 i = 0; i < RosterSize; ++i)
+	{
+		if (!Slots[i].Key.IsEmpty()) continue;
+		Slots[i].Value = FString::Printf(TEXT("Slot %d is open. A new athlete: a rigged FBX -> Scripts/rig_mixamo.py -> card training/characters/<name>.json with \"slot\": %d and its own stats and style -> build_body.py -> its own ladder (overnight.py --char <name> --queue) -> a pairing level (build_scene.py SLAP_RED / SLAP_BLUE)."), i + 1, i + 1);
+	}
 }
 
 void ASlapHUD::UiTest(const FSlapHud& H)

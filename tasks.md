@@ -84,13 +84,15 @@ User 2026-10-22: "make this person the 2nd player in the roster, train her and g
 - [x] D2 Card `kim.json`: 1.63 m, 60 kg, STR 0.60, SPD 0.95, FLX 1.00, TGH 0.85, fitter (stamina 0.035/strike), lighter neck (0.05/snap); `style` = her balancing stance + her reference-slap guess, timing, whip delays
 - [x] D3 Body: A8 rig OK (length ranges widened for her short shin/forearm), A10 clean (thighs shrunk 10 %), A11 balance in her style stance: COM +1.2 cm ahead of mid-feet (plain upright: -8.1 cm, fell back), up 3 s; root lowered to 0.789 m so the bent legs stand on the floor. Torso bands now scale with height (Grandpa's model byte-identical)
 - [ ] D4 Ladder L0 → L1 → L2 → L3: `overnight.py --char kim --queue kim_queue.json` (started 16:20, beside Grandpa's queue)
-- [ ] D5 Her reference slap (`slap_demo.py search --char kim`): first search palm-first but 3.8 m/s and her hand then touched the podium; second search (σ 12°) running — must reach ≥ 8 m/s clean before her L2
-- [ ] D6 Unreal after she graduates: import `Kim_rigged.fbx` + her skin material (wear params as M_Grandpa), arena `grandpa_vs_kim`, roster.json entry, corner character pick in the menu
+- [x] D5 Her reference slap (`slap_demo.py search --char kim`): 2nd search palm-first 8.9 m/s, stays up (1st: 3.8 m/s, hand on the podium). To redo after the action-rule change (e73efa1)
+- [x] D6 Kim vs Grandpa test (user 2026-10-22: test the pairing now, before her ladder ends): `/Game/Levels/Arena_grandpa_vs_kim` (build_scene.py SLAP_RED=grandpa SLAP_BLUE=kim), per-corner fingerprints in USlapController, her mesh + M_Kim (wear params), her L0 WIP brain; bone-body gap 0.0000 cm both; UI test PASS on it (`SCREENSHOTS/261022_kim_vs_grandpa`)
+- [ ] D7 After her ladder: her graduated brains, roster.json entry (tournaments), the menu picks the pairing level per corner character
+- [x] D8 16-slot roster (user: "I will eventually add 16 players"): ROSTER tab is a 4 x 4 grid, cards take `"slot"`, open slots are placeholders with the add-a-player steps. 16 athletes = 120 pairings: one arena model + level per pairing, built on demand
 
 ## Phase E — Android phone build (PLAN, needs approval)
 Checked 2026-10-22: Android SDK/NDK r27c valid for UE 5.8 (Turnkey). Blockers: URLab builds MuJoCo for Win64/Linux only; NNE's ONNX runtime (ORT) and IREE have no Android build in UE 5.8.
 - [ ] E1 MuJoCo 3.10.0 for android-arm64 (NDK CMake toolchain), URLab `Build.cs` Android branch (libmujoco.so staged; editor-only CoACD/ZMQ left out)
 - [ ] E2 Brain on Android: NNE's platform-neutral Basic CPU runtime, the MLP rebuilt from the ONNX weights at load; desktop keeps ORT for the bit-exact matching check (Android gets a tolerance check vs Python instead)
 - [ ] E3 Runtime data in the package: fingerprints, cards (read from `training/` today) → `Content/Data`, staged; `/Game/Brains` already always cooked
-- [ ] E4 Mobile settings: portrait, arm64, Vulkan + ES3.1, Lumen off, textures ≤ 2K (Kim ships 4 × 4K), 60 fps budget
+- [ ] E4 Mobile settings: portrait, arm64, Vulkan + ES3.1, Lumen off, textures ≤ 2K (Kim's FBX import also left 4 × 4K textures in /Game/Athletes/Kim, unused by M_Kim), **30 fps target** (user 2026-10-22)
 - [ ] E5 Device run: install over adb, touch through the menu, a full match

@@ -49,7 +49,7 @@ private:
 	void Stage(double Now);					// light flare on a strike, chase on a KO
 	void Text(const FString& Str, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
 	void BuildUi();
-	FString RosterText() const;	// training/characters/*.json: stats, style, brains
+	void LoadRoster();	// training/characters/*.json into the 16 roster slots
 	void UiTest(const FSlapHud& H);
 
 	TWeakObjectPtr<USlapController> Controller;
@@ -65,6 +65,9 @@ private:
 	// Slate layer and menu
 	TSharedPtr<SWidget> Ui;
 	int32 Tab = 0;
+	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
+	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
+	int32 RosterSel = 0;
 	bool bMenu = false, bShowTelemetry = true, bShowCommentary = true, bShowDebug = true;
 	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain

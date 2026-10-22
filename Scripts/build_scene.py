@@ -25,6 +25,8 @@ def log(msg):
 def import_file(src, dest, options=None, name=None):
     t = unreal.AssetImportTask()
     t.filename = os.path.join(PROJ, src)
+    if not os.path.isfile(t.filename):   # a missing source crashes ImportAssetTasks (Git Bash turns "/Game/..." env values into C:/Program Files/Git/Game/...)
+        raise FileNotFoundError(t.filename)
     t.destination_path = dest
     t.destination_name = name or ""
     t.automated = True
@@ -97,10 +99,6 @@ def athlete(card):
     return mesh, skin
 
 
-body = {RED: athlete(RED)}
-body[BLUE] = body.get(BLUE) or athlete(BLUE)
-
-
 def brain_asset(spec):
     return ASSETS.load_asset(spec) if spec.startswith("/Game/") else import_file(spec, "/Game/Brains")[0]
 
@@ -133,6 +131,11 @@ for h in handles:
         obj.set_editor_property("defender_role", int(os.environ.get("SLAP_DEFENDER_ROLE", "-1")))   # 0 for guard brains before L3
 unreal.BlueprintEditorLibrary.compile_blueprint(arena_bp)
 ASSETS.save_loaded_asset(arena_bp)
+
+# athletes after every import task: loading skinned meshes starts async compiles, and an import task issued while they
+# run crashed the commandlet (AssetTools, SharedPointer IsValid) with ~3 GB free
+body = {RED: athlete(RED)}
+body[BLUE] = body.get(BLUE) or athlete(BLUE)
 
 # team overlay: translucent fresnel rim in the team colour (one mesh, two tints)
 mat_path = "/Game/Athletes/M_TeamOverlay"

@@ -1,6 +1,7 @@
 {
   "name": "grandpa",
   "display": "GRANDPA",
+  "slot": 1,
   "mesh": "Content/Art/Exports/Grandpa_rigged.fbx",
   "skeleton": "characters/grandpa_skeleton.json",
   "height_m": 1.7,
