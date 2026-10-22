@@ -100,7 +100,7 @@ class SlapEnv:
         self.delay = torch.zeros(N, dtype=torch.long, device=dev)
         self.push_wait, self.push_left, self.push_f = z(N), z(N), z(N, 3)
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
-        self.ret, self.foot0, self.left_box = z(N), z(N, 2, 2), torch.zeros(N, dtype=torch.bool, device=dev)
+        self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 2), torch.zeros(N, dtype=torch.bool, device=dev)
         self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
         self.episodes = []   # (return, fell, left foot box, length) of finished episodes; the trainer drains it
 
@@ -138,6 +138,7 @@ class SlapEnv:
         self.left_box[mask] = False
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
+        self.head0[mask] = self.xpos[mask][:, self.head, :2]
 
     # ------------------------------------------------------------------ step
     def _pushes(self, dt):
@@ -200,12 +201,14 @@ class SlapEnv:
         posture = torch.exp(-((self.qpos[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
         smooth = ((a - self.prev_action) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
-        if self.cfg.get("foot_box"):
+        if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()
             out = (d[..., 0] > bx).any(-1) | (d[..., 1] > by).any(-1)
             self.left_box |= out
-            r = r - 0.5 * out.float()
+            facing = R[:, 0, 0]                                        # cos(yaw): pelvis x-axis on the world x-axis
+            head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0) ** 2).sum(-1) / 0.01)
+            r = r - 0.5 * out.float() + 0.3 * facing + 0.3 * head
         return torch.where(fell, torch.full_like(r, -5.0), r)
 
     # ------------------------------------------------------------------ observe (BRAIN_IO)
