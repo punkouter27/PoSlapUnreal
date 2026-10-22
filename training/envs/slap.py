@@ -96,7 +96,8 @@ class SlapEnv:
         self.strike = self.cfg["role"] == 1
         if self.strike:   # L2: the mocap sphere stands in for the opponent's head (arena: 0.80 m ahead, 0.74 m up)
             self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
-            self.tbase = self.q0[:3] + torch.tensor([0.8015, 0.0, 0.74], device=dev)
+            self.tbase = self.q0[:3] + torch.tensor([0.8015, 0.0, 0.74], device=dev)     # the arena opponent's head
+            self.teasy = self.q0[:3] + torch.tensor([0.43, -0.08, 0.53], device=dev)     # ~0.45 m in front of the right shoulder
             self.mocap, self.geom_xmat = T(self.dw.mocap_pos), T(self.dw.geom_xmat)
             self.con_frame = T(self.dw.contact.frame)
 
@@ -108,7 +109,8 @@ class SlapEnv:
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
         self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 2), torch.zeros(N, dtype=torch.bool, device=dev)
         self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
-        self.hit_v = float(self.cfg.get("hit_speed", 8.0))   # L2: m/s a clean hit needs (the trainer's curriculum; exams use the level's)
+        self.hit_v = float(self.cfg.get("hit_speed", 8.0))
+        self.reach = 1.0   # L2: where the target sits between easy (0) and the real opponent's head (1); trainer's curriculum   # L2: m/s a clean hit needs (the trainer's curriculum; exams use the level's)
         self.episodes = []   # (return, fell, left foot box, length, clean hit, hit speed) of finished episodes; the trainer drains it
         self.struck = torch.zeros(N, dtype=torch.bool, device=dev)
         self.hit_ok = torch.zeros(N, dtype=torch.bool, device=dev)
@@ -152,7 +154,8 @@ class SlapEnv:
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.head0[mask] = self.xpos[mask][:, self.head, :2]
         if self.strike:
-            self.mocap[mask, 0] = self.tbase + self._u((n, 3), -0.03, 0.03)
+            base = self.teasy + self.reach * (self.tbase - self.teasy)   # L2 curriculum: 0 easy -> 1 the real head
+            self.mocap[mask, 0] = base + self._u((n, 3), -0.03, 0.03)
             self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
             self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
             self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]

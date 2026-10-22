@@ -87,6 +87,7 @@ def exam(ppo, character, level):
     env.episodes.clear()
     env.push_scale = LEVELS[level].get("max_push", 1.0)
     env.hit_v = float(LEVELS[level].get("hit_speed", 8.0))   # exams use the level's own bar
+    env.reach = 1.0                                            # and the real opponent's head
     obs = env.observe()
     fell_any = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # each world's first episode only
     left_box, hit, seen = torch.zeros_like(fell_any), torch.zeros_like(fell_any), torch.zeros_like(fell_any)
@@ -145,6 +146,7 @@ def main():
     env.push_scale = min(extra.get("push_scale", 0.0), LEVELS[a.level].get("max_push", 1.0)) if LEVELS[a.level]["pushes"] else 1.0
     L = LEVELS[a.level]
     env.hit_v = float(extra.get("hit_v", L.get("hit_speed_start", L.get("hit_speed", 8.0))))   # L2 speed curriculum
+    env.reach = float(extra.get("reach", 0.0 if "hit_speed" in L else 1.0))                      # L2 target-distance curriculum
     target = LEVELS[a.level]["reward_target"]
     recent = deque(maxlen=100)
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
@@ -178,26 +180,29 @@ def main():
             elif eplen < 0.4 * env.T / 50:
                 env.push_scale = max(0.0, env.push_scale - 0.01)
             env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
-        if "hit_speed" in L and len(recent) == 100 and hit_rate > 0.5:   # raise the clean-hit bar 0.25 m/s at a time
-            env.hit_v = min(float(L["hit_speed"]), round(env.hit_v + 0.25, 2))
+        if "hit_speed" in L and len(recent) == 100 and hit_rate > 0.5:   # L2: first move the target out, then raise the bar
+            if env.reach < 1.0:
+                env.reach = min(1.0, round(env.reach + 0.05, 2))
+            else:
+                env.hit_v = min(float(L["hit_speed"]), round(env.hit_v + 0.25, 2))
         for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale,
-                     "hit_rate": hit_rate, "hit_speed": hit_speed, "hit_bar": env.hit_v}.items():
+                     "hit_rate": hit_rate, "hit_speed": hit_speed, "hit_bar": env.hit_v, "reach": env.reach}.items():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episode_return": ret,
-                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), "push_scale": env.push_scale, "hit_rate": hit_rate, "hit_speed": hit_speed, "hit_bar": env.hit_v, **stats,
+                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), "push_scale": env.push_scale, "hit_rate": hit_rate, "hit_speed": hit_speed, "hit_bar": env.hit_v, "reach": env.reach, **stats,
                                "pelvis_z_w0": env.qpos[0, 2].item()}) + "\n")
         if it % 10 == 0:
             print(f"it {it:5d} {steps / 1e6:7.1f}M steps {(time.time() - t0) / 60:5.1f} min | return {ret:7.1f} "
-                  f"fall {fall:.2f} ep {eplen:4.1f}s | push {env.push_scale:.2f} | hit {hit_rate:.2f} @ {hit_speed:4.1f} m/s (bar {env.hit_v:.2f}) | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
+                  f"fall {fall:.2f} ep {eplen:4.1f}s | push {env.push_scale:.2f} | hit {hit_rate:.2f} @ {hit_speed:4.1f} m/s (bar {env.hit_v:.2f}, reach {env.reach:.2f}) | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
         if it % 50 == 0:
-            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v})
+            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach})
         if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)
             last_video = time.time()
             gif = run / "videos" / f"it{it:05d}_{(time.time() - t0) / 60:04.0f}min.gif"
             z = video(cpu_policy(ppo), gif, a.char)
             print(f"video {gif.name}: pelvis at {z:.2f} m after 6 s", flush=True)
         if len(recent) == 100 and ret >= target and env.push_scale >= LEVELS[a.level].get("max_push", 1.0) \
-                and env.hit_v >= float(L.get("hit_speed", 0.0)) and time.time() - last_exam > 120:
+                and env.hit_v >= float(L.get("hit_speed", 0.0)) and env.reach >= 1.0 and time.time() - last_exam > 120:
             last_exam = time.time()
             ok, res = exam(ppo, a.char, a.level)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
@@ -205,7 +210,7 @@ def main():
             score = min(res.values())
             if score > best_exam:   # the best exam so far, kept for a deadline that ends before graduation
                 best_exam = score
-                ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v, "exam": res})
+                ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "exam": res})
             if ok and not graduated:
                 graduated = res
                 out = HERE / "models" / "brains" / f"{a.char}_{a.level}.onnx"
@@ -214,7 +219,7 @@ def main():
                 if not a.keep_going:
                     break
 
-    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v})
+    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach})
     minutes = (time.time() - t0) / 60
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             "episode_return": ret if it else 0, "fall_rate": fall if it else 1, "graduated": graduated, "nan": nan}
