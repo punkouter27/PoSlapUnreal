@@ -191,6 +191,12 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, 1.4f, 0.9f);
 		if (Spray) UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, StrikePos, FRotator(90, 0, 0), FVector(0.6f));
 	}
+	if (H.Round != SeenTurnRound || H.Striker != SeenTurnStriker)	// a new turn: the last turn's commentary is stale
+	{
+		SeenTurnRound = H.Round;
+		SeenTurnStriker = H.Striker;
+		TurnAt = Now;
+	}
 	if (H.MatchSeq != SeenMatch)
 	{
 		SeenMatch = H.MatchSeq;
@@ -492,7 +498,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	}
 
 	// commentary, bottom: the latest line for 8 s, wrapped at ~44 characters
-	if (Now - CommentaryAt < 8.0 && !Commentary.IsEmpty())
+	if (Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && !Commentary.IsEmpty())
 	{
 		TArray<FString> Lines;
 		FString Cur;

@@ -84,6 +84,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	double PostMatchHold = 4.0;
 
+	/** Seconds both athletes stand where a turn ended before the next turn's reset (display only: match.py parity holds). */
+	UPROPERTY(EditAnywhere, Category = "PoSlap")
+	double TurnHold = 2.0;
+
 	virtual void Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*>& ActuatorIdMap) override;
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
 	virtual FString GetKindName() const override { return TEXT("poslap"); }
@@ -128,7 +132,8 @@ private:
 	};
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0;
-	int64 HoldLeft = 0;	// physics steps of the post-match hold
+	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
+	static int64 HoldSteps(double Seconds);
 	bool bInTurn = false;
 	FTurn Turn;
 	int32 Cards[3][2] = {};

@@ -579,14 +579,14 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 		EndMatch(Turn.Striker);
 		return;
 	}
-	if (++TurnInRound < 2) return;
+	if (++TurnInRound < 2) { HoldLeft = HoldSteps(TurnHold); return; }	// let the crowd see how the turn ended
 	int32 Pts[3][2];
 	Score(Pts);
 	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson()));
 	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Cards, sizeof(Cards)); FMemory::Memcpy(H.RoundCards, Pts, sizeof(Pts)); H.ScoredRound = Round; });
 	RoundTurns.Reset();
 	TurnInRound = 0;
-	if (++Round <= Rounds) return;
+	if (++Round <= Rounds) { HoldLeft = HoldSteps(TurnHold); return; }
 	int32 Wins[2] = { 0, 0 };
 	for (int32 j = 0; j < 3; ++j)
 	{
@@ -603,9 +603,14 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	EndMatch(Draw ? -1 : Top);
 }
 
+int64 USlapController::HoldSteps(double Seconds)
+{
+	return FMath::RoundToInt64(Seconds / ControlEvery / 0.005) * ControlEvery;	// whole brain steps (200 Hz physics)
+}
+
 void USlapController::EndMatch(int32 Winner)
 {
-	HoldLeft = FMath::RoundToInt64(PostMatchHold / ControlEvery / 0.005) * ControlEvery;	// whole brain steps (200 Hz physics)
+	HoldLeft = HoldSteps(PostMatchHold);
 	SetHud([&](FSlapHud& H) { Winner < 0 ? ++H.Draws : ++H.Wins[Winner]; });
 }
 
@@ -752,7 +757,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		{
 			if (!bInTurn)
 			{
-				if (MatchNo > 0 && Round > Rounds && HoldLeft > 0) break;	// the match is over: let the crowd see how it ended
+				if (MatchNo > 0 && HoldLeft > 0) break;	// a turn or match just ended: let the crowd see it (StartTurn resets after)
 				if (MatchNo == 0 || Round > Rounds) StartMatch(m, d);
 				else StartTurn(m, d);
 			}

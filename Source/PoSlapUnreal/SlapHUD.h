@@ -64,7 +64,9 @@ private:
 
 	// commentary (training/commentator.py writes it)
 	FString Commentary;
-	double CommentaryAt = -100.0, CommentaryPoll = 0.0;
+	double CommentaryAt = -100.0, CommentaryPoll = 0.0, TurnAt = 0.0;
+	int32 SeenTurnRound = -1;
+	FString SeenTurnStriker;
 	FDateTime CommentaryStamp;
 
 	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> Spray;
