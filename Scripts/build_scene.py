@@ -4,6 +4,7 @@
 
 Chaos stays out: no physics asset, no collision on anything we place. MuJoCo (URLab) owns all physics.
 """
+import math
 import os
 import unreal
 
@@ -159,15 +160,59 @@ for team, prefix in (("Red", "red_"), ("Blue", "blue_")):
     v.set_editor_property("body_prefix", prefix)
     mesh = v.get_component_by_class(unreal.PoseableMeshComponent)
     mesh.set_skinned_asset_and_update(grandpa)
+    mesh.set_material(0, skin)   # the asset's slot keeps the FBX importer's untextured Material_001; override per component
     mesh.set_editor_property("overlay_material", overlay[team])
 
-sun = spawn(unreal.DirectionalLight, "Sun", (0, 0, 500), (-50, 30, 0))
-sun.light_component.set_mobility(unreal.ComponentMobility.MOVABLE)
-sun.light_component.set_editor_property("atmosphere_sun_light", True)
-sky = spawn(unreal.SkyLight, "Sky", (0, 0, 300)).light_component
-sky.set_mobility(unreal.ComponentMobility.MOVABLE)
-sky.set_editor_property("real_time_capture", True)
-spawn(unreal.SkyAtmosphere, "Atmosphere")
+# arena (Blender: Content/Art/Raw/Arena.blend -> Exports/Arena.glb): stage, safety mat, podium shell, seating, crowd,
+# truss, LED ring, roof. Built in MuJoCo coordinates (floor z = 0), so it sits at the origin. Visual only.
+env_mesh = next(a for a in import_file("Content/Art/Exports/Arena.glb", "/Game/Arena/Env") if isinstance(a, unreal.StaticMesh))
+env = spawn(unreal.StaticMeshActor, "ArenaEnvironment")
+env.static_mesh_component.set_static_mesh(env_mesh)
+env.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
+
+
+def aim(frm, to):  # (pitch, yaw, roll) pointing a light's +X from frm to to (UE cm)
+    d = [b - a for a, b in zip(frm, to)]
+    return (math.degrees(math.atan2(d[2], math.hypot(d[0], d[1]))), math.degrees(math.atan2(d[1], d[0])), 0)
+
+
+def spot(label, loc, lumens, cone, to=(0, 0, 100)):
+    s = spawn(unreal.SpotLight, label, loc, aim(loc, to))
+    c = s.spot_light_component
+    c.set_mobility(unreal.ComponentMobility.MOVABLE)
+    c.set_editor_property("intensity", lumens)
+    c.set_editor_property("outer_cone_angle", cone)
+    c.set_editor_property("inner_cone_angle", cone * 0.6)
+    c.set_editor_property("attenuation_radius", 1600.0)
+    c.set_editor_property("volumetric_scattering_intensity", 0.4)
+    return s
+
+
+# indoor arena light: a hot key on the stage, rim spots from the truss (Blender's 16 cans), dim house light, haze
+spot("KeyLight", (0, 0, 680), 4500.0, 26.0)
+for k in range(16):
+    t = k / 16 * 4; side, f = int(t), t - int(t)
+    cs = [(-350, -350), (350, -350), (350, 350), (-350, 350)]
+    (x0, y0), (x1, y1) = cs[side], cs[(side + 1) % 4]
+    spot(f"TrussSpot{k}", (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 675), 1500.0, 20.0).spot_light_component.set_editor_property("cast_shadows", False)
+for k in range(8):   # house lights over the crowd
+    a = k / 8 * 2 * math.pi
+    p = spawn(unreal.PointLight, f"HouseLight{k}", (1100 * math.cos(a), 1100 * math.sin(a), 1150))
+    pc = p.point_light_component
+    pc.set_mobility(unreal.ComponentMobility.MOVABLE)
+    pc.set_editor_property("intensity", 2500.0)
+    pc.set_editor_property("cast_shadows", False)
+    pc.set_editor_property("attenuation_radius", 1400.0)
+    pc.set_editor_property("light_color", unreal.Color(180, 190, 255, 255))
+fog = spawn(unreal.ExponentialHeightFog, "ArenaHaze", (0, 0, -60)).component
+fog.set_editor_property("fog_density", 0.002)
+fog.set_editor_property("enable_volumetric_fog", True)
+for prop in ("fog_inscattering_luminance", "fog_inscattering_color"):   # renamed across UE versions; cosmetic
+    try:
+        fog.set_editor_property(prop, unreal.LinearColor(0.01, 0.01, 0.015, 1))
+        break
+    except Exception:
+        pass
 
 # portrait 9:16 camera, side-on to the X axis the athletes face along (Blueprint 3)
 cam = spawn(unreal.CineCameraActor, "PortraitCamera", (0, -520, 130), (0, 90, 0))
@@ -181,6 +226,8 @@ cam.set_editor_property("auto_activate_for_player", unreal.AutoReceiveInput.PLAY
 pp = cc.get_editor_property("post_process_settings")   # CineCamera defaults to physical exposure: black at default light levels
 pp.set_editor_property("override_auto_exposure_method", True)
 pp.set_editor_property("auto_exposure_method", unreal.AutoExposureMethod.AEM_HISTOGRAM)
+pp.set_editor_property("override_auto_exposure_bias", True)
+pp.set_editor_property("auto_exposure_bias", -1.5)   # dark arena, hot stage
 cc.set_editor_property("post_process_settings", pp)
 
 # Chaos audit: nothing we placed may collide or simulate
