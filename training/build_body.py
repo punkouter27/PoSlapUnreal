@@ -46,7 +46,8 @@ JOINTS = {
 KP_PER_NM = 1 / 0.35   # full torque at 0.35 rad error
 KV_RATIO = 0.05        # damping = 5 % of stiffness
 ADULT_JOINT_SPEED = 12.0  # rad/s, scaled by card speed; enforced by the env, recorded here
-LENGTH_RATIO = {"thigh": (0.21, 0.28), "shin": (0.19, 0.27), "upperarm": (0.13, 0.20), "forearm": (0.10, 0.17)}
+LENGTH_RATIO = {"thigh": (0.20, 0.28), "shin": (0.17, 0.27), "upperarm": (0.13, 0.20), "forearm": (0.09, 0.17)}   # Kim's
+# auto-rigged scan sits low on shin (0.182) and forearm (0.096): ranges are a sanity check for scale/axes, not anatomy
 
 
 def b2m(p):
@@ -152,7 +153,9 @@ def athlete_geometry(sk, card):
     def add(n, *geoms):
         geo[n] = {"origin": J[n][0], "geoms": list(geoms), "mass": M * MASS[seg(n)] / 100}
 
+    k = card["height_m"] / 1.7   # torso bands were measured on Grandpa (1.70 m); they scale with height
     for n, band, zc in (("pelvis", (0.85, 0.95), None), ("belly", (1.0, 1.1), None), ("chest", (1.15, 1.3), "mid")):
+        band = (band[0] * k, band[1] * k)
         w, d, fwd = torso_band(sk, *band)
         r = 0.46 * d
         half = max(0.01, 0.46 * w - r)
@@ -277,11 +280,13 @@ def set_pose(m, d, pose, pre=""):
         d.qpos[m.joint(pre + j).qposadr[0]] = math.radians(deg)
 
 
-def stand_pose(raise_deg):
+def stand_pose(raise_deg, card=None):
+    """Arms down (abducted raise_deg), elbows soft; a card's style stance (its balancing style) overrides any joint."""
     p = {}
     for s in ("_l", "_r"):
         p["shoulder_raise" + s] = raise_deg
         p["elbow" + s] = 10
+    p.update((card or {}).get("style", {}).get("stance_deg", {}))
     return p
 
 
@@ -319,15 +324,15 @@ def fit(geo, card):
         stand = None
         if not bad:
             for r in range(-80, -54, 5):                # arms down, abducted just enough to clear the belly
-                mujoco.mj_resetData(m, d); set_pose(m, d, stand_pose(r))
+                mujoco.mj_resetData(m, d); set_pose(m, d, stand_pose(r, card))
                 if not self_overlaps(m, d):
                     stand = r
                     break
             if stand is None:
-                mujoco.mj_resetData(m, d); set_pose(m, d, stand_pose(-70))
+                mujoco.mj_resetData(m, d); set_pose(m, d, stand_pose(-70, card))
                 bad, where = self_overlaps(m, d), "stand"
         if not bad:
-            for label, p in swing_poses(stand_pose(stand)):
+            for label, p in swing_poses(stand_pose(stand, card)):
                 mujoco.mj_resetData(m, d); set_pose(m, d, p)
                 bad = self_overlaps(m, d)
                 if bad:
@@ -345,10 +350,25 @@ def fit(geo, card):
     sys.exit("A10 FAIL: overlaps remain after 25 shrink rounds")
 
 
-def balance_and_drop(xml, stand):
+def sole_gap(xml, stand, card):
+    """Lowest sole corner in the stand pose (m): a bent-knee style stance lifts the feet off the floor."""
     m = mujoco.MjModel.from_xml_string(xml)
     d = mujoco.MjData(m)
-    set_pose(m, d, stand_pose(stand))
+    set_pose(m, d, stand_pose(stand, card))
+    mujoco.mj_kinematics(m, d)
+    low = 9.0
+    for f in ("foot_l", "foot_r"):
+        g = m.geom(f).id
+        R = d.geom_xmat[g].reshape(3, 3)
+        for c in np.array(np.meshgrid([-1, 1], [-1, 1], [-1, 1])).T.reshape(-1, 3):
+            low = min(low, float((d.geom_xpos[g] + R @ (c * m.geom_size[g]))[2]))
+    return low
+
+
+def balance_and_drop(xml, stand, card):
+    m = mujoco.MjModel.from_xml_string(xml)
+    d = mujoco.MjData(m)
+    set_pose(m, d, stand_pose(stand, card))
     mujoco.mj_forward(m, d)
     com = d.subtree_com[m.body("pelvis").id]
     feet = (d.geom_xpos[m.geom("foot_l").id] + d.geom_xpos[m.geom("foot_r").id]) / 2
@@ -395,8 +415,12 @@ def main():
         target += (f'    <geom name="podium" type="box" pos="{fmt([root[0] + GAP / 2, root[1], pod_h / 2])}" '
                    f'size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n')
         solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
+        if card.get("style", {}).get("stance_deg"):   # style stance: lower the root until the soles stand on the floor
+            root = root - [0, 0, sole_gap(solo, stand, card) - 0.001]
+            solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
+            print(f"style stance: root lowered to {root[2]:.3f} m, soles {sole_gap(solo, stand, card) * 1000:.1f} mm")
         (out / f"{card['name']}_solo.xml").write_text(solo)
-        m, off, up = balance_and_drop(solo, stand)
+        m, off, up = balance_and_drop(solo, stand, card)
         joints = [m.joint(m.actuator_trnid[i, 0]).name for i in range(m.nu)]
         fp = {"mujoco": mujoco.__version__, "model": f"{card['name']}_solo.xml",
               "sha256": hashlib.sha256(solo.encode()).hexdigest(),
@@ -410,7 +434,7 @@ def main():
               "ctrl_range_rad": m.actuator_ctrlrange.tolist(),
               "torque_limit_nm": m.actuator_forcerange[:, 1].tolist(),
               "max_joint_speed_rad_s": ADULT_JOINT_SPEED * card["speed"],
-              "stand_pose_deg": stand_pose(stand), "stand_pose_rad": {k: math.radians(v) for k, v in stand_pose(stand).items()},
+              "stand_pose_deg": stand_pose(stand, card), "stand_pose_rad": {k: math.radians(v) for k, v in stand_pose(stand, card).items()},
               "root_height_m": float(root[2]),
               "geom_scale": scale, "balance_offset_m": off.tolist(), "drop_test_upright_s": up,
               "card": card}

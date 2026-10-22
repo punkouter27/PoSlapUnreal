@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Menu Actions</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:220px;margin:0}img{width:100%;border:1px solid #ccc}</style>
+<h1>Menu actions and the roster (2026-10-22)</h1>
+<p>Before: the menu only showed the match. After: the MATCH tab picks each corner's brain with &lt; &gt;.
+Only brains made for that corner's character are offered (<code>/Game/Brains/&lt;card&gt;_*</code>). START NEW MATCH abandons the match in progress, unscored,
+and starts a fresh one with the picks. A new ROSTER tab lists every character card: tape, balancing and slapping style, and the brains that exist for it.
+Kim shows "none yet (in training)" until she graduates.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="menu_tab0.png"><figcaption>After: MATCH</figcaption></figure><figure><img src="menu_tab1.png"><figcaption>After: ROSTER</figcaption></figure></div>
+<p>Check: <code>-SlapUiTest</code> clicks MENU, VIEW, telemetry, scrim, MENU, MATCH, red &gt;, START, MENU, X with synthetic events hit-tested in the game window.
+Result: PASS, 10/10. After START, red played the picked brain in a new match (grandpa_L2_wip → grandpa_final), and a match then ended normally and the next began.
+Two earlier runs failed with no click registering. That cause isn't confirmed yet; each click now logs where it landed.</p>

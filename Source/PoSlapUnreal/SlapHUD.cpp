@@ -1,5 +1,6 @@
 #include "SlapHUD.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/LightComponent.h"
@@ -13,6 +14,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "Input/HittestGrid.h"
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -20,6 +22,9 @@
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "NNEModelData.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -93,7 +98,7 @@ void ASlapHUD::BeginPlay()
 	FParse::Value(FCommandLine::Get(), TEXT("SlapFxTest="), FxTestAt);
 	bMenu = FParse::Value(FCommandLine::Get(), TEXT("SlapMenu="), Tab);
 	bUiTest = FParse::Param(FCommandLine::Get(), TEXT("SlapUiTest"));
-	Tab = FMath::Clamp(Tab, 0, 2);
+	Tab = FMath::Clamp(Tab, 0, 3);
 	BuildUi();
 	// broadcast assets (Scripts/broadcast_fx.py); a missing one is skipped
 	Spray = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_SlapSpray.NS_SlapSpray"));
@@ -228,7 +233,14 @@ void ASlapHUD::BuildUi()
 		PC->SetShowMouseCursor(true);
 		PC->SetInputMode(FInputModeGameAndUI().SetHideCursorDuringCapture(false));
 	}
+	IAssetRegistry& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	AR.ScanPathsSynchronous({ TEXT("/Game/Brains") });
+	AR.GetAssetsByPath(FName(TEXT("/Game/Brains")), Brains, true);
+	Brains.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UNNEModelData::StaticClass()->GetClassPathName(); });
+	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
+
 	TWeakObjectPtr<ASlapHUD> Self(this);
+	TSharedPtr<SWidget> Spare;	// SAssignNew needs somewhere to put the widgets the test doesn't click
 	static const FSlateRoundedBoxBrush SheetBrush(FLinearColor(0.02f, 0.02f, 0.03f, 0.95f), FVector4(18.f, 18.f, 0.f, 0.f));
 	static const FSlateColorBrush ScrimBrush(FLinearColor(0.f, 0.f, 0.f, 0.5f));
 	const FLinearColor White = FLinearColor::White, Dim(Grey), Hi(Gold);
@@ -245,7 +257,7 @@ void ASlapHUD::BuildUi()
 	auto Close = [Menu] { return Menu(false); };
 	auto TabButton = [&](int32 i, const TCHAR* Name)
 	{
-		return SAssignNew(Hit[i == 1 ? 1 : 5], SButton).HAlign(HAlign_Center).OnClicked_Lambda([Self, i] { if (Self.IsValid()) Self->Tab = i; return FReply::Handled(); })
+		return SAssignNew(i == 0 ? Hit[HitTabMatch] : i == 2 ? Hit[HitTabView] : Spare, SButton).HAlign(HAlign_Center).OnClicked_Lambda([Self, i] { if (Self.IsValid()) Self->Tab = i; return FReply::Handled(); })
 			[Label(FText::FromString(Name), 18, TAttribute<FSlateColor>::CreateLambda([Self, i, Hi, Dim] { return FSlateColor(Self.IsValid() && Self->Tab == i ? Hi : Dim); }))];
 	};
 	auto Toggle = [&](const TCHAR* Name, bool ASlapHUD::* Flag)
@@ -254,7 +266,7 @@ void ASlapHUD::BuildUi()
 			.IsChecked_Lambda([Self, Flag] { return Self.IsValid() && (*Self).*Flag ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
 			.OnCheckStateChanged_Lambda([Self, Flag](ECheckBoxState St) { if (Self.IsValid()) (*Self).*Flag = St == ECheckBoxState::Checked; })
 			[Label(FText::FromString(Name), 18, White, true)];
-		if (Flag == &ASlapHUD::bShowTelemetry) Hit[2] = Box;
+		if (Flag == &ASlapHUD::bShowTelemetry) Hit[HitTelemetry] = Box;
 		return Box;
 	};
 	auto MatchText = [Self]
@@ -266,6 +278,59 @@ void ASlapHUD::BuildUi()
 		T += FString::Printf(TEXT("\nSERIES   RED %d - %d BLUE   (%d drawn)"), H.Wins[0], H.Wins[1], H.Draws);
 		if (!H.Result.IsEmpty()) T += TEXT("\nLast result: ") + H.Result;
 		return FText::FromString(T);
+	};
+	auto Fits = [Self](int32 a)	// brains made for corner a's character
+	{
+		TArray<int32> Out;
+		if (!Self.IsValid() || !Self->Controller.IsValid()) return Out;
+		const FString Card = Self->Controller->GetHud().Card[a] + TEXT("_");
+		for (int32 i = 0; i < Self->Brains.Num(); ++i)
+		{
+			if (Self->Brains[i].AssetName.ToString().StartsWith(Card)) Out.Add(i);
+		}
+		return Out;
+	};
+	auto Step = [Self, Fits](int32 a, int32 Dir)
+	{
+		const TArray<int32> F = Fits(a);
+		if (F.Num() == 0) return FReply::Handled();
+		int32& P = Self->Pick[a];
+		if (P == INDEX_NONE)	// from the brain the corner plays now
+		{
+			const FName Now(*Self->Controller->GetHud().Brain[a]);
+			P = Self->Brains.IndexOfByPredicate([&](const FAssetData& B) { return B.AssetName == Now; });
+		}
+		const int32 k = F.Find(P);
+		P = F[k == INDEX_NONE ? 0 : (k + Dir + F.Num()) % F.Num()];
+		return FReply::Handled();
+	};
+	auto Corner = [&](int32 a)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[SNew(SBox).WidthOverride(80.f)[Label(FText::FromString(a ? TEXT("BLUE") : TEXT("RED")), 18, FLinearColor(TeamColor[a]))]]
+			+ SHorizontalBox::Slot().AutoWidth()[SNew(SButton).OnClicked_Lambda([Step, a] { return Step(a, -1); })[Label(FText::FromString(TEXT(" < ")), 18, White)]]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).HAlign(HAlign_Center)
+			[Label(TAttribute<FText>::CreateLambda([Self, a]
+			{
+				if (!Self.IsValid()) return FText();
+				const int32 P = Self->Pick[a];
+				return FText::FromString(P != INDEX_NONE ? Self->Brains[P].AssetName.ToString() : Self->Controller.IsValid() ? Self->Controller->GetHud().Brain[a] : FString());
+			}), 18, Hi)]
+			+ SHorizontalBox::Slot().AutoWidth()
+			[SAssignNew(a == 0 ? Hit[HitRedNext] : Spare, SButton).OnClicked_Lambda([Step, a] { return Step(a, 1); })[Label(FText::FromString(TEXT(" > ")), 18, White)]];
+	};
+	auto Start = [Self, Menu]
+	{
+		if (!Self.IsValid() || !Self->Controller.IsValid()) return FReply::Handled();
+		UNNEModelData* B[2] = {};
+		for (int32 a = 0; a < 2; ++a)
+		{
+			if (Self->Pick[a] != INDEX_NONE) B[a] = Cast<UNNEModelData>(Self->Brains[Self->Pick[a]].GetAsset());
+		}
+		Self->Controller->RequestMatch(B[0], B[1]);
+		Self->Pick[0] = Self->Pick[1] = INDEX_NONE;	// the corners play them now
+		return Menu(false);
 	};
 
 	Ui = SNew(SOverlay)
@@ -288,7 +353,7 @@ void ASlapHUD::BuildUi()
 				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
 				[
 					SNew(SBox).HeightOverride(TopBar).VAlign(VAlign_Center).Padding(FMargin(8.f, 4.f))
-					[SAssignNew(Hit[0], SButton).OnClicked_Lambda([Self, Menu] { return Menu(Self.IsValid() && !Self->bMenu); })[Label(FText::FromString(TEXT("MENU")), 18, White)]]
+					[SAssignNew(Hit[HitMenu], SButton).OnClicked_Lambda([Self, Menu] { return Menu(Self.IsValid() && !Self->bMenu); })[Label(FText::FromString(TEXT("MENU")), 18, White)]]
 				]
 				+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
 				[
@@ -313,7 +378,7 @@ void ASlapHUD::BuildUi()
 			SNew(SOverlay)
 			.Visibility_Lambda([Self] { return Self.IsValid() && Self->bMenu ? EVisibility::Visible : EVisibility::Collapsed; })
 			+ SOverlay::Slot()
-			[SAssignNew(Hit[3], SBorder).BorderImage(&ScrimBrush).OnMouseButtonDown_Lambda([Close](const FGeometry&, const FPointerEvent&) { return Close(); })]
+			[SAssignNew(Hit[HitScrim], SBorder).BorderImage(&ScrimBrush).OnMouseButtonDown_Lambda([Close](const FGeometry&, const FPointerEvent&) { return Close(); })]
 			+ SOverlay::Slot().VAlign(VAlign_Bottom)
 			[
 				SNew(SBorder).BorderImage(&SheetBrush).Padding(FMargin(16.f, 16.f, 16.f, 8.f))
@@ -325,14 +390,24 @@ void ASlapHUD::BuildUi()
 						[
 							SNew(SHorizontalBox)
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(0, TEXT("MATCH"))]
-							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(1, TEXT("VIEW"))]
-							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(2, TEXT("ABOUT"))]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(2.f)[SAssignNew(Hit[4], SButton).OnClicked_Lambda(Close)[Label(FText::FromString(TEXT(" X ")), 18, White)]]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(1, TEXT("ROSTER"))]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(2, TEXT("VIEW"))]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(3, TEXT("ABOUT"))]
+							+ SHorizontalBox::Slot().AutoWidth().Padding(2.f)[SAssignNew(Hit[HitClose], SButton).OnClicked_Lambda(Close)[Label(FText::FromString(TEXT(" X ")), 18, White)]]
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(8.f, 20.f, 8.f, 12.f))
 						[
 							SNew(SWidgetSwitcher).WidgetIndex_Lambda([Self] { return Self.IsValid() ? Self->Tab : 0; })
-							+ SWidgetSwitcher::Slot()[Label(TAttribute<FText>::CreateLambda(MatchText), 16, White, true)]
+							+ SWidgetSwitcher::Slot()
+							[
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda(MatchText), 16, White, true)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 14.f, 0.f, 4.f)[Corner(0)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f)[Corner(1)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
+								[SAssignNew(Hit[HitStart], SButton).HAlign(HAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START NEW MATCH")), 18, White)]]
+							]
+							+ SWidgetSwitcher::Slot()[Label(FText::FromString(RosterText()), 16, White, true)]
 							+ SWidgetSwitcher::Slot()
 							[
 								SNew(SVerticalBox)
@@ -355,44 +430,101 @@ void ASlapHUD::BuildUi()
 	VC->AddViewportWidgetContent(Ui.ToSharedRef(), 10);
 }
 
+FString ASlapHUD::RosterText() const
+{
+	// every character card: the tape, its style, the brains made for it (a new one shows "in training" until it graduates)
+	// ponytail: read from training/ beside the project; a packaged (Android) build needs the cards staged with the content
+	const FString Dir = FPaths::ProjectDir() / TEXT("training/characters");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Dir / TEXT("*.json")), true, false);
+	Files.Sort();
+	FString T;
+	for (const FString& F : Files)
+	{
+		FString Raw;
+		TSharedPtr<FJsonObject> C;
+		if (F.EndsWith(TEXT("_skeleton.json")) || !FFileHelper::LoadFileToString(Raw, *(Dir / F)) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), C) || !C) continue;
+		const FString Name = C->GetStringField(TEXT("name"));
+		FString Mine;
+		for (const FAssetData& B : Brains)
+		{
+			if (B.AssetName.ToString().StartsWith(Name + TEXT("_"))) Mine += (Mine.IsEmpty() ? TEXT("") : TEXT(", ")) + B.AssetName.ToString().RightChop(Name.Len() + 1);
+		}
+		const TSharedPtr<FJsonObject>* Style = nullptr;
+		const FString Summary = C->TryGetObjectField(TEXT("style"), Style) ? (*Style)->GetStringField(TEXT("summary")) : FString();
+		T += FString::Printf(TEXT("%s%s   %.2f m  %.0f kg\nSTR %.2f  SPD %.2f  FLX %.2f  TGH %.2f\n%s\nBrains: %s\n"), T.IsEmpty() ? TEXT("") : TEXT("\n"),
+			*C->GetStringField(TEXT("display")), C->GetNumberField(TEXT("height_m")), C->GetNumberField(TEXT("mass_kg")), C->GetNumberField(TEXT("strength")),
+			C->GetNumberField(TEXT("speed")), C->GetNumberField(TEXT("flexibility")), C->GetNumberField(TEXT("toughness")), *Summary,
+			Mine.IsEmpty() ? TEXT("none yet (in training)") : *Mine);
+	}
+	return T;
+}
+
 void ASlapHUD::UiTest(const FSlapHud& H)
 {
 	// -SlapUiTest: synthetic Slate clicks at the real widgets (hit-testing included, the OS cursor untouched), one every
-	// 1.5 s from 3 s: menu, VIEW tab, telemetry toggle, scrim, menu, X; each followed by its expected state. Then waits
-	// for a match to end and the next to start (Gameplay -> Win/Loss -> Loop Reset). Logs PASS or FAIL.
+	// 1.5 s from 3 s: menu, VIEW, telemetry toggle, scrim, menu, MATCH, red's next brain, START (a new match with that
+	// brain), menu, X; each followed by its expected state. Then waits for a match to end and the next to start
+	// (Gameplay -> Win/Loss -> Loop Reset). Logs PASS or FAIL.
 	struct FStep { int32 Target; bool bMenuAfter; int32 TabAfter; bool bTelemetryAfter; };
-	static const FStep Steps[] = { { 0, true, 0, true }, { 1, true, 1, true }, { 2, true, 1, false }, { 3, false, 1, false }, { 0, true, 1, false }, { 4, false, 1, false } };
+	static const FStep Steps[] = { { HitMenu, true, 0, true }, { HitTabView, true, 2, true }, { HitTelemetry, true, 2, false },
+		{ HitScrim, false, 2, false }, { HitMenu, true, 2, false }, { HitTabMatch, true, 0, false }, { HitRedNext, true, 0, false },
+		{ HitStart, false, 0, false }, { HitMenu, true, 0, false }, { HitClose, false, 0, false } };
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (UiMatch0 == 0 && H.Match > 0) UiMatch0 = H.MatchSeq;
+	if (UiMatch0 == 0 && H.Match > 0) UiMatch0 = H.Wins[0] + H.Wins[1] + H.Draws + 1;	// series tally + 1: START abandons, only a real end counts
 	if (UiStep > 0 && UiStep <= UE_ARRAY_COUNT(Steps))	// check the last click, a frame or more later
 	{
 		const FStep& Was = Steps[UiStep - 1];
 		if (Now >= UiAt + 0.5 && !bUiChecked)
 		{
 			bUiChecked = true;
-			const bool bOk = bMenu == Was.bMenuAfter && Tab == Was.TabAfter && bShowTelemetry == Was.bTelemetryAfter;
+			bool bOk = bMenu == Was.bMenuAfter && Tab == Was.TabAfter && bShowTelemetry == Was.bTelemetryAfter;
+			FString Extra;
+			if (Was.Target == HitStart)	// a fresh match, red playing the brain it picked
+			{
+				bOk &= H.MatchSeq > UiSeq && H.Brain[0] == UiBrain;
+				Extra = FString::Printf(TEXT(", match seq %d -> %d, red brain %s (picked %s)"), UiSeq, H.MatchSeq, *H.Brain[0], *UiBrain);
+			}
 			UiFails += !bOk;
-			UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test click %d (target %d): menu %d tab %d telemetry %d - %s"), UiStep, Was.Target, bMenu, Tab, bShowTelemetry, bOk ? TEXT("ok") : TEXT("WRONG"));
+			UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test click %d (target %d): menu %d tab %d telemetry %d%s - %s"), UiStep, Was.Target, bMenu, Tab, bShowTelemetry, *Extra, bOk ? TEXT("ok") : TEXT("WRONG"));
 		}
 	}
 	if (UiStep < UE_ARRAY_COUNT(Steps) && Now >= 3.0 + 1.5 * UiStep)
 	{
 		const TSharedPtr<SWidget> W = Hit[Steps[UiStep].Target];
+		if (Steps[UiStep].Target == HitStart)
+		{
+			UiSeq = H.MatchSeq;
+			UiBrain = Pick[0] != INDEX_NONE ? Brains[Pick[0]].AssetName.ToString() : H.Brain[0];
+		}
 		FSlateApplication& App = FSlateApplication::Get();
-		const FVector2D P = W.IsValid() ? FVector2D(W->GetTickSpaceGeometry().GetAbsolutePositionAtCoordinates(FVector2f(0.5f, Steps[UiStep].Target == 3 ? 0.2f : 0.5f))) : FVector2D::ZeroVector;
-		const FPointerEvent E(App.GetUserIndexForMouse(), FSlateApplication::CursorPointerIndex, P, P, TSet<FKey>({ EKeys::LeftMouseButton }), EKeys::LeftMouseButton, 0.f, FModifierKeysState());
-		App.ProcessMouseMoveEvent(FPointerEvent(App.GetUserIndexForMouse(), FSlateApplication::CursorPointerIndex, P, P, TSet<FKey>(), EKeys::Invalid, 0.f, FModifierKeysState()));	// hover: SButton clicks only when hovered
-		App.ProcessMouseButtonDownEvent(nullptr, E);
-		App.ProcessMouseButtonUpEvent(FPointerEvent(App.GetUserIndexForMouse(), FSlateApplication::CursorPointerIndex, P, P, TSet<FKey>(), EKeys::LeftMouseButton, 0.f, FModifierKeysState()));
+		const FVector2D P = W.IsValid() ? FVector2D(W->GetTickSpaceGeometry().GetAbsolutePositionAtCoordinates(FVector2f(0.5f, Steps[UiStep].Target == HitScrim ? 0.2f : 0.5f))) : FVector2D::ZeroVector;
+		// hit-tested in the game window itself (the Process*Event path asks the OS which window is under the real cursor)
+		const int32 User = App.GetUserIndexForMouse();
+		const TSharedPtr<SWindow> Win = GetWorld()->GetGameViewport() ? GetWorld()->GetGameViewport()->GetWindow() : nullptr;
+		const FWidgetPath Path = Win ? FWidgetPath(Win->GetHittestGrid().GetBubblePath(P, App.GetCursorRadius(), false, User)) : FWidgetPath();
+		auto Ev = [&](const TSet<FKey>& Down, const FKey& Button) { return FPointerEvent(User, FSlateApplication::CursorPointerIndex, P, P, Down, Button, 0.f, FModifierKeysState()); };
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test click at %s, window %s + %s, hit %s"), *P.ToString(), Win ? *Win->GetPositionInScreen().ToString() : TEXT("-"),
+			Win ? *Win->GetSizeInScreen().ToString() : TEXT("-"), Path.IsValid() ? *Path.GetLastWidget()->GetTypeAsString() : TEXT("nothing"));
+		App.RoutePointerMoveEvent(Path, Ev({}, EKeys::Invalid), false);	// hover: SButton clicks only when hovered
+		App.RoutePointerDownEvent(Path, Ev({ EKeys::LeftMouseButton }, EKeys::LeftMouseButton));
+		App.RoutePointerUpEvent(Path, Ev({}, EKeys::LeftMouseButton));
 		++UiStep;
 		UiAt = Now;
 		bUiChecked = false;
 	}
-	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && !bUiDone && UiMatch0 > 0 && H.MatchSeq > UiMatch0)	// a match ended and the next began
+	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && !bUiDone && UiMatch0 > 0 && H.Wins[0] + H.Wins[1] + H.Draws >= UiMatch0 && H.Match > 0 && H.Result.IsEmpty())	// a match ended, the next began
 	{
 		bUiDone = true;
-		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test %s: %d of %d clicks wrong; match %d ended, match %d began"), UiFails ? TEXT("FAIL") : TEXT("PASS"),
-			UiFails, (int32)UE_ARRAY_COUNT(Steps), UiMatch0, H.MatchSeq);
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test %s: %d of %d clicks wrong; a match ended (series %d-%d, %d drawn) and match %d began"), UiFails ? TEXT("FAIL") : TEXT("PASS"),
+			UiFails, (int32)UE_ARRAY_COUNT(Steps), H.Wins[0], H.Wins[1], H.Draws, H.Match);
+		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);	// short: training shares this machine
+	}
+	else if (!bUiDone && Now > 120.0)
+	{
+		bUiDone = true;
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test FAIL: %d of %d clicks wrong, no match ended within 120 s"), UiFails, (int32)UE_ARRAY_COUNT(Steps));
+		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
 	}
 }
 

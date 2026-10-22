@@ -1,0 +1,324 @@
+{
+ "mujoco": "3.10.0",
+ "model": "kim_solo.xml",
+ "sha256": "1456f8ddb794cb3649d7ff59b2828786d815da04370da1ca7308984a45476219",
+ "option": {
+  "timestep": 0.005,
+  "integrator": 3,
+  "solver": 2,
+  "iterations": 100,
+  "gravity": [
+   0.0,
+   0.0,
+   -9.81
+  ]
+ },
+ "sizes": {
+  "nq": 37,
+  "nv": 36,
+  "nu": 30,
+  "nbody": 19,
+  "ngeom": 20
+ },
+ "mass_kg": 60.0,
+ "body_mass": {
+  "target": 3.054,
+  "pelvis": 8.52,
+  "belly": 8.34,
+  "chest": 12.96,
+  "neck": 0.72,
+  "head": 4.14,
+  "upperarm_l": 1.68,
+  "forearm_l": 0.96,
+  "hand_l": 0.36,
+  "upperarm_r": 1.68,
+  "forearm_r": 0.96,
+  "hand_r": 0.36,
+  "thigh_l": 6.0,
+  "shin_l": 2.79,
+  "foot_l": 0.87,
+  "thigh_r": 6.0,
+  "shin_r": 2.79,
+  "foot_r": 0.87
+ },
+ "control_hz": 50,
+ "physics_hz": 200,
+ "joint_order": [
+  "waist_twist",
+  "waist_flex",
+  "waist_side",
+  "neck_turn",
+  "neck_nod",
+  "neck_tilt",
+  "shoulder_swing_l",
+  "shoulder_raise_l",
+  "shoulder_twist_l",
+  "elbow_l",
+  "wrist_flex_l",
+  "wrist_dev_l",
+  "shoulder_swing_r",
+  "shoulder_raise_r",
+  "shoulder_twist_r",
+  "elbow_r",
+  "wrist_flex_r",
+  "wrist_dev_r",
+  "hip_flex_l",
+  "hip_abd_l",
+  "hip_rot_l",
+  "knee_l",
+  "ankle_flex_l",
+  "ankle_roll_l",
+  "hip_flex_r",
+  "hip_abd_r",
+  "hip_rot_r",
+  "knee_r",
+  "ankle_flex_r",
+  "ankle_roll_r"
+ ],
+ "ctrl_range_rad": [
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -0.3490658402442932,
+   1.0471975803375244
+  ],
+  [
+   -0.5235987901687622,
+   0.5235987901687622
+  ],
+  [
+   -1.2217304706573486,
+   1.2217304706573486
+  ],
+  [
+   -0.6981316804885864,
+   0.8726646304130554
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ]
+ ],
+ "torque_limit_nm": [
+  72.0,
+  120.0,
+  96.0,
+  20.399999618530273,
+  20.399999618530273,
+  20.399999618530273,
+  54.0,
+  54.0,
+  36.0,
+  42.0,
+  12.0,
+  9.0,
+  54.0,
+  54.0,
+  36.0,
+  42.0,
+  12.0,
+  9.0,
+  132.0,
+  96.0,
+  60.0,
+  132.0,
+  108.0,
+  36.0,
+  132.0,
+  96.0,
+  60.0,
+  132.0,
+  108.0,
+  36.0
+ ],
+ "max_joint_speed_rad_s": 11.399999999999999,
+ "stand_pose_deg": {
+  "shoulder_raise_l": -22,
+  "elbow_l": 96,
+  "shoulder_raise_r": -64,
+  "elbow_r": 90,
+  "knee_l": 25,
+  "knee_r": 25,
+  "hip_flex_l": 6,
+  "hip_flex_r": 6,
+  "hip_abd_l": 5,
+  "hip_abd_r": 5,
+  "ankle_flex_l": 19,
+  "ankle_flex_r": 19,
+  "ankle_roll_l": -5,
+  "ankle_roll_r": -5,
+  "waist_flex": 8,
+  "shoulder_swing_l": -60,
+  "shoulder_twist_l": 0,
+  "shoulder_swing_r": -22,
+  "shoulder_twist_r": 26
+ },
+ "stand_pose_rad": {
+  "shoulder_raise_l": -0.3839724354387525,
+  "elbow_l": 1.6755160819145565,
+  "shoulder_raise_r": -1.117010721276371,
+  "elbow_r": 1.5707963267948966,
+  "knee_l": 0.4363323129985824,
+  "knee_r": 0.4363323129985824,
+  "hip_flex_l": 0.10471975511965978,
+  "hip_flex_r": 0.10471975511965978,
+  "hip_abd_l": 0.08726646259971647,
+  "hip_abd_r": 0.08726646259971647,
+  "ankle_flex_l": 0.33161255787892263,
+  "ankle_flex_r": 0.33161255787892263,
+  "ankle_roll_l": -0.08726646259971647,
+  "ankle_roll_r": -0.08726646259971647,
+  "waist_flex": 0.13962634015954636,
+  "shoulder_swing_l": -1.0471975511965976,
+  "shoulder_twist_l": 0.0,
+  "shoulder_swing_r": -0.3839724354387525,
+  "shoulder_twist_r": 0.4537856055185257
+ },
+ "root_height_m": 0.7889877207293582,
+ "geom_scale": {
+  "thigh_l": 0.9025,
+  "thigh_r": 0.9025
+ },
+ "balance_offset_m": [
+  0.01238701512703489,
+  -5.972016056396208e-05
+ ],
+ "drop_test_upright_s": 2.9999999999999583,
+ "card": {
+  "name": "kim",
+  "display": "KIM",
+  "mesh": "Content/Art/Exports/Kim_rigged.fbx",
+  "skeleton": "characters/kim_skeleton.json",
+  "height_m": 1.63,
+  "mass_kg": 60.0,
+  "strength": 0.6,
+  "speed": 0.95,
+  "flexibility": 1.0,
+  "toughness": 0.85,
+  "stamina_per_strike": 0.035,
+  "neck_damage_per_snap": 0.05,
+  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength.",
+  "style": {
+   "summary": "Balance: a low, bouncy athletic stance - knees bent 25 deg, feet a little wider, weight on the balls of the feet, a high guard (lead hand by the chin, slapping hand cocked at the chest). Slap: short and snappy - little wind-up, high elbow, a late elbow and wrist whip.",
+   "stance_deg": {
+    "knee_l": 25,
+    "knee_r": 25,
+    "hip_flex_l": 6,
+    "hip_flex_r": 6,
+    "hip_abd_l": 5,
+    "hip_abd_r": 5,
+    "ankle_flex_l": 19,
+    "ankle_flex_r": 19,
+    "ankle_roll_l": -5,
+    "ankle_roll_r": -5,
+    "waist_flex": 8,
+    "shoulder_swing_l": -60,
+    "shoulder_raise_l": -22,
+    "shoulder_twist_l": 0,
+    "elbow_l": 96,
+    "shoulder_swing_r": -22,
+    "shoulder_raise_r": -64,
+    "shoulder_twist_r": 26,
+    "elbow_r": 90
+   }
+  }
+ }
+}

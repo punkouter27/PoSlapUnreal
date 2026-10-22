@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AssetRegistry/AssetData.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
 #include "SlapHUD.generated.h"
@@ -24,7 +25,8 @@ struct FSlapHud;
  * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
  * Slate layer inside the safe zone: title, FPS, menu, debug line, build stamp at the corners; the menu is a tabbed bottom
- * sheet (match, view toggles, legend). `-SlapMenu=<tab>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it.
+ * sheet: MATCH (pick each corner's brain, start a new match), ROSTER (every character card), VIEW (toggles), ABOUT
+ * (legend). `-SlapMenu=<0-3>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it.
  */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
@@ -47,6 +49,7 @@ private:
 	void Stage(double Now);					// light flare on a strike, chase on a KO
 	void Text(const FString& Str, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
 	void BuildUi();
+	FString RosterText() const;	// training/characters/*.json: stats, style, brains
 	void UiTest(const FSlapHud& H);
 
 	TWeakObjectPtr<USlapController> Controller;
@@ -63,9 +66,13 @@ private:
 	TSharedPtr<SWidget> Ui;
 	int32 Tab = 0;
 	bool bMenu = false, bShowTelemetry = true, bShowCommentary = true, bShowDebug = true;
-	TSharedPtr<SWidget> Hit[6];	// click targets for -SlapUiTest: menu, VIEW tab, telemetry toggle, scrim, X, other tabs
+	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
+	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
+	enum EHit { HitMenu, HitTabMatch, HitTabView, HitTelemetry, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
+	TSharedPtr<SWidget> Hit[HitCount];	// click targets for -SlapUiTest
 	bool bUiTest = false, bUiChecked = false, bUiDone = false;
-	int32 UiStep = 0, UiFails = 0, UiMatch0 = 0;
+	int32 UiStep = 0, UiFails = 0, UiMatch0 = 0, UiSeq = 0;
+	FString UiBrain;	// the brain red should play after the test's START
 	double UiAt = 0.0;
 
 	// cue state (game time)

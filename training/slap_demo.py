@@ -1,7 +1,7 @@
 """The reference slap (L2 imitation): wind-up, strike, follow-through, found by search in CPU MuJoCo under the brain's
 own limits, then imitated by the brain while it learns to strike (envs/slap.py).
 
-    .venv/Scripts/python.exe slap_demo.py search     -> models/<char>_slap_demo.json (keyframes + per-brain-step reference)
+    .venv/Scripts/python.exe slap_demo.py search [--char kim]  -> models/<char>_slap_demo.json (keyframes + per-brain-step reference)
     .venv/Scripts/python.exe slap_demo.py check      (replays it on 20 variations: hit, palm, speed, stays up)
     .venv/Scripts/python.exe slap_demo.py video out.gif
 
@@ -12,7 +12,7 @@ is the arena opponent's head (L2's mocap sphere); the podium is in the model and
 Scored on the first contact with the target: palm, speed, staying up 1.5 s after, feet in the box; averaged over
 target jitter and start noise so the motion is robust enough to imitate. Search: cross-entropy from an anatomical guess.
 """
-import json, math, sys
+import json, math, os, sys
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -22,7 +22,9 @@ import numpy as np
 from brain_cpu import Athlete, stand
 
 HERE = Path(__file__).parent
-CHAR = "grandpa"
+if "--char" in sys.argv:   # before the pool starts: workers re-import this module and read it from the environment
+    os.environ["POSLAP_CHAR"] = sys.argv[sys.argv.index("--char") + 1]
+CHAR = os.environ.get("POSLAP_CHAR", "grandpa")
 OPP_HEAD = np.array([0.8015, 0.0, 0.74])
 BOX = (0.20, 0.25)
 # joint: (wind-up, strike, follow-through) degrees, the anatomical starting guess (probed: + twist = right shoulder forward,
@@ -41,6 +43,12 @@ DELAY = {"hip_rot_l": 0.0, "hip_rot_r": 0.0, "waist_twist": 0.02, "waist_flex": 
 KEYS = list(GUESS)
 TIMES = (0.45, 0.22, 0.20)          # s to reach each pose
 SIG_DEG, SIG_T = 15.0, 0.06
+# a card's slapping style replaces the starting guess, timing, whip delays and how far the search may wander from them
+_style = json.loads((HERE / "characters" / f"{CHAR}.json").read_text()).get("style", {}).get("slap")
+if _style:
+    GUESS = {k: tuple(v) for k, v in _style["guess_deg"].items()}
+    DELAY, TIMES, SIG_DEG = _style["delays_s"], tuple(_style["times_s"]), _style.get("search_sigma_deg", SIG_DEG)
+    KEYS = list(GUESS)
 
 
 def setup():
@@ -145,7 +153,7 @@ def search(iters=150, pop=96, elite=12):
     sig = np.array([SIG_DEG] * (3 * len(KEYS)) + [SIG_T] * 3 + [0.03] * len(DELAY))
     mu, best = x0.copy(), (-1e9, x0)
     rng = np.random.default_rng(0)
-    with Pool(16) as P:
+    with Pool(int(os.environ.get("POSLAP_PROCS", 16))) as P:
         for it in range(iters):
             xs = mu + rng.standard_normal((pop, len(mu))) * sig
             xs[0] = best[1]

@@ -75,3 +75,22 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
 - [x] #10 KO clips + Pixel Streaming — `Scripts/clipper.py` (rolling 20 s buffer, KO / strike clips to `Saved/Clips`, 9:16, video only); `Scripts/stream.ps1` (PixelStreaming2 plugin, Epic's UE5.8 signalling server in `Saved/PixelStreaming`, http://localhost/)
 - [x] Reactive FX (user: GFX & audio picks) — key + striker's rim flare on a touch, truss chase + drained/vignetted grade on a KO, cheek flush (neck damage + sting, follows the head) and greyer skin (stamina) on `M_Grandpa` (`broadcast_fx.add_wear`), slap spatialised at the contact; `-SlapFxTest=<s>` fakes a strike + KO for checks (`SCREENSHOTS/261022_reactive_fx`). Skipped: MetaSounds friction, decals, mesh upgrade, perf HUD
 - [ ] Performance pass (60 fps), save, mark complete — 69–79 fps at 540×960 with training on the GPU (fps logged every 10 s); re-check with a trained brain
+- [x] Mobile portrait UI — Slate corner anchors in the safe zone (title, FPS, MENU | debug, build stamp), tabbed bottom-sheet menu, `-SlapUiTest` (`SCREENSHOTS/261022_mobile_ui`)
+- [x] Menu actions (user 2026-10-22) — MATCH tab: pick each corner's brain (`/Game/Brains`, only those made for that corner's character), START NEW MATCH (`USlapController::RequestMatch`: brains built on the game thread, swapped on the physics thread, the match in progress abandoned unscored); ROSTER tab: every card's tape, style, brains (`SCREENSHOTS/261022_menu_actions`)
+
+## Phase D — Roster: second athlete (Kim)
+User 2026-10-22: "make this person the 2nd player in the roster, train her and give her a unique slapping and balancing style". Rule: a new mesh runs the whole ladder on her own before any pairing.
+- [x] D1 `kimrigged.fbx` (Mixamo-style auto-rig, 28 bones) → our 17-bone athlete: `Scripts/rig_mixamo.py` (headless Blender) bakes the T-pose, scales to 1.63 m, merges vertex groups (spine1+spine2+clavicles → chest, toes → foot), 4 weights/vertex; `Content/Art/Raw/Kim_raw.blend` (original), `Kim_rigged.blend`, `Content/Art/Exports/Kim_rigged.fbx`, `training/characters/kim_skeleton.json`
+- [x] D2 Card `kim.json`: 1.63 m, 60 kg, STR 0.60, SPD 0.95, FLX 1.00, TGH 0.85, fitter (stamina 0.035/strike), lighter neck (0.05/snap); `style` = her balancing stance + her reference-slap guess, timing, whip delays
+- [x] D3 Body: A8 rig OK (length ranges widened for her short shin/forearm), A10 clean (thighs shrunk 10 %), A11 balance in her style stance: COM +1.2 cm ahead of mid-feet (plain upright: -8.1 cm, fell back), up 3 s; root lowered to 0.789 m so the bent legs stand on the floor. Torso bands now scale with height (Grandpa's model byte-identical)
+- [ ] D4 Ladder L0 → L1 → L2 → L3: `overnight.py --char kim --queue kim_queue.json` (started 16:20, beside Grandpa's queue)
+- [ ] D5 Her reference slap (`slap_demo.py search --char kim`): first search palm-first but 3.8 m/s and her hand then touched the podium; second search (σ 12°) running — must reach ≥ 8 m/s clean before her L2
+- [ ] D6 Unreal after she graduates: import `Kim_rigged.fbx` + her skin material (wear params as M_Grandpa), arena `grandpa_vs_kim`, roster.json entry, corner character pick in the menu
+
+## Phase E — Android phone build (PLAN, needs approval)
+Checked 2026-10-22: Android SDK/NDK r27c valid for UE 5.8 (Turnkey). Blockers: URLab builds MuJoCo for Win64/Linux only; NNE's ONNX runtime (ORT) and IREE have no Android build in UE 5.8.
+- [ ] E1 MuJoCo 3.10.0 for android-arm64 (NDK CMake toolchain), URLab `Build.cs` Android branch (libmujoco.so staged; editor-only CoACD/ZMQ left out)
+- [ ] E2 Brain on Android: NNE's platform-neutral Basic CPU runtime, the MLP rebuilt from the ONNX weights at load; desktop keeps ORT for the bit-exact matching check (Android gets a tolerance check vs Python instead)
+- [ ] E3 Runtime data in the package: fingerprints, cards (read from `training/` today) → `Content/Data`, staged; `/Game/Brains` already always cooked
+- [ ] E4 Mobile settings: portrait, arm64, Vulkan + ES3.1, Lumen off, textures ≤ 2K (Kim ships 4 × 4K), 60 fps budget
+- [ ] E5 Device run: install over adb, touch through the menu, a full match

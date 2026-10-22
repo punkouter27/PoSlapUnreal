@@ -1,6 +1,7 @@
 """Unattended training queue: ladder stages back to back inside a time budget.
 
     .venv/Scripts/python.exe overnight.py --hours 10
+    .venv/Scripts/python.exe overnight.py --hours 16 --char kim --queue kim_queue.json   (a second athlete's own queue)
 
 Stages come from runs/overnight_queue.json, re-read before every stage (a stage can be appended while one runs):
     [{"level": "L2", "minutes": 360, "keep_going": false, "resume": "<optional .pt>"}, ...]
@@ -56,7 +57,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hours", type=float, default=10.0)
     ap.add_argument("--char", default="grandpa")
+    ap.add_argument("--queue", default=None, help="queue file in runs/ (default overnight_queue.json); its log and summary are named after it")
     a = ap.parse_args()
+    global QUEUE, LOG
+    summary = RUNS / "overnight_summary.html"
+    if a.queue:
+        QUEUE = RUNS / a.queue
+        LOG, summary = QUEUE.with_suffix(".jsonl"), QUEUE.with_suffix(".html")
     deadline = time.time() + a.hours * 3600
     log(event="start", hours=a.hours)
     carry, done = None, []
@@ -95,7 +102,7 @@ def main():
 
     rows = "".join(f"<tr><td>{s['level']}</td><td>{s.get('run')}</td><td>{s.get('graduated') or 'no'}</td>"
                    f"<td>{s.get('best_exam')}</td><td><a href='{s.get('run')}/report.html'>report</a></td></tr>" for s in done)
-    (RUNS / "overnight_summary.html").write_text(
+    summary.write_text(
         f"<!doctype html><meta charset='utf-8'><title>Overnight training</title><style>body{{font:15px system-ui;margin:24px}}"
         f"td,th{{padding:4px 10px;border-bottom:1px solid #ccc}}</style><h1>Overnight training</h1><table><tr><th>Level</th>"
         f"<th>Run</th><th>Graduated</th><th>Best exam</th><th></th></tr>{rows}</table>", encoding="utf-8")
