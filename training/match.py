@@ -8,7 +8,8 @@
 Rules (v1): a coin toss picks who strikes first; 3 rounds, each athlete strikes once per round, same order every round.
 A turn starts with both athletes reset to the stand pose in their foot boxes. The striker (role +1) has 30 s; the first
 touch of the striker's body on the defender's head is the strike; the turn ends 5 s after it (recovery window).
-Knockdown (Blueprint 9) = any non-sole part on floor or podium: the defender down after the strike = KO, match over.
+Knockdown (Blueprint 9) = any non-sole part on floor or podium (the defender's palms may brace on the podium): the
+defender down after the strike = KO, match over.
 Fouls (-1 point on every card, that round): striker's first touch not with the palm (clubbing), no strike in 30 s,
 striker knocked down, defender knocked down before the strike, either athlete's feet out of the foot box.
 Judges: 3 cards, 10-point must. A strike's effect = palm speed (m/s) + 5 x peak defender head speed (m/s) + 10 if
@@ -64,6 +65,7 @@ class Side:
         self.name = prefix.split("_")[-2] if prefix.count("_") >= 1 else prefix
         g = lambda n: m.geom(prefix + n).id
         self.head, self.hand, self.feet = g("head"), g("hand_r"), (g("foot_l"), g("foot_r"))
+        self.hands = (g("hand_l"), g("hand_r"))
         self.geoms = {i for i in range(m.ngeom) if m.body_rootid[m.geom_bodyid[i]] == self.a.pelvis}
 
 
@@ -73,19 +75,23 @@ class Match:
         self.d = mujoco.MjData(m)
         self.sides = [Side(m, fp, p, pol) for p, pol in zip(prefixes, policies)]
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
+        self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
         self.blowup = False
 
     def emit(self, **k):
         if self.log:
             self.log.write(json.dumps(k) + "\n")
 
-    def down(self, side):
-        """Blueprint 9: a non-foot geom of this athlete on floor or podium (from the last step's contacts)."""
+    def down(self, side, defender=False):
+        """Blueprint 9: a non-foot geom of this athlete on floor or podium (from the last step's contacts); the defender's
+        palms may rest on the podium (his brace, 2026-10-22)."""
         for c in self.d.contact[:self.d.ncon]:
             g = {c.geom[0], c.geom[1]}
             if g & self.surface:
                 o = (g - self.surface)
                 if o and (x := o.pop()) in side.geoms and x not in side.feet:
+                    if defender and self.podium in g and x in side.hands:
+                        continue
                     return self.m.geom(x).name
         return None
 
@@ -110,7 +116,7 @@ class Match:
             t = k * m.opt.timestep
             if k % 4 == 0:   # the referee looks every brain step, before the brains decide (as Unreal)
                 for x in (D, S):
-                    part = self.down(x)
+                    part = self.down(x, x is D)
                     if part:
                         self.emit(type="knockdown", t=round(t, 3), athlete=x.name, part=re.sub(r"^.*?(red|blue)_", "", part))
                         if x is D and touch_k is not None:
@@ -306,7 +312,9 @@ if __name__ == "__main__":
     ap.add_argument("--matches", type=int, default=100)
     ap.add_argument("--mjb", default=None)
     ap.add_argument("--blue", default=None, help="blue's own brain (default: the same as red's)")
+    ap.add_argument("--defender-role", type=float, default=DEFENDER_ROLE, help="-1 absorb (brains from L3), 0 guard (Unreal's DefenderRole)")
     x = ap.parse_args()
+    DEFENDER_ROLE = x.defender_role
     if x.cmd == "play":
         res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue)
         for t in turns:

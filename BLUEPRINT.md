@@ -164,4 +164,6 @@ Fail → stop, find the difference (version, timestep, model file, coordinates),
 ## 9. Knockdown (what the referee sees)
 
 Knockdown = any part of an athlete **other than the soles** touching floor, podium or safety mat. MuJoCo's contact list decides it, not Unreal.
+**Exception (2026-10-22, user):** the defender braces with both palms on the podium; his hands on the podium are not a knockdown.
+The striker's are, and anything else of the defender's on the podium still is.
 The same rule is the "fall" signal in training, so what the brain learns to avoid is exactly what ends a match.

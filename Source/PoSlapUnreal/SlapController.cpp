@@ -226,6 +226,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 		A.Feet = { Geom(TEXT("foot_l")), Geom(TEXT("foot_r")) };	// the foot box is the sole (Blueprint 2.1)
 		A.Head = Geom(TEXT("head"));
 		A.Hand = Geom(TEXT("hand_r"));
+		A.Palms = { Geom(TEXT("hand_l")), A.Hand };
 	}
 	Floor = Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("floor"));
 	Podium = Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium"));
@@ -259,19 +260,14 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 		Blue = Red;
 		Labels[1] = Labels[0];
 	}
-	TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
 	for (int32 a = 0; a < Athletes.Num(); ++a)
 	{
 		FAthlete& A = Athletes[a];
-		UNNEModelData* Data = a == 1 ? Blue : Red;	// athletes bind in body order: red, then blue
-		TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() && Data ? Runtime->CreateModelCPU(Data) : nullptr;
-		A.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
-		if (!A.Net) continue;
-		const TConstArrayView<int32> In = A.Net->GetInputTensorDescs()[0].GetShape().GetData();
-		A.NumIn = FMath::Min(NumObs, In.Num() > 1 && In[1] > 0 ? In[1] : 108);
-		const uint32 Shape[] = { 1, (uint32)A.NumIn };
-		A.Net->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
-		A.NumOut = A.Net->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+		FNet N;
+		if (!MakeNet(a == 1 ? Blue : Red, N)) continue;	// athletes bind in body order: red, then blue
+		A.Net = N.Net;
+		A.NumIn = N.NumIn;
+		A.NumOut = N.NumOut;
 		UE_LOG(LogSlap, Log, TEXT("Policy: %s brain %s reads %d inputs"), *A.Name, *Labels[FMath::Min(a, 1)], A.NumIn);
 	}
 	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes, %d joints each, brain %s, defender role %d"), Athletes.Num(), Order.Num(),
@@ -284,8 +280,41 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 			H.Name[a] = Display + TEXT(" ") + Athletes[a].Name.ToUpper();
 			H.Brain[a] = Labels[a];
 			H.Tape[a] = Tape;
+			H.Card[a] = Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name"));
 		}
 	});
+}
+
+bool USlapController::MakeNet(UNNEModelData* Data, FNet& Out)
+{
+	TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
+	TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() && Data ? Runtime->CreateModelCPU(Data) : nullptr;
+	Out.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
+	if (!Out.Net) return false;
+	const TConstArrayView<int32> In = Out.Net->GetInputTensorDescs()[0].GetShape().GetData();
+	Out.NumIn = FMath::Min(NumObs, In.Num() > 1 && In[1] > 0 ? In[1] : 108);
+	const uint32 Shape[] = { 1, (uint32)Out.NumIn };
+	Out.Net->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
+	Out.NumOut = Out.Net->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+	Out.Label = Data->GetName();
+	return true;
+}
+
+void USlapController::RequestMatch(UNNEModelData* Red, UNNEModelData* Blue)
+{
+	FNet N[2];	// built here on the game thread; the physics thread only swaps them in
+	const bool bOk[2] = { Red && MakeNet(Red, N[0]), Blue && MakeNet(Blue, N[1]) };
+	{
+		FScopeLock L(&PendingLock);
+		for (int32 a = 0; a < 2; ++a)
+		{
+			if (!bOk[a]) continue;
+			Pending[a] = N[a];
+			LoadedBrains.AddUnique(a ? Blue : Red);	// the model data outlives the instance built from it
+		}
+	}
+	UE_LOG(LogSlap, Log, TEXT("menu: new match requested, red %s, blue %s"), bOk[0] ? *N[0].Label : TEXT("(same)"), bOk[1] ? *N[1].Label : TEXT("(same)"));
+	bPendingMatch = true;
 }
 
 void USlapController::BeginDestroy()
@@ -339,7 +368,7 @@ void USlapController::Emit(const FString& Json)
 	Log->Flush();
 }
 
-FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete& A) const
+FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender) const
 {
 	for (int32 c = 0; c < d->ncon; ++c)
 	{
@@ -347,9 +376,30 @@ FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete&
 		const bool S0 = C.geom[0] == Floor || C.geom[0] == Podium, S1 = C.geom[1] == Floor || C.geom[1] == Podium;
 		if (S0 == S1) continue;
 		const int32 G = S0 ? C.geom[1] : C.geom[0];
+		if (bDefender && (C.geom[0] == Podium || C.geom[1] == Podium) && A.Palms.Contains(G)) continue;	// his brace (match.py down())
 		if (m->body_rootid[m->geom_bodyid[G]] == A.Pelvis && !A.Feet.Contains(G)) return Slap::Name(m, mjOBJ_GEOM, G);
 	}
 	return FString();
+}
+
+void USlapController::ApplyPending()
+{
+	FScopeLock L(&PendingLock);
+	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+	{
+		if (!Pending[a]) continue;
+		FAthlete& A = Athletes[a];
+		A.Net = Pending[a]->Net;
+		A.NumIn = Pending[a]->NumIn;
+		A.NumOut = Pending[a]->NumOut;
+		const FString Label = Pending[a]->Label;
+		SetHud([&](FSlapHud& H) { H.Brain[a] = Label; });
+		Pending[a].Reset();
+	}
+	if (MatchNo > 0 && Round <= Rounds) Emit(TEXT("{\"type\": \"abandoned\"}"));	// the menu stopped it: no result, no series point
+	bInTurn = false;
+	HoldLeft = 0;
+	Round = Rounds + 1;	// StepPolicy starts a new match at once
 }
 
 void USlapController::StartMatch(mjModel* m, mjData* d)
@@ -429,7 +479,7 @@ bool USlapController::PreStep(const mjModel* m, mjData* d)
 	{
 		for (const FAthlete* X : { &D, &S })
 		{
-			const FString Geom = Down(m, d, *X);
+			const FString Geom = Down(m, d, *X, X == &D);
 			if (Geom.IsEmpty()) continue;
 			Emit(FString::Printf(TEXT("{\"type\": \"knockdown\", \"t\": %s, \"athlete\": %s, \"part\": %s}"), *Num(T, 3), *Str(X->Name), *Str(Part(Geom))));
 			UE_LOG(LogSlap, Log, TEXT("t=%.3f knockdown: %s %s"), T, *X->Name, *Part(Geom));
@@ -752,6 +802,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	}
 	else if (Athletes.Num() == 2)	// the match (training/match.py)
 	{
+		if (bPendingMatch.exchange(false)) ApplyPending();	// the menu: new brains, a fresh match
 		if (bInTurn) PostStep(m, d);
 		for (;;)	// a turn that ends here starts the next at once (match.py's loop), checks included
 		{

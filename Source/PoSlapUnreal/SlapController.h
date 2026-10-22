@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include <atomic>
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
 #include "SlapController.generated.h"
 
@@ -37,7 +38,7 @@ struct FSlapHud
 	int32 StrikeDefender = 0;
 
 	// tale of the tape, series
-	FString Name[2], Brain[2], Tape[2];
+	FString Name[2], Brain[2], Tape[2], Card[2];	// Card: the character card's name ("grandpa"): which brains fit
 	int32 Wins[2] = {}, Draws = 0;
 };
 
@@ -100,12 +101,16 @@ public:
 	/** Thread-safe copy of the match state for the HUD. */
 	FSlapHud GetHud() const { FScopeLock L(&HudLock); return Hud; }
 
+	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
+	 *  physics step; the match in progress is abandoned, unscored. */
+	void RequestMatch(UNNEModelData* Red, UNNEModelData* Blue);
+
 private:
 	struct FAthlete
 	{
 		FString Prefix, Name;	// "Arena_red_", "red"
 		int32 Pelvis = -1, RootQ = -1, RootV = -1, Head = -1, Hand = -1;
-		TArray<int32> Act, Qadr, Vadr, Feet, NeckAct;
+		TArray<int32> Act, Qadr, Vadr, Feet, NeckAct, Palms;	// Palms: hand_l, hand_r (the defender's brace)
 		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
 		TSharedPtr<UE::NNE::IModelInstanceCPU> Net;
@@ -139,7 +144,7 @@ private:
 	int32 Cards[3][2] = {};
 	TArray<FTurn> RoundTurns;
 	FArchive* Log = nullptr;
-	FString Down(const mjModel* m, const mjData* d, const FAthlete& A) const;	// non-foot part on floor/podium, else ""
+	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
 	void StartMatch(mjModel* m, mjData* d);
 	void StartTurn(mjModel* m, mjData* d);
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
@@ -150,6 +155,14 @@ private:
 	void Emit(const FString& Json);
 	void Decide(const mjModel* m, mjData* d);
 	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);
+
+	// brains the menu picked, handed to the physics thread (RequestMatch -> StepPolicy)
+	struct FNet { TSharedPtr<UE::NNE::IModelInstanceCPU> Net; int32 NumIn = 0, NumOut = 1; FString Label; };
+	static bool MakeNet(UNNEModelData* Data, FNet& Out);
+	FCriticalSection PendingLock;
+	TOptional<FNet> Pending[2];
+	std::atomic<bool> bPendingMatch = false;
+	void ApplyPending();
 
 	mutable FCriticalSection HudLock;
 	FSlapHud Hud;
