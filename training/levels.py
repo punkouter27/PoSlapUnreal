@@ -39,9 +39,11 @@ LEVELS = {
         reward_target={-1: 800.0, 1: 100.0},   # absorb: ~360 steps at ~2 + the COM term after the slap
         check={-1: ABSORB, 1: STRIKE},
     ),
-    "L4": dict(  # Duel, self-play
-        model="arena", seconds=30.0, pushes=False, role=None,
-        check=dict(episodes=100, ko_rate=(0.10, 0.40), max_self_fall=0.05),
+    "L4": dict(  # Duel, self-play in the arena (envs/arena.py): trained striker vs trained defender, one brain
+        model="arena", roles={1: 0.5, -1: 0.5}, seconds=30.0, pushes=False, foot_box=(0.20, 0.25), max_push=0.6,
+        hit_speed=8.0,
+        reward_target={1: 100.0, -1: 300.0},
+        check=dict(episodes=100, ko_rate=(0.10, 0.40), max_self_fall=0.05, min_strikes=0.90),   # KO rate per landed strike
     ),
     "L5": dict(  # Full match: 3 rounds, clocks, judges; Unreal replay must match
         model="arena", seconds=None, pushes=False, role=None,

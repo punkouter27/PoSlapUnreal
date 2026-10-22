@@ -16,6 +16,7 @@ import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import video
+from envs.arena import ArenaEnv
 from envs.slap import SlapEnv
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx
@@ -68,6 +69,40 @@ def cpu_policy(ppo):
 
 
 _exam_envs = {}
+
+
+@torch.no_grad()
+def arena_exam(ppo, character, level):
+    """L4: 100 fresh worlds, one turn each, coin-toss striker: KO rate per landed strike, striker self-falls, strikes."""
+    chk = LEVELS[level]["check"]
+    env = _exam_envs.get((character, level))
+    if env is None:
+        env = _exam_envs[(character, level)] = ArenaEnv(character, level, num_envs=chk["episodes"], seed=12345)
+    torch.cuda.set_stream(env.stream)
+    wp.set_stream(wp.stream_from_torch(env.stream))
+    env.reset(torch.ones(env.W, dtype=torch.bool, device="cuda"))
+    obs = env.observe()
+    ko, fall, struck, seen = (torch.zeros(env.W, dtype=torch.bool, device="cuda") for _ in range(4))
+    for _ in range(env.T):
+        a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
+        st = env.struck.clone()
+        obs, _, done, _ = env.step(a)
+        dw = done.view(env.W, 2)[:, 0]
+        live = ~seen & dw
+        ko |= live & env.ko_now
+        fall |= live & env.self_fall_now
+        struck |= live & st
+        seen |= dw
+        if bool(seen.all()):
+            break
+    n = max(1, int(struck.sum()))
+    res = {"strikes": struck.float().mean().item(), "ko_rate": int(ko.sum()) / n, "self_fall": fall.float().mean().item()}
+    lo, hi = chk["ko_rate"]
+    passed = res["strikes"] >= chk["min_strikes"] and lo <= res["ko_rate"] <= hi and res["self_fall"] <= chk["max_self_fall"]
+    res["score"] = res["strikes"] * (1 - res["self_fall"]) * (1.0 if lo <= res["ko_rate"] <= hi else 0.5)
+    torch.cuda.set_stream(ppo_stream)
+    wp.set_stream(wp.stream_from_torch(ppo_stream))
+    return passed, res
 
 
 @torch.no_grad()
@@ -138,10 +173,11 @@ def main():
     run.mkdir(exist_ok=True)
     tb, tele = SummaryWriter(str(run)), open(run / "telemetry.jsonl", "a")
 
-    env = SlapEnv(a.char, a.level, num_envs=a.envs)
+    arena = LEVELS[a.level].get("model") == "arena"
+    env = (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)   # arena: 2 agents per world
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy))
+    ppo = PPO(108, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy))
     extra = ppo.load(a.resume) if a.resume else {}
     unseen = ppo.obs_rms.var < 1e-6                     # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
     ppo.obs_rms.var[unseen], ppo.obs_rms.mean[unseen] = 1.0, 0.0
@@ -169,7 +205,7 @@ def main():
             act = ppo.act(obs)
             obs, rew, done, timeout = env.step(act)
             ppo.record(rew, done, timeout)
-        steps += ppo.cfg.steps_per_env * a.envs
+        steps += ppo.cfg.steps_per_env * env.N
         stats = ppo.update(obs)
         it += 1
         eps, env.episodes = env.episodes, []
@@ -188,6 +224,8 @@ def main():
             if r == 1:
                 m["strike_hit"] = mean([e["hit"] for e in rec])
                 m["strike_speed"] = mean([e["speed"] for e in rec if e["speed"] > 0])   # m/s at contact
+            if r == 1 and arena:
+                m["strike_ko"] = sum(e["ko"] for e in rec) / max(1, sum(e["struck"] for e in rec))   # per landed strike
             if r == -1:
                 m["absorb_ok"] = mean([e["absorbed"] for e in rec])
                 m["absorb_com_cm"] = 100 * mean([e["com_err"] for e in rec])
@@ -203,7 +241,7 @@ def main():
                 env.reach = min(1.0, round(env.reach + 0.05, 2))
             else:
                 env.hit_v = min(float(L["hit_speed"]), round(env.hit_v + 0.25, 2))
-        if -1 in recent and len(recent[-1]) == 100 and m["absorb_ok"] > 0.7:
+        if -1 in recent and "slap_impulse" in L and len(recent[-1]) == 100 and m["absorb_ok"] > 0.7:
             env.slap_j = min(float(L["slap_impulse"]), round(env.slap_j + 0.25, 2))
         for k, v in {**stats, **m, **curr()}.items():
             tb.add_scalar(k, v, steps)
@@ -223,14 +261,14 @@ def main():
         ready = full and all(m[f"{TAG[r]}_return"] >= target[r] for r in roles) \
             and (0 not in roles or not L.get("pushes") or env.push_scale >= L.get("max_push", 1.0)) \
             and (1 not in roles or (env.hit_v >= float(L["hit_speed"]) and env.reach >= 1.0)) \
-            and (-1 not in roles or env.slap_j >= float(L["slap_impulse"]))
+            and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0)))
         if ready and time.time() - last_exam > 120:
             last_exam = time.time()
-            ok, res = exam(ppo, a.char, a.level)
+            ok, res = (arena_exam if arena else exam)(ppo, a.char, a.level)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
             for k, v in res.items():
                 tb.add_scalar("exam_" + k, v, steps)
-            score = min(res.values())
+            score = res.get("score", min(res.values()))
             if score > best_exam:   # the best exam so far, kept for a deadline that ends before graduation
                 best_exam = score
                 ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, **curr(), "exam": res})
