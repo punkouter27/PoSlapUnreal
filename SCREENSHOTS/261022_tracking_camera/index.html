@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><title>Tracking camera</title>
+<style>body{font:15px system-ui;max-width:900px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:260px;margin:0}img{width:100%;border:1px solid #ccc}</style>
+<h1>Tracking camera + hidden collision shapes (2026-10-22)</h1>
+<p>Before: a fixed wide shot where the athletes fill about a fifth of the portrait frame, and the MuJoCo collision shapes (white hand slabs, foot plates, capsules showing through the skin as a checker pattern) are drawn. After: the camera keeps its side-on direction but moves to frame both athletes head to toe (~55 % of the height), sitting below the HUD panel, and eases 15 % closer for 1.5 s after each strike. The athletes' 34 collision geoms are hidden at play start (physics only); the podium and the foot-box marks stay visible.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after.png"><figcaption>After</figcaption></figure></div>

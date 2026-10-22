@@ -5,6 +5,7 @@
 #include "GameFramework/HUD.h"
 #include "SlapHUD.generated.h"
 
+class ACameraActor;
 class USlapController;
 
 /** Match HUD top-left (round, clocks, strike telemetry, judges' cards), build stamp bottom-right. `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits (automated checks). */
@@ -19,6 +20,7 @@ public:
 
 private:
 	void DrawMatch();
+	void TrackCamera(ACameraActor* Cam);
 	TWeakObjectPtr<USlapController> Controller;
 	float ShotAt = -1.f;
 	bool bShotTaken = false;

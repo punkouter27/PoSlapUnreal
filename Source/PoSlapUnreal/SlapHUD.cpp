@@ -1,6 +1,10 @@
 #include "SlapHUD.h"
 
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "Components/PoseableMeshComponent.h"
+#include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "SlapAthleteVisual.h"
 #include "Engine/Canvas.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -15,9 +19,19 @@
 void ASlapGameMode::StartPlay()
 {
 	Super::StartPlay();
-	int32 Turned = 0, Total = 0;
+	int32 Turned = 0, Total = 0, Hidden = 0;
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
+		TInlineComponentArray<UMjGeom*> Geoms(*It);
+		for (UMjGeom* G : Geoms)	// an athlete's MuJoCo collision shape: physics only, the skinned mesh is what we draw
+		{
+			const FString N = G->GetMjName();
+			if (N.Contains(TEXT("red_")) || N.Contains(TEXT("blue_")))
+			{
+				G->SetHiddenInGame(true, true);
+				++Hidden;
+			}
+		}
 		TInlineComponentArray<UPrimitiveComponent*> Prims(*It);
 		for (UPrimitiveComponent* P : Prims)
 		{
@@ -30,7 +44,7 @@ void ASlapGameMode::StartPlay()
 			}
 		}
 	}
-	UE_LOG(LogTemp, Log, TEXT("Chaos audit: %d primitive components, %d had collision/physics and were turned off"), Total, Turned);
+	UE_LOG(LogTemp, Log, TEXT("Chaos audit: %d primitive components, %d had collision/physics and were turned off; %d athlete collision shapes hidden"), Total, Turned, Hidden);
 }
 
 void ASlapHUD::BeginPlay()
@@ -51,6 +65,7 @@ void ASlapHUD::DrawHUD()
 		UE_LOG(LogTemp, Log, TEXT("SlapHUD: viewing through %s at %s"), *Camera->GetName(), *Camera->GetActorLocation().ToString());
 	}
 
+	if (Camera) TrackCamera(*Camera);
 	DrawMatch();
 
 	const FString Stamp = TEXT(POSLAP_BUILD_VERSION);
@@ -115,4 +130,31 @@ void ASlapHUD::DrawMatch()
 		Line(Small, FString::Printf(TEXT("  %d        %3d   %3d"), j + 1, H.Cards[j][0], H.Cards[j][1]), FColor(200, 200, 200), 1.1f);
 	}
 	if (!H.Result.IsEmpty()) Line(Small, TEXT("Last match: ") + H.Result, FColor(120, 230, 140), 1.2f);
+}
+
+namespace { constexpr double Recovery = 5.0; }	// match.py RECOVERY
+
+void ASlapHUD::TrackCamera(ACameraActor* Cam)
+{
+	// Side-on, both athletes framed head to toe (~60 % of the portrait height), centred between them; a short push-in
+	// after each strike. Keeps the camera's own direction; only its position moves, smoothly.
+	FBox Box(ForceInit);
+	for (TActorIterator<ASlapAthleteVisual> It(GetWorld()); It; ++It)
+	{
+		for (const TCHAR* Bone : { TEXT("head"), TEXT("pelvis"), TEXT("foot_l"), TEXT("foot_r") })
+		{
+			const FVector P = It->Mesh->GetBoneLocation(Bone);
+			if (!P.IsZero()) Box += P;
+		}
+	}
+	if (!Box.IsValid) return;
+	const FVector Fwd = Cam->GetActorForwardVector();
+	const float HalfV = FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Cam->GetCameraComponent()->FieldOfView) * 0.5f) / FMath::Max(Cam->GetCameraComponent()->AspectRatio, 0.1f));
+	const float Height = FMath::Max(Box.GetSize().Z, Box.GetSize().X / FMath::Max(Cam->GetCameraComponent()->AspectRatio, 0.1f)) + 40.f;
+	float Dist = Height * 0.5f / 0.55f / FMath::Tan(HalfV);
+	const FSlapHud H = Controller.IsValid() ? Controller->GetHud() : FSlapHud();
+	if (H.bStruck && H.Clock > Recovery - 1.5) Dist *= 0.85f;	// the strike: push in for 1.5 s
+	const FVector Goal = Box.GetCenter() - Fwd * Dist + FVector::UpVector * (0.12f * 2.f * Dist * FMath::Tan(HalfV));	// below the HUD panel
+	const float Dt = GetWorld()->GetDeltaSeconds();
+	Cam->SetActorLocation(FMath::VInterpTo(Cam->GetActorLocation(), Goal, Dt, 3.f));
 }
