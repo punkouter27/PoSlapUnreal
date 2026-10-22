@@ -75,11 +75,11 @@ void ASlapHUD::DrawHUD()
 
 void ASlapHUD::DrawMatch()
 {
-	if (!Controller.IsValid())
+	if (!Controller.IsValid())	// the controller playing the match (URLab may keep more than one instance around)
 	{
 		for (TObjectIterator<USlapController> It; It; ++It)
 		{
-			if (It->GetWorld() == GetWorld()) { Controller = *It; break; }
+			if (!It->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) && It->GetHud().Match > 0) { Controller = *It; break; }
 		}
 		if (!Controller.IsValid()) return;
 	}
@@ -98,6 +98,7 @@ void ASlapHUD::DrawMatch()
 		Canvas->StrLen(F, Text, W, Ht);
 		Y += Ht * S * Scale + 4.f * S;
 	};
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, 8.f * S, 300.f * S, (H.Result.IsEmpty() ? 205.f : 228.f) * S);	// legible over the truss
 	const FColor Team = H.Striker == TEXT("red") ? FColor(235, 70, 60) : FColor(70, 130, 240);
 	Line(Big, FString::Printf(TEXT("ROUND %d / 3"), H.Round), FColor::White, 1.2f);
 	Line(Small, FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Team, 1.3f);
