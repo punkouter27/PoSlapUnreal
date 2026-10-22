@@ -140,6 +140,7 @@ def main():
                 env.push_scale = min(LEVELS[a.level].get("max_push", 1.0), env.push_scale + 0.02)
             elif eplen < 0.4 * env.T / 50:
                 env.push_scale = max(0.0, env.push_scale - 0.01)
+            env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
         for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale}.items():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episode_return": ret,
