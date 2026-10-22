@@ -108,7 +108,7 @@ class SlapEnv:
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
         self.tbase = self.q0[:3] + torch.tensor(OPP_HEAD, device=dev)                 # the arena opponent's head
-        self.teasy = self.q0[:3] + torch.tensor([0.28, -0.32, 0.40], device=dev)     # front-right at chest height: clear of the
+        self.teasy = self.q0[:3] + torch.tensor([0.30, -0.40, 0.45], device=dev)     # front-right at chest height: clear of the
                                                                                     # podium (x 0.305-0.505, y +-0.3) and of his own head (0.43 forward
                                                                                     # sat over the podium; 0.25 forward / 0.62 up was touched by his head)
         self.tpark = self.q0[:3] + torch.tensor([5.0, 0.0, 0.7], device=dev)
@@ -294,7 +294,8 @@ class SlapEnv:
         n = self.nacon[0]
         idx = torch.arange(self.con_geom.shape[0], device=self.device)
         g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        on = (idx < n) & ((g0 == self.tgeom) | (g1 == self.tgeom))
+        on = (idx < n) & (((g0 == self.tgeom) & (g1 == self.hand)) | ((g1 == self.tgeom) & (g0 == self.hand)))   # the hand only:
+        # a head/chest/arm bump used to end the attempt for ~-3, cheaper than the clock (-95): he learned to head-butt it
         if not bool(on.any()):
             return
         w = self.con_world.long()[on]
