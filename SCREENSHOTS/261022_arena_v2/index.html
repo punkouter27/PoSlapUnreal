@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Arena v2</title>
+<style>body{font:15px system-ui;max-width:900px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:260px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:3px 0}</style>
+<h1>Arena v2: look + real-time hygiene (2026-10-22)</h1>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after.png"><figcaption>After (in game, 540x960)</figcaption></figure></div>
+<ul>
+<li>Podium: true to the physics box (0.20 x 0.60 x 1.003 m), beveled, black lacquer with worn edges, smudges where hands land, gold POSLAP logo on the camera side.</li>
+<li>Foot boxes: worn yellow floor tape at the exact physics boxes instead of solid slabs. Safety mat: vinyl with seams, logos, the referee's tape cross.</li>
+<li>Ringside: judges' table (3 seats, monitors), press tables with laptops, two broadcast camera jibs. Venue: 8 aisle stairs cut through the crowd, green exit signs, a catwalk ring under the roof, LED ring showing RED / ROUND 1 / BLUE.</li>
+<li>Crowd: 838 people (146 removed for aisles), random height and lean, back rows darker, 130 phone lights; 15 materials became 1 palette atlas + 1 emissive.</li>
+<li>Lighting: team-colour rims from behind (warm red corner, cool blue), house light down so the stage leads, denser volumetric haze with beams from the key and truss spots, slower exposure adaptation, crushed blacks, warm highlights, vignette.</li>
+<li>Hygiene: 0 ngons, 0 loose or duplicate geometry, rotations/scales applied, UV0 + MikkTSpace tangents on every mesh, power-of-two textures (sRGB colour, linear data, ORM for Unreal, Mask Map for Unity), 27 Nanite meshes. No collision meshes: MuJoCo owns all physics.</li>
+</ul>
