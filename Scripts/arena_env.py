@@ -21,7 +21,12 @@ def log(msg):
     unreal.log(f"[arena_env] {msg}")
 
 
-def import_env():
+def import_env(reimport=True):
+    if not reimport and ASSETS.does_directory_exist(ENV):   # every arena level shares these: reuse them (build_scene.py)
+        meshes = [m for m in (ASSETS.load_asset(p) for p in ASSETS.list_assets(ENV, recursive=True)) if isinstance(m, unreal.StaticMesh)]
+        if meshes:
+            log(f"reusing {len(meshes)} meshes in {ENV}")
+            return meshes
     if ASSETS.does_directory_exist(ENV):   # the previous export's assets (names changed with the v2 scene)
         ASSETS.delete_directory(ENV)
     t = unreal.AssetImportTask()
@@ -42,8 +47,8 @@ def aim(frm, to):  # (pitch, yaw, roll) pointing a light's +X from frm to to (UE
     return (math.degrees(math.atan2(d[2], math.hypot(d[0], d[1]))), math.degrees(math.atan2(d[1], d[0])), 0)
 
 
-def build(spawn):
-    for m in import_env():
+def build(spawn, reimport=True):
+    for m in import_env(reimport):
         a = spawn(unreal.StaticMeshActor, f"Env_{m.get_name()}")
         a.static_mesh_component.set_static_mesh(m)
         a.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)

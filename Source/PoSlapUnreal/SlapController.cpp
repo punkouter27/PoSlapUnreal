@@ -83,7 +83,12 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	}
 	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state
 	Athletes.Reset();
-	if (Mode == ESlapControlMode::Policy && Fp) BindPolicy(m, *Fp);
+	const TSharedPtr<FJsonObject> BlueFp = BlueFingerprint.IsEmpty() ? Fp : LoadJson(BlueFingerprint);
+	if (Mode == ESlapControlMode::Policy && Fp && BlueFp)
+	{
+		const FJsonObject* const Fps[2] = { Fp.Get(), BlueFp.Get() };
+		BindPolicy(m, Fps);
+	}
 }
 
 void USlapController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
@@ -168,27 +173,31 @@ void USlapController::WriteQposDump(const mjModel* m, const FString& RelPath)
 
 // ---------------------------------------------------------------- policy (DOCS/BRAIN_IO.md)
 
-void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
+void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 {
-	MaxStep = Fp.GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
-	const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
-	const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
-	const TSharedPtr<FJsonObject> StandRad = Fp.GetObjectField(TEXT("stand_pose_rad"));
-	Action.SetNumZeroed(Order.Num());
-	// the character card is the source of truth (the fingerprint keeps a build-time copy): fatigue, display name
-	const TSharedPtr<FJsonObject> Card = LoadJson(TEXT("training/characters/") + Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name")) + TEXT(".json"));
-	FString Tape = TEXT("?");
-	if (Card)
-	{
-		Tape = FString::Printf(TEXT("%.2f m  %.0f kg  STR %.2f  SPD %.2f  TGH %.1f"), Card->GetNumberField(TEXT("height_m")), Card->GetNumberField(TEXT("mass_kg")),
-			Card->GetNumberField(TEXT("strength")), Card->GetNumberField(TEXT("speed")), Card->GetNumberField(TEXT("toughness")));
-	}
-
+	// each corner its own character: joint ranges, stand pose, speed limit and card come from that athlete's fingerprint
+	FString Tape[2] = { TEXT("?"), TEXT("?") }, Display[2] = { TEXT("?"), TEXT("?") }, CardName[2];
 	for (int32 b = 0; b < m->nbody; ++b)
 	{
 		const FString BodyName = Slap::Name(m, mjOBJ_BODY, b);
 		if (!BodyName.EndsWith(TEXT("pelvis"))) continue;
+		const int32 c = FMath::Min(Athletes.Num(), 1);	// athletes bind in body order: red, then blue
+		const FJsonObject& Fp = *Fps[c];
+		const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
+		const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
+		const TSharedPtr<FJsonObject> StandRad = Fp.GetObjectField(TEXT("stand_pose_rad"));
+		Action.SetNumZeroed(Order.Num());
+		// the character card is the source of truth (the fingerprint keeps a build-time copy): fatigue, display name
+		CardName[c] = Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name"));
+		const TSharedPtr<FJsonObject> Card = LoadJson(TEXT("training/characters/") + CardName[c] + TEXT(".json"));
+		if (Card)
+		{
+			Tape[c] = FString::Printf(TEXT("%.2f m  %.0f kg  STR %.2f  SPD %.2f  TGH %.2f"), Card->GetNumberField(TEXT("height_m")), Card->GetNumberField(TEXT("mass_kg")),
+				Card->GetNumberField(TEXT("strength")), Card->GetNumberField(TEXT("speed")), Card->GetNumberField(TEXT("toughness")));
+			Display[c] = Card->GetStringField(TEXT("display"));
+		}
 		FAthlete& A = Athletes.AddDefaulted_GetRef();
+		A.MaxStep = Fp.GetNumberField(TEXT("max_joint_speed_rad_s")) * 0.02;
 		A.Prefix = BodyName.LeftChop(6);
 		A.Name = A.Prefix.LeftChop(1);
 		A.Name = A.Name.Mid(A.Name.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);	// "Arena_red" -> "red"
@@ -270,17 +279,16 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject& Fp)
 		A.NumOut = N.NumOut;
 		UE_LOG(LogSlap, Log, TEXT("Policy: %s brain %s reads %d inputs"), *A.Name, *Labels[FMath::Min(a, 1)], A.NumIn);
 	}
-	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes, %d joints each, brain %s, defender role %d"), Athletes.Num(), Order.Num(),
+	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes (%s vs %s), %d joints each, brain %s, defender role %d"), Athletes.Num(), *CardName[0], *CardName[1], Action.Num(),
 		Athletes.Num() && Athletes[0].Net ? TEXT("loaded") : TEXT("MISSING (holding stand pose)"), DefenderRole);
-	const FString Display = Card ? Card->GetStringField(TEXT("display")) : TEXT("?");
 	SetHud([&](FSlapHud& H)
 	{
 		for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
 		{
-			H.Name[a] = Display + TEXT(" ") + Athletes[a].Name.ToUpper();
+			H.Name[a] = Display[a] + TEXT(" ") + Athletes[a].Name.ToUpper();
 			H.Brain[a] = Labels[a];
-			H.Tape[a] = Tape;
-			H.Card[a] = Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name"));
+			H.Tape[a] = Tape[a];
+			H.Card[a] = CardName[a];
 		}
 	});
 }
@@ -716,7 +724,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 			for (int32 k = 0; k < A.NumIn; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
 			UE_LOG(LogSlap, Log, TEXT("first obs %s: %s"), *A.Prefix, *S);
 		}
-		const double Step = MaxStep * A.Stamina;	// fatigue: a tired athlete moves slower
+		const double Step = A.MaxStep * A.Stamina;	// fatigue: a tired athlete moves slower
 		for (int32 j = 0; j < A.Act.Num(); ++j)
 		{
 			const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);

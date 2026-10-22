@@ -1,6 +1,11 @@
-"""Unreal Editor Python: assets + Arena level for the Phase B dry run. Idempotent.
+"""Unreal Editor Python: assets + an arena level for one pairing. Idempotent.
 
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/build_scene.py" -unattended
+
+Pairing (roster): SLAP_RED / SLAP_BLUE = character card names (default grandpa / grandpa -> /Game/Levels/Arena; any other
+pairing -> /Game/Levels/Arena_<red>_vs_<blue>, arena model training/models/<red>_vs_<blue>_arena.xml from build_body.py
+--blue). Brains: SLAP_BRAIN (red) / SLAP_BLUE_BRAIN (blue), an .onnx path to import or a /Game/... asset; blue defaults to red's.
+An athlete's mesh, textures and skin are imported once (Content/Art/Exports/<Name>_rigged.fbx, <Name>_tex/); SLAP_REIMPORT=1 redoes them.
 
 Chaos stays out: no physics asset, no collision on anything we place. MuJoCo (URLab) owns all physics.
 """
@@ -33,58 +38,78 @@ def import_file(src, dest, options=None, name=None):
 
 
 # ---- assets
+RED, BLUE = os.environ.get("SLAP_RED", "grandpa"), os.environ.get("SLAP_BLUE", "grandpa")
+PAIR = f"{RED}_vs_{BLUE}"
+REIMPORT = os.environ.get("SLAP_REIMPORT") == "1"
 fbx = unreal.FbxImportUI()
 for k, v in (("import_mesh", True), ("import_as_skeletal", True), ("import_materials", True),
              ("import_textures", True), ("create_physics_asset", False),   # no Chaos ragdoll
              ("mesh_type_to_import", unreal.FBXImportType.FBXIT_SKELETAL_MESH)):
     fbx.set_editor_property(k, v)
-grandpa = next(a for a in import_file("Content/Art/Exports/Grandpa_rigged.fbx", "/Game/Athletes/Grandpa", fbx)
-               if isinstance(a, unreal.SkeletalMesh))
-# skin material from the scan's PBR textures (Interchange drops the FBX's texture links)
 MEL = unreal.MaterialEditingLibrary
-tex = {}
-for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
-                   ("mr", "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness")):
-    t = import_file(f"Content/Art/Exports/Grandpa_tex/{fname}.png", "/Game/Athletes/Grandpa/Textures", name=f"T_Grandpa_{key}")[0]
-    if key == "normal":
-        t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
-    if key == "mr":
-        t.set_editor_property("srgb", False)
-        t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
-    ASSETS.save_loaded_asset(t)
-    tex[key] = t
-skin_path = "/Game/Athletes/Grandpa/M_Grandpa"
-if ASSETS.does_asset_exist(skin_path):
-    ASSETS.delete_asset(skin_path)
-skin = tools.create_asset("M_Grandpa", "/Game/Athletes/Grandpa", unreal.Material, unreal.MaterialFactoryNew())
-skin.set_editor_property("used_with_skeletal_mesh", True)
-for i, (key, prop, out) in enumerate((("color", unreal.MaterialProperty.MP_BASE_COLOR, "RGB"),
-                                      ("normal", unreal.MaterialProperty.MP_NORMAL, "RGB"),
-                                      ("mr", unreal.MaterialProperty.MP_ROUGHNESS, "G"))):
-    s = MEL.create_material_expression(skin, unreal.MaterialExpressionTextureSample, -400, i * 250)
-    s.set_editor_property("texture", tex[key])
-    if key == "normal":
-        s.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
-    if key == "mr":
-        s.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
-        MEL.connect_material_property(s, "B", unreal.MaterialProperty.MP_METALLIC)  # glTF: G roughness, B metallic
-    MEL.connect_material_property(s, out, prop)
 import sys
 sys.path.insert(0, os.path.join(PROJ, "Scripts"))
 import broadcast_fx
-broadcast_fx.add_ripple(skin)   # the cheek ripple on a strike (display only)
-broadcast_fx.add_wear(skin)     # flush + fatigue on the skin colour (display only)
-MEL.recompile_material(skin)
-ASSETS.save_loaded_asset(skin)
-mats = grandpa.get_editor_property("materials")
-mats[0].set_editor_property("material_interface", skin)
-grandpa.set_editor_property("materials", mats)
-ASSETS.save_loaded_asset(grandpa)
 
-brain = import_file(os.environ.get("SLAP_BRAIN", "training/models/random_brain.onnx"), "/Game/Brains")[0]  # SLAP_BRAIN=training/models/brains/<char>_<level>.onnx
-if ASSETS.does_asset_exist("/Game/Arena/grandpa_vs_grandpa_arena"):   # URLab won't overwrite; the MJCF may have changed
-    ASSETS.delete_asset("/Game/Arena/grandpa_vs_grandpa_arena")
-arena_bp = next(a for a in import_file("training/models/grandpa_vs_grandpa_arena.xml", "/Game/Arena")
+
+def athlete(card):
+    """The skinned mesh and its skin material (scan PBR textures + cheek ripple + wear), imported once per character."""
+    Name = card.capitalize()
+    folder, mesh_path, skin_path = f"/Game/Athletes/{Name}", f"/Game/Athletes/{Name}/{Name}_rigged", f"/Game/Athletes/{Name}/M_{Name}"
+    if not REIMPORT and ASSETS.does_asset_exist(mesh_path) and ASSETS.does_asset_exist(skin_path):
+        return ASSETS.load_asset(mesh_path), ASSETS.load_asset(skin_path)
+    mesh = next(a for a in import_file(f"Content/Art/Exports/{Name}_rigged.fbx", folder, fbx) if isinstance(a, unreal.SkeletalMesh))
+    # skin material from the scan's PBR textures (Interchange drops the FBX's texture links)
+    tex = {}
+    for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
+                       ("mr", "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness")):
+        t = import_file(f"Content/Art/Exports/{Name}_tex/{fname}.png", f"{folder}/Textures", name=f"T_{Name}_{key}")[0]
+        if key == "normal":
+            t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
+        if key == "mr":
+            t.set_editor_property("srgb", False)
+            t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
+        ASSETS.save_loaded_asset(t)
+        tex[key] = t
+    if ASSETS.does_asset_exist(skin_path):
+        ASSETS.delete_asset(skin_path)
+    skin = tools.create_asset(f"M_{Name}", folder, unreal.Material, unreal.MaterialFactoryNew())
+    skin.set_editor_property("used_with_skeletal_mesh", True)
+    for i, (key, prop, out) in enumerate((("color", unreal.MaterialProperty.MP_BASE_COLOR, "RGB"),
+                                          ("normal", unreal.MaterialProperty.MP_NORMAL, "RGB"),
+                                          ("mr", unreal.MaterialProperty.MP_ROUGHNESS, "G"))):
+        smp = MEL.create_material_expression(skin, unreal.MaterialExpressionTextureSample, -400, i * 250)
+        smp.set_editor_property("texture", tex[key])
+        if key == "normal":
+            smp.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+        if key == "mr":
+            smp.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
+            MEL.connect_material_property(smp, "B", unreal.MaterialProperty.MP_METALLIC)  # glTF: G roughness, B metallic
+        MEL.connect_material_property(smp, out, prop)
+    broadcast_fx.add_ripple(skin)   # the cheek ripple on a strike (display only)
+    broadcast_fx.add_wear(skin)     # flush + fatigue on the skin colour (display only)
+    MEL.recompile_material(skin)
+    ASSETS.save_loaded_asset(skin)
+    mats = mesh.get_editor_property("materials")
+    mats[0].set_editor_property("material_interface", skin)
+    mesh.set_editor_property("materials", mats)
+    ASSETS.save_loaded_asset(mesh)
+    return mesh, skin
+
+
+body = {RED: athlete(RED)}
+body[BLUE] = body.get(BLUE) or athlete(BLUE)
+
+
+def brain_asset(spec):
+    return ASSETS.load_asset(spec) if spec.startswith("/Game/") else import_file(spec, "/Game/Brains")[0]
+
+
+brain = brain_asset(os.environ.get("SLAP_BRAIN", "training/models/random_brain.onnx"))  # SLAP_BRAIN=training/models/brains/<char>_<level>.onnx
+blue_brain = brain_asset(os.environ["SLAP_BLUE_BRAIN"]) if os.environ.get("SLAP_BLUE_BRAIN") else None
+if ASSETS.does_asset_exist(f"/Game/Arena/{PAIR}_arena"):   # URLab won't overwrite; the MJCF may have changed
+    ASSETS.delete_asset(f"/Game/Arena/{PAIR}_arena")
+arena_bp = next(a for a in import_file(f"training/models/{PAIR}_arena.xml", "/Game/Arena")
                 if isinstance(a, unreal.Blueprint))
 
 # controller component on the arena Blueprint (URLab binds it after compile)
@@ -101,7 +126,11 @@ for h in handles:
     obj = unreal.SubobjectDataBlueprintFunctionLibrary.get_associated_object(unreal.SubobjectDataBlueprintFunctionLibrary.get_data(h))
     if isinstance(obj, unreal.SlapController):
         obj.set_editor_property("brain", brain)
+        obj.set_editor_property("blue_brain", blue_brain)
+        obj.set_editor_property("fingerprint", f"training/models/{RED}_fingerprint.json")
+        obj.set_editor_property("blue_fingerprint", "" if BLUE == RED else f"training/models/{BLUE}_fingerprint.json")
         obj.set_editor_property("mode", unreal.SlapControlMode.POLICY)
+        obj.set_editor_property("defender_role", int(os.environ.get("SLAP_DEFENDER_ROLE", "-1")))   # 0 for guard brains before L3
 unreal.BlueprintEditorLibrary.compile_blueprint(arena_bp)
 ASSETS.save_loaded_asset(arena_bp)
 
@@ -136,7 +165,7 @@ for team, rgb in (("Red", (0.9, 0.08, 0.05)), ("Blue", (0.05, 0.2, 0.9))):
     overlay[team] = mi
 
 # ---- level
-LEVEL = "/Game/Levels/Arena"
+LEVEL = "/Game/Levels/Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/Arena_{PAIR}"
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 if ASSETS.does_asset_exist(LEVEL):
@@ -160,17 +189,17 @@ engine.set_editor_property("save_debug_xml", True)  # Saved/URLab/scene_compiled
 engine.set_editor_property("is_paused", False)      # run on Play
 mgr.set_editor_property("auto_create_simulate_widget", False)  # URLab debug panel covers the portrait view (Tab still toggles it)
 arena = spawn(arena_bp.generated_class(), "Arena")
-for team, prefix in (("Red", "red_"), ("Blue", "blue_")):
+for team, prefix, card in (("Red", "red_", RED), ("Blue", "blue_", BLUE)):
     v = spawn(unreal.SlapAthleteVisual, f"Athlete{team}")
     v.set_editor_property("body_prefix", prefix)
     mesh = v.get_component_by_class(unreal.PoseableMeshComponent)
-    mesh.set_skinned_asset_and_update(grandpa)
-    mesh.set_material(0, skin)   # the asset's slot keeps the FBX importer's untextured Material_001; override per component
+    mesh.set_skinned_asset_and_update(body[card][0])
+    mesh.set_material(0, body[card][1])   # the asset's slot keeps the FBX importer's untextured Material_001; override per component
     mesh.set_editor_property("overlay_material", overlay[team])
 
 # arena look: env meshes (Content/Art/Raw/Arena_v2.blend -> Exports/Arena.glb), lights, haze (Scripts/arena_env.py)
 import arena_env   # Scripts/ is on sys.path (broadcast_fx above)
-arena_env.build(spawn)
+arena_env.build(spawn, reimport=False)   # the shared env meshes; Scripts/arena_env.py standalone re-imports them
 
 # portrait 9:16 camera, side-on to the X axis the athletes face along (Blueprint 3)
 cam = spawn(unreal.CineCameraActor, "PortraitCamera", (0, -520, 130), (0, 90, 0))

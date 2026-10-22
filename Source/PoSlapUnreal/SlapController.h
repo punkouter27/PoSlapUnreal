@@ -81,6 +81,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	FString Fingerprint = TEXT("training/models/grandpa_fingerprint.json");
 
+	/** Policy: blue's own character (a mixed pairing, e.g. grandpa vs kim); empty = the same as red's. */
+	UPROPERTY(EditAnywhere, Category = "PoSlap")
+	FString BlueFingerprint;
+
 	/** Seconds both athletes stay where the match ended (the KO, the decision) before the next one starts. */
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	double PostMatchHold = 4.0;
@@ -122,6 +126,7 @@ private:
 		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0;	// character card
+		double MaxStep = 0.0;	// joint speed limit per brain step (card speed)
 	};
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
@@ -173,7 +178,7 @@ private:
 	bool bTelReady = false;
 
 	void BindReplay(mjModel* m);
-	void BindPolicy(mjModel* m, const FJsonObject& Fp);
+	void BindPolicy(mjModel* m, const FJsonObject* const (&Fp)[2]);	// red's, blue's
 	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
@@ -185,7 +190,6 @@ private:
 	int32 RecordSteps = 1000;
 
 	int64 StepCount = 0;
-	double MaxStep = 0.0;
 	TArray<FAthlete> Athletes;
 	TArray<float> Action;	// brain output scratch, sized once
 
