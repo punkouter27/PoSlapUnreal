@@ -19,7 +19,7 @@ import torch
 import warp as wp
 
 from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
-from envs.slap import DECIM, quat_mat
+from envs.slap import DECIM, WAIT, quat_mat
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -254,7 +254,9 @@ class ArenaEnv:
         hit[w] = True
         good = torch.zeros_like(hit)
         good[w[palm]] = True
-        new = hit & ~self.struck
+        early = self.t < WAIT                                # the 4 s stand (envs/slap.py WAIT): an early touch is a foul
+        self.bonus[hit & early & ~self.struck] -= 0.5
+        new = hit & ~self.struck & ~early
         if bool(new.any()):
             v = speed[new]
             clean = good[new] & (v >= self.hit_v)
@@ -316,7 +318,8 @@ class ArenaEnv:
         phi = self._palm_phi(hand, tgt)
         su = self._sd(upright)[0]
         ss = self._sd(smooth)[0]
-        before = -0.05 + 0.04 * su.clamp(min=0) + 10.0 * (d_prev - dist) + 5.0 * (phi - self.phi_prev) - 0.01 * ss
+        go = (self.t >= WAIT).float()   # the 4 s stand first
+        before = go * (-0.05 + 10.0 * (d_prev - dist) + 5.0 * (phi - self.phi_prev)) + 0.04 * su.clamp(min=0) - 0.01 * ss
         self.phi_prev = phi
         self.hand_prev_ctrl = hand.clone()
         ko = self.struck & self._sd(fell)[1] & self.hit_ok

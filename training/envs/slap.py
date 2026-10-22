@@ -31,6 +31,7 @@ from levels import LEVELS
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
 OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
+WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
 
 
 def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
@@ -115,7 +116,8 @@ class SlapEnv:
         if demo.exists():
             dj = json.loads(demo.read_text())
             assert dj["joint_order"] == order, "slap demo joint order != fingerprint"
-            self.ref_q = torch.tensor(dj["ref_q"], device=dev, dtype=torch.float32)
+            ref = torch.tensor(dj["ref_q"], device=dev, dtype=torch.float32)
+            self.ref_q = torch.cat([ref[:1].repeat(WAIT, 1), ref])   # 4 s standing still, then the slap
             self.imit_mask = torch.tensor([float(n in dj["joints"]) for n in order], device=dev)
         self.pod_touch = torch.zeros(num_envs, dtype=torch.bool, device=dev)
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
@@ -322,7 +324,9 @@ class SlapEnv:
         hit[w] = True
         good = torch.zeros_like(hit)
         good[w[palm]] = True
-        new = hit & ~self.struck
+        early = self.t < WAIT                                # before the 4 s stand is over: a foul, not the strike
+        self.bonus[hit & early & ~self.struck] -= 0.5
+        new = hit & ~self.struck & ~early
         if bool(new.any()):
             v = speed[new]
             clean = good[new] & (v >= self.hit_v)
@@ -382,7 +386,8 @@ class SlapEnv:
         d = (tgt - hand).norm(dim=-1)
         d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
         phi = self._palm_phi(hand, tgt)
-        before = -0.05 + 0.04 * upright.clamp(min=0) + 30.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth \
+        go = (self.t >= WAIT).float()   # the 4 s stand: no pay (and no cost) for moving at the target yet
+        before = go * (-0.05 + 30.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev)) + 0.04 * upright.clamp(min=0) - 0.01 * smooth \
             - 2.0 * self.pod_touch.float()   # v5: approach x3 (10 was outweighed by the podium risk: he froze)
         self.phi_prev = phi
         r_strike = torch.where(self.struck, torch.zeros_like(r), before) + self.bonus
