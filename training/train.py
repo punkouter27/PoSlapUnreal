@@ -108,6 +108,7 @@ def main():
     ap.add_argument("--resume", default=None)
     ap.add_argument("--max-std", type=float, default=0.3, help="cap on exploration noise (it ran away to 0.47 in grandpa_L0_v1)")
     ap.add_argument("--entropy", type=float, default=0.001)
+    ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
     housekeeping()
@@ -151,20 +152,24 @@ def main():
         ret = sum(e[0] for e in recent) / max(1, len(recent))
         fall = sum(e[1] for e in recent) / max(1, len(recent))
         eplen = sum(e[3] for e in recent) / max(1, len(recent)) / 50
+        hit_rate = sum(e[4] for e in recent) / max(1, len(recent))                       # L2: clean palm hits
+        hits = [e[5] for e in recent if e[5] > 0]
+        hit_speed = sum(hits) / len(hits) if hits else 0.0                               # m/s at contact
         if LEVELS[a.level]["pushes"] and len(recent) == 100:
             if eplen > 0.8 * env.T / 50:
                 env.push_scale = min(LEVELS[a.level].get("max_push", 1.0), env.push_scale + 0.02)
             elif eplen < 0.4 * env.T / 50:
                 env.push_scale = max(0.0, env.push_scale - 0.01)
             env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
-        for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale}.items():
+        for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale,
+                     "hit_rate": hit_rate, "hit_speed": hit_speed}.items():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episode_return": ret,
-                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), "push_scale": env.push_scale, **stats,
+                               "fall_rate": fall, "episode_s": eplen, "episodes": len(eps), "push_scale": env.push_scale, "hit_rate": hit_rate, "hit_speed": hit_speed, **stats,
                                "pelvis_z_w0": env.qpos[0, 2].item()}) + "\n")
         if it % 10 == 0:
             print(f"it {it:5d} {steps / 1e6:7.1f}M steps {(time.time() - t0) / 60:5.1f} min | return {ret:7.1f} "
-                  f"fall {fall:.2f} ep {eplen:4.1f}s | push {env.push_scale:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
+                  f"fall {fall:.2f} ep {eplen:4.1f}s | push {env.push_scale:.2f} | hit {hit_rate:.2f} @ {hit_speed:4.1f} m/s | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
         if it % 50 == 0:
             ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale})
         if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)
@@ -181,19 +186,21 @@ def main():
             if score > best_exam:   # the best exam so far, kept for a deadline that ends before graduation
                 best_exam = score
                 ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale, "exam": res})
-            if ok:
+            if ok and not graduated:
                 graduated = res
-                break
+                out = HERE / "models" / "brains" / f"{a.char}_{a.level}.onnx"
+                export_onnx(ppo, str(out), 108, fixed_batch=True)
+                print(f"GRADUATED -> {out}", flush=True)
+                if not a.keep_going:
+                    break
 
     ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, "push_scale": env.push_scale})
     minutes = (time.time() - t0) / 60
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             "episode_return": ret if it else 0, "fall_rate": fall if it else 1, "graduated": graduated, "nan": nan}
     if graduated and not nan:
-        out = HERE / "models" / "brains" / f"{a.char}_{a.level}.onnx"
-        export_onnx(ppo, str(out), 108, fixed_batch=True)
-        meta["onnx"] = str(out.relative_to(HERE))
-        print(f"GRADUATED -> {out}")
+        meta["onnx"] = f"models/brains/{a.char}_{a.level}.onnx"
+    meta["best_exam"] = best_exam
     (run / "meta.json").write_text(json.dumps(meta, indent=1))
     tele.close(); tb.close()
     if minutes > 30:
