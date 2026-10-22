@@ -202,9 +202,10 @@ def main():
     carry = lambda key, role, start: float(extra[key]) if role in had and key in extra else start
     env.push_scale = min(carry("push_scale", 0, 0.0), L.get("max_push", 1.0)) if L.get("pushes") else 0.0
     env.hit_v = carry("hit_v", 1, float(L.get("hit_speed_start", L.get("hit_speed", 8.0))))
-    env.reach = carry("reach", 1, 0.0 if "hit_speed_start" in L else 1.0)
+    env.reach = carry("reach", 1, float(L.get("reach_start", 0.0 if "hit_speed_start" in L else 1.0)))
+    env.imit = carry("imit", 1, float(L.get("imit_start", 0.0)))
     env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
-    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j}
+    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit}
     target = L["reward_target"]
     recent = {r: deque(maxlen=100) for r in roles}
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
@@ -250,6 +251,8 @@ def main():
                 env.push_scale = max(0.0, env.push_scale - 0.01)
             env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
         if 1 in recent and len(recent[1]) == 100 and m["strike_hit"] > 0.5:   # first move the target out, then raise the bar
+            if getattr(env, "imit", 0) > 0.2:   # clean hits coming: lean less on the reference slap
+                env.imit = max(0.2, round(env.imit - 0.02, 2))
             if env.reach < 1.0:
                 env.reach = min(1.0, round(env.reach + 0.05, 2))
             else:
@@ -263,7 +266,7 @@ def main():
         if it % 10 == 0:
             line = " | ".join(f"{k} {v:.2f}" for k, v in m.items() if not k.endswith("episode_s"))
             print(f"it {it:5d} {steps / 1e6:7.1f}M {(time.time() - t0) / 60:5.1f} min | {line} | push {env.push_scale:.2f} "
-                  f"bar {env.hit_v:.2f} reach {env.reach:.2f} slap {env.slap_j:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
+                  f"bar {env.hit_v:.2f} reach {env.reach:.2f} imit {env.imit:.2f} slap {env.slap_j:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
         if it % 50 == 0:
             ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr()})
         if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)

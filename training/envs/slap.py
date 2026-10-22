@@ -108,6 +108,15 @@ class SlapEnv:
         # real head and in every exam (2026-10-22: strict from the start, the striker froze, hand never within 0.5 m; with
         # only the arms exempt his belly, 13 cm from the podium face at rest, met it whenever he leaned)
         self.podium = m.geom("podium").id
+        # strike imitation (2026-10-22): the reference slap from slap_demo.py (wind-up, strike, follow-through), its joint
+        # angles per brain step from the stand pose; the striker earns up to `imit` per step for matching it
+        demo = HERE / "models" / f"{character}_slap_demo.json"
+        self.ref_q, self.imit = None, 0.0
+        if demo.exists():
+            dj = json.loads(demo.read_text())
+            assert dj["joint_order"] == order, "slap demo joint order != fingerprint"
+            self.ref_q = torch.tensor(dj["ref_q"], device=dev, dtype=torch.float32)
+            self.imit_mask = torch.tensor([float(n in dj["joints"]) for n in order], device=dev)
         self.pod_touch = torch.zeros(num_envs, dtype=torch.bool, device=dev)
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
@@ -377,6 +386,10 @@ class SlapEnv:
             - 2.0 * self.pod_touch.float()   # v5: approach x3 (10 was outweighed by the podium risk: he froze)
         self.phi_prev = phi
         r_strike = torch.where(self.struck, torch.zeros_like(r), before) + self.bonus
+        if self.ref_q is not None and self.imit > 0:   # imitation: wind-up, strike, follow-through, back to the stand
+            ref = self.ref_q[self.t.clamp(max=len(self.ref_q) - 1)]
+            err = (((self.qpos[:, self.jq] - ref) ** 2) * self.imit_mask).sum(-1)
+            r_strike = r_strike + self.imit * torch.exp(-err)
         r_strike = r_strike - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
         self.bonus.zero_()
         self.hand_prev_ctrl = hand.clone()

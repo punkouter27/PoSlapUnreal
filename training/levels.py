@@ -27,6 +27,8 @@ LEVELS = {
     "L2": dict(  # Strike a fixed head target: palm first, >= 8 m/s, striker stays up, inside the 30 s clock
         roles={1: 0.7, 0: 0.3}, seconds=30.0, pushes=True, foot_box=(0.20, 0.25), max_push=0.6,
         hit_speed=8.0, hit_speed_start=2.0,   # curriculum: clean-hit speed bar 2 -> 8 m/s (stuck at 1 m/s taps without it)
+        reach_start=1.0,  # the real head from the start: the striker imitates the reference slap (slap_demo.py), which reaches it
+        imit_start=1.0,   # imitation weight per brain step, faded by the trainer as clean hits come (floor 0.2)
         reward_target={1: 100.0, 0: 2500.0},  # a clean 8 m/s hit pays 114 (v3); the exam is what counts
         check={1: STRIKE, 0: GUARD},
     ),
