@@ -5,7 +5,8 @@
 
 /Game/Audio/S_Slap, S_CrowdReact, S_CrowdLoop (looping), S_Bell; /Game/FX/NS_SlapSpray (the engine's DirectionalBurst
 template); the cheek ripple on M_Grandpa: world-position offset along the normal, a damped ring around RipplePoint driven
-by RippleTime / RippleAmp (ASlapHUD sets them per athlete on a strike). Display only: MuJoCo owns every contact.
+by RippleTime / RippleAmp (ASlapHUD sets them per athlete on a strike); wear on M_Grandpa's colour: a red flush around
+FlushPoint (Flush, from neck damage) and a greyer skin (Tired, from stamina). Display only: MuJoCo owns every contact.
 """
 import os
 import unreal
@@ -54,6 +55,46 @@ def add_ripple(skin):
     return True
 
 
+WEAR = ("float f = A * saturate(1 - distance(P, F) / 9);\n"
+        "float3 c = lerp(C, dot(C, float3(0.3, 0.59, 0.11)) * float3(0.7, 0.72, 0.75), T * 0.35);\n"
+        "return lerp(c, c * float3(1.5, 0.55, 0.55), f);")
+
+
+def add_wear(skin):
+    """Base colour -> red flush within 9 cm of FlushPoint (Flush 0-1), greyer, darker skin (Tired 0-1). Refreshes the code if present."""
+    prop = unreal.MaterialProperty.MP_BASE_COLOR
+    src = MEL.get_material_property_input_node(skin, prop)
+    if isinstance(src, unreal.MaterialExpressionCustom):
+        if src.get_editor_property("code") == WEAR:
+            return False
+        src.set_editor_property("code", WEAR)
+        MEL.recompile_material(skin)
+        return True
+    out = MEL.get_material_property_input_node_output_name(skin, prop)
+    code = MEL.create_material_expression(skin, unreal.MaterialExpressionCustom, -150, 0)
+    code.set_editor_property("code", WEAR)
+    code.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    ins = []
+    for n in ("C", "P", "F", "A", "T"):
+        c = unreal.CustomInput()
+        c.set_editor_property("input_name", n)
+        ins.append(c)
+    code.set_editor_property("inputs", ins)
+    MEL.connect_material_expressions(src, out, code, "C")
+    wp = MEL.create_material_expression(skin, unreal.MaterialExpressionWorldPosition, -400, -200)
+    MEL.connect_material_expressions(wp, "", code, "P")
+    pt = MEL.create_material_expression(skin, unreal.MaterialExpressionVectorParameter, -400, -300)
+    pt.set_editor_property("parameter_name", "FlushPoint")
+    MEL.connect_material_expressions(pt, "", code, "F")
+    for i, name in enumerate(("Flush", "Tired")):
+        p = MEL.create_material_expression(skin, unreal.MaterialExpressionScalarParameter, -400, -500 + 100 * i)
+        p.set_editor_property("parameter_name", name)
+        MEL.connect_material_expressions(p, "", code, "AT"[i])
+    MEL.connect_material_property(code, "", prop)
+    MEL.recompile_material(skin)
+    return True
+
+
 def main():
     tools = unreal.AssetToolsHelpers.get_asset_tools()
     for name, loop in (("Slap", False), ("CrowdReact", False), ("CrowdLoop", True), ("Bell", False)):
@@ -74,9 +115,9 @@ def main():
     log(f"NS_SlapSpray: {ASSETS.does_asset_exist('/Game/FX/NS_SlapSpray')}")
 
     skin = ASSETS.load_asset("/Game/Athletes/Grandpa/M_Grandpa")
-    if add_ripple(skin):
+    if add_ripple(skin) | add_wear(skin):
         ASSETS.save_loaded_asset(skin)
-    log("cheek ripple on M_Grandpa")
+    log("cheek ripple and wear on M_Grandpa")
 
 
 if __name__ == "__main__":

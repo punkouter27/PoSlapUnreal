@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Reactive FX</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:240px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:4px 0}</style>
+<h1>Reactive lights, KO grade, skin wear, spatial slap (2026-10-22)</h1>
+<p>Before: fixed stage lights, one camera grade, the skin never changes, every sound plain 2D. After (all cosmetic; MuJoCo decides everything):</p>
+<ul>
+<li><b>Light flare:</b> on a touch the key light jumps up to 3.25&times; and the striker's team rim up to 7&times;, scaled by palm speed, fading in about 0.5 s.</li>
+<li><b>KO:</b> the 16 truss spots run a chase round the arena while the crane shot plays, and the picture drains (saturation 0.3) and closes in (vignette 1.0), fading back over the last 0.5 s.</li>
+<li><b>Skin wear (M_Grandpa):</b> a red flush on the struck cheek, 9 cm across, that follows the head; it grows as neck strength drops (full at the 0.5 floor) plus a sting after each strike that fades over a few seconds. The skin goes greyer and darker as stamina drops (full at the 0.7 floor). A first try at 60 % grey read as white under the key light; now 35 %.</li>
+<li><b>Spatial slap:</b> the crack plays at the contact point, panned from the camera, with no fall-off inside the arena. Crowd, crowd bed and bell stay 2D.</li>
+</ul>
+<p>The shots use <code>-SlapFxTest=8</code>: a faked 9 m/s strike on the defender's cheek at 8 s and a KO 1.5 s later, because no brain lands a palm strike yet. The current brain leans away all match, so no frame shows the cheek face-on. The flush position was checked in the log instead: it stays 11 cm from the head bone and follows the head for the whole sting.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before</figcaption></figure><figure><img src="after_strike.png"><figcaption>After: 0.25 s after the touch (key flare, spray, ring, fringe)</figcaption></figure><figure><img src="after_ko.png"><figcaption>After: KO (drained grade, vignette, truss chase beams)</figcaption></figure></div>

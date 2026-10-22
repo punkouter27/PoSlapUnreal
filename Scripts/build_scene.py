@@ -73,6 +73,7 @@ import sys
 sys.path.insert(0, os.path.join(PROJ, "Scripts"))
 import broadcast_fx
 broadcast_fx.add_ripple(skin)   # the cheek ripple on a strike (display only)
+broadcast_fx.add_wear(skin)     # flush + fatigue on the skin colour (display only)
 MEL.recompile_material(skin)
 ASSETS.save_loaded_asset(skin)
 mats = grandpa.get_editor_property("materials")
