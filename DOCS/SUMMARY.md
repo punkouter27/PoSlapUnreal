@@ -24,6 +24,8 @@ Layout: `training/` (Python: rig → MJCF → envs → PPO), `Content/Art/Raw` (
 3. **Python**: `uv venv training/.venv --python 3.11`, `uv pip install -r training/requirements.txt` (+ torch cu128, trimesh scipy networkx Pillow for URLab's importer).
 4. **Body**: `training/.venv/Scripts/python.exe training/build_body.py training/characters/grandpa.json`.
 5. **Unreal**: build `PoSlapUnrealEditor`, then `UnrealEditor-Cmd … -run=pythonscript -script=Scripts/build_scene.py`.
+   Arena art only: `training/.venv/Scripts/python.exe Scripts/arena_textures.py`, export `Content/Art/Raw/Arena_v2.blend` → `Exports/Arena.glb`,
+   then `-script=Scripts/arena_env.py` (re-imports the env, lights, haze, grade into the level). Brain only: `Scripts/set_brain.py`.
 6. **Checks**: `UnrealEditor … -game -SlapMode=Replay -SlapShot=10`, then
    `training/replay_check.py compare training/replays/<model>_5s.json Saved/URLab/replay_ue.json --mjb Saved/URLab/scene_compiled.mjb`.
 

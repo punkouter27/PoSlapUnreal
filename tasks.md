@@ -59,7 +59,7 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
   - [ ] L5 full match (`training/match.py`, built): 100 matches without blow-ups; Unreal's match log = Python's event for event (pipeline checked: 16/16 events identical)
 
 ## Step 5 — Visual Polish & Gameplay (after L5)
-- [ ] Arena art, lighting rig, tracking camera, 9:16 layout — tracking camera done (frames both athletes, push-in after a strike); athletes' collision shapes hidden in game; arena + crowd + truss lighting in place
+- [x] Arena art, lighting rig, tracking camera, 9:16 layout — done: tracking camera; arena v2 (`Content/Art/Raw/Arena_v2.blend` → `Exports/Arena.glb` + `.fbx` + `Textures/`): podium true to physics, tape foot boxes, mat seams/logos, ringside dressing, aisles, LED content, crowd variation, team rims, haze beams, grade; `Scripts/arena_env.py` (`SCREENSHOTS/261022_arena_v2`)
 - [x] Match flow: coin toss, turns, 30 s clocks, rounds, KO, 10-point-must judges — done: `USlapController` = `training/match.py` step for step (3 judges weighing speed / head snap / stagger; fouls −1); JSONL to `Logs/Gameplay/<YYMMDD>/`
 - [ ] HUD telemetry (PRD §6); UI diff HTML reports in `SCREENSHOTS/` — round, clock, hand speed, head snap, referee call, judges' cards, result (PRD not in the repo: fields assumed); reports in `SCREENSHOTS/261022_*`
 - [ ] Performance pass (60 fps), save, mark complete — 69–79 fps at 540×960 with training on the GPU (fps logged every 10 s); re-check with a trained brain
