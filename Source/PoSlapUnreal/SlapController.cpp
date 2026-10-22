@@ -400,9 +400,11 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete
 	O[10 + N] = Role;
 	O[11 + N] = 0.f;		// turn clock
 	double Rel[3] = { 0, 0, 0 };
-	if (Role == 0.f)
+	if (Role == 0.f)	// own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
 	{
-		for (int32 k = 12 + N; k < 18 + N; ++k) O[k] = 0.f;
+		const double Box[3] = { A.Root0[0] - d->qpos[A.RootQ], A.Root0[1] - d->qpos[A.RootQ + 1], 0.0 };
+		Heading(Box, O + 12 + N);
+		for (int32 k = 15 + N; k < 18 + N; ++k) O[k] = 0.f;
 		return;
 	}
 	if (A.Target >= 0)

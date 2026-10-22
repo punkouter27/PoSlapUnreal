@@ -69,7 +69,7 @@ def exam(ppo, character, level):
         a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
         lb = env.left_box.clone()
         obs, _, done, timeout = env.step(a)
-        fell_any |= done & ~timeout
+        fell_any |= env.fell_now
         left_box |= lb
     res = {"no_fall": 1.0 - fell_any.float().mean().item()}
     passed = res["no_fall"] >= chk["min_no_fall"]
@@ -104,6 +104,8 @@ def main():
     ppo_stream = env.stream
     ppo = PPO(108, env.A, a.envs, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy))
     extra = ppo.load(a.resume) if a.resume else {}
+    unseen = ppo.obs_rms.var < 1e-6                     # inputs a resumed brain only ever saw as 0 (a new one in BRAIN_IO)
+    ppo.obs_rms.var[unseen], ppo.obs_rms.mean[unseen] = 1.0, 0.0
     with torch.no_grad():
         ppo.model.log_std.clamp_(max=float(torch.log(torch.tensor(a.max_std))))
     # push curriculum: no pushes until he can stand, then up to full 150-300 N; graduation only at full

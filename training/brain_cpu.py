@@ -22,6 +22,7 @@ class Athlete:
         root = m.joint(prefix + "root").id
         self.rq, self.rv = m.jnt_qposadr[root], m.jnt_dofadr[root]
         self.pelvis = m.body(prefix + "pelvis").id
+        self.box = m.qpos0[self.rq:self.rq + 2].copy()   # foot-box centre = start pelvis x, y
         self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
         self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
@@ -40,7 +41,10 @@ class Athlete:
         o[64:67] = [c * v[0] + s * v[1], -s * v[0] + c * v[1], v[2]]
         o[67:70] = d.qvel[self.rv + 3:self.rv + 6] * 0.25
         o[70:100] = self.prev
-        o[100] = role      # role 0: target and opponent inputs stay zero
+        o[100] = role
+        if role == 0:      # own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
+            bx, by = self.box[0] - d.qpos[self.rq], self.box[1] - d.qpos[self.rq + 1]
+            o[102:105] = [c * bx + s * by, -s * bx + c * by, 0.0]
         return o.astype(np.float32)
 
     def decide(self, action):

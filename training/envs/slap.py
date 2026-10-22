@@ -172,13 +172,14 @@ class SlapEnv:
             wp.capture_launch(self.g_step)
         wp.capture_launch(self.g_kin)
 
-        fell = self._fallen()
-        rew = self._reward(a, fell)
+        fell = self.fell_now = self._fallen()
+        rew, out = self._reward(a, fell)
         self.prev_action = a
         self.t += 1
         self.ret += rew
-        done = fell | (self.t >= self.T)
-        timeout = done & ~fell
+        stop = fell | out                       # L1: leaving the foot box ends the episode like a fall
+        done = stop | (self.t >= self.T)
+        timeout = done & ~stop
         if done.any():
             for r, l, f, b in zip(self.ret[done].tolist(), self.t[done].tolist(), fell[done].tolist(), self.left_box[done].tolist()):
                 self.episodes.append((r, f, b, l))
@@ -208,8 +209,11 @@ class SlapEnv:
             self.left_box |= out
             facing = R[:, 0, 0]                                        # cos(yaw): pelvis x-axis on the world x-axis
             head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0) ** 2).sum(-1) / 0.01)
-            r = r - 0.5 * out.float() + 0.3 * facing + 0.3 * head
-        return torch.where(fell, torch.full_like(r, -5.0), r)
+            anchor = torch.exp(-(d ** 2).sum((-1, -2)) / 0.005)         # feet on their marks, before the hard limit
+            r = r + 0.3 * facing + 0.3 * head + 0.5 * anchor
+        else:
+            out = torch.zeros_like(fell)
+        return torch.where(fell | out, torch.full_like(r, -5.0), r), out
 
     # ------------------------------------------------------------------ observe (BRAIN_IO)
     def observe(self):
@@ -219,6 +223,8 @@ class SlapEnv:
         c, s = torch.cos(yaw), torch.sin(yaw)
         lin = v[:, 0:3]
         heading = torch.stack([c * lin[:, 0] + s * lin[:, 1], -s * lin[:, 0] + c * lin[:, 1], lin[:, 2]], -1)
+        bx, by = self.q0[0] - q[:, 0], self.q0[1] - q[:, 1]          # box centre = start pelvis x, y
+        box = torch.stack([c * bx + s * by, -s * bx + c * by, torch.zeros_like(bx)], -1)
         obs = torch.cat([
             q[:, self.jq] - self.stand,
             v[:, self.jv] * 0.1,
@@ -227,7 +233,9 @@ class SlapEnv:
             heading,
             v[:, 3:6] * 0.25,
             self.prev_action,
-            torch.zeros(self.N, 8, device=self.device),   # role 0, clock 0, target and opponent hand: zero at role 0
+            torch.zeros(self.N, 2, device=self.device),   # role 0, clock 0
+            box,                                          # role 0: own foot-box centre - pelvis, heading frame
+            torch.zeros(self.N, 3, device=self.device),   # opponent hand: zero at role 0
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)
