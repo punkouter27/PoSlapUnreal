@@ -104,6 +104,12 @@ class SlapEnv:
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
         self.surface[m.geom("podium").id] = True   # Unreal's knockdown rule: floor or podium
+        # strike curriculum (reach < 1): an arm on the podium costs 2 per step instead of a knockdown; the full rule at the
+        # real head and in every exam (2026-10-22: with it strict from the start the striker froze, hand never within 0.5 m)
+        self.podium = m.geom("podium").id
+        self.arm = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
+        self.arm[[m.geom(n).id for n in ("hand_l", "hand_r", "forearm_l", "forearm_r")]] = True
+        self.pod_touch = torch.zeros(num_envs, dtype=torch.bool, device=dev)
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
@@ -322,8 +328,18 @@ class SlapEnv:
         idx = torch.arange(self.con_geom.shape[0], device=self.device)
         g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
         hit = (idx < n) & ((self.surface[g0] & self.bad[g1]) | (self.surface[g1] & self.bad[g0]))
+        w = self.con_world.long()
         fell = torch.zeros(self.N, dtype=torch.bool, device=self.device)
-        fell[self.con_world[hit].long()] = True
+        fell[w[hit]] = True
+        self.pod_touch = torch.zeros_like(fell)
+        if self.reach < 1.0:   # strike curriculum: arms on the podium are not a knockdown yet (see __init__)
+            pod_arm = (idx < n) & (((g0 == self.podium) & self.arm[g1]) | ((g1 == self.podium) & self.arm[g0]))
+            self.pod_touch[w[pod_arm]] = True
+            soft = torch.zeros_like(fell)
+            soft[w[hit & ~pod_arm]] = True
+            strike = self.role == 1
+            fell = torch.where(strike, soft, fell)
+            self.pod_touch &= strike
         return fell | (self.qpos[:, 2] < 0.45)
 
     def _reward(self, a, fell):
@@ -358,7 +374,8 @@ class SlapEnv:
         d = (tgt - hand).norm(dim=-1)
         d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
         phi = self._palm_phi(hand, tgt)
-        before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth
+        before = -0.05 + 0.04 * upright.clamp(min=0) + 30.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth \
+            - 2.0 * self.pod_touch.float()   # v5: approach x3 (10 was outweighed by the podium risk: he froze)
         self.phi_prev = phi
         r_strike = torch.where(self.struck, torch.zeros_like(r), before) + self.bonus
         r_strike = r_strike - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
