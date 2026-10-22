@@ -410,7 +410,8 @@ class SlapEnv:
         self.hand_prev_ctrl = hand.clone()
 
         r = torch.where(self.role == 1, r_strike, torch.where(self.role == -1, r_absorb, r))
-        penalty = torch.where(self.role == 1, -30.0, -5.0)   # strike: falling must not beat waiting out the clock
+        penalty = torch.where(self.role == 1, -100.0, -5.0)  # strike: falling must cost more than imitating the slap pays
+        # (-30 < ~240 of imitation: he copied the reference, which falls open-loop, and fell in 96 % of strikes)
         return torch.where(fell | out, penalty, r), out
 
     # ------------------------------------------------------------------ observe (BRAIN_IO)
