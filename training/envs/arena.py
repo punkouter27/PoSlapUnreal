@@ -99,6 +99,14 @@ class ArenaEnv:
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
         self.surface[m.geom("podium").id] = True
+        # the defender may brace with his hands on the podium (user, 2026-10-22): palms 7 cm in from his edge, 17 cm apart
+        self.podium = m.geom("podium").id
+        self.hand_ids = t([[m.geom(p + "hand_l").id, m.geom(p + "hand_r").id] for p in PREFIX])   # (2 athletes, 2 hands)
+        self.is_hand = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
+        self.is_hand[self.hand_ids.flatten()] = True
+        pg = m.geom("podium")
+        top, half = float(pg.pos[2] + pg.size[2]), float(pg.size[0])
+        self.brace_pt = t([[[sx * (half + 0.07), y, top + 0.02] for y in (0.17, -0.17)] for sx in (-1, 1)])   # red at -X, blue at +X
 
         W, N, A = num_envs, self.N, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
@@ -272,10 +280,11 @@ class ArenaEnv:
         n = self.nacon[0]
         idx = torch.arange(self.con_geom.shape[0], device=self.device)
         g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        down = (idx < n) & self.surface[g0] & self.bad[g1]
-        down2 = (idx < n) & self.surface[g1] & self.bad[g0]
+        w = self.con_world.long().clamp(0, self.W - 1)
+        defender = 1 - self.striker[w]                                   # per contact: who defends in its world
+        down = (idx < n) & self.surface[g0] & self.bad[g1] & ~((g0 == self.podium) & self.is_hand[g1] & (self.owner[g1] == defender))
+        down2 = (idx < n) & self.surface[g1] & self.bad[g0] & ~((g1 == self.podium) & self.is_hand[g0] & (self.owner[g0] == defender))
         fell = torch.zeros(self.W, 2, dtype=torch.bool, device=self.device)
-        w = self.con_world.long()
         fell[w[down], self.owner[g1[down]]] = True
         fell[w[down2], self.owner[g0[down2]]] = True
         return fell | (self.qpos[:, self.rq + 2] < 0.45)
@@ -310,6 +319,8 @@ class ArenaEnv:
         after = self.struck
         flinch = (hdev - 0.05).clamp(min=0) * (~after)[:, None]
         r_def = r + torch.where(after, torch.exp(-self.com_err ** 2 / 0.0025), torch.zeros_like(self.com_err))[:, None] - 20.0 * flinch
+        hands = self.geom_xpos[:, self.hand_ids]                         # (W, 2 athletes, 2 hands, 3): the brace
+        r_def = r_def + 0.4 * torch.exp(-((hands - self.brace_pt) ** 2).sum(-1) / 0.01).sum(-1)
 
         # striker: as envs/slap.py strike (approach + palm-facing shaping before the touch, hit bonus at it), + KO bonus
         hand, tgt = self._sd(self.geom_xpos[:, self.hand_g])[0], self._sd(head)[1]

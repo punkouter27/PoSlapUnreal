@@ -109,6 +109,13 @@ class SlapEnv:
         # real head and in every exam (2026-10-22: strict from the start, the striker froze, hand never within 0.5 m; with
         # only the arms exempt his belly, 13 cm from the podium face at rest, met it whenever he leaned)
         self.podium = m.geom("podium").id
+        # the defender's brace: palms on the podium top, 7 cm in from its near edge, 17 cm either side of centre
+        self.hands = torch.tensor([m.geom("hand_l").id, m.geom("hand_r").id], device=dev)
+        self.is_hand = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
+        self.is_hand[self.hands] = True
+        pg = m.geom("podium")
+        near, top = float(pg.pos[0] - pg.size[0]), float(pg.pos[2] + pg.size[2])
+        self.brace_pt = torch.tensor([[near + 0.07, 0.17, top + 0.02], [near + 0.07, -0.17, top + 0.02]], device=dev)
         # strike imitation (2026-10-22): the reference slap from slap_demo.py (wind-up, strike, follow-through), its joint
         # angles per brain step from the stand pose; the striker earns up to `imit` per step for matching it
         demo = HERE / "models" / f"{character}_slap_demo.json"
@@ -343,6 +350,11 @@ class SlapEnv:
         w = self.con_world.long()
         fell = torch.zeros(self.N, dtype=torch.bool, device=self.device)
         fell[w[hit]] = True
+        # the defender (guard / absorb) may brace with his hands on the podium (user, 2026-10-22); the striker may not
+        brace = hit & (((g0 == self.podium) & self.is_hand[g1]) | ((g1 == self.podium) & self.is_hand[g0]))
+        braced = torch.zeros_like(fell)
+        braced[w[hit & ~brace]] = True
+        fell = torch.where(self.role != 1, braced, fell)
         self.pod_touch = torch.zeros_like(fell)
         if self.reach < 1.0:   # strike curriculum: the podium is not a knockdown yet (see __init__)
             pod = hit & ((g0 == self.podium) | (g1 == self.podium))
@@ -370,6 +382,9 @@ class SlapEnv:
             head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0[:, :2]) ** 2).sum(-1) / 0.01)
             anchor = torch.exp(-(d ** 2).sum((-1, -2)) / 0.005)         # feet on their marks, before the hard limit
             r = r + 0.3 * facing + 0.5 * anchor + 0.3 * head
+            # the brace: both palms on the podium's near edge, shoulder-width apart (pays the guard and the absorber)
+            hands = self.geom_xpos[:, self.hands]                       # (N, 2, 3)
+            r = r + 0.4 * torch.exp(-((hands - self.brace_pt) ** 2).sum(-1) / 0.01).sum(-1)
         else:
             out = torch.zeros_like(fell)
 
