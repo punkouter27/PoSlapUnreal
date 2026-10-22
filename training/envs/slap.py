@@ -403,7 +403,8 @@ class SlapEnv:
         if self.ref_q is not None and self.imit > 0:   # imitation: wind-up, strike, follow-through, back to the stand
             ref = self.ref_q[self.t.clamp(max=len(self.ref_q) - 1)]
             err = (((self.qpos[:, self.jq] - ref) ** 2) * self.imit_mask).sum(-1)
-            r_strike = r_strike + self.imit * torch.exp(-err)
+            during = (self.t < len(self.ref_q)).float()   # only while the reference plays: holding its last (stand) pose
+            r_strike = r_strike + self.imit * torch.exp(-err) * during   # out the 30 s clock had paid more than slapping
         r_strike = r_strike - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
         self.bonus.zero_()
         self.hand_prev_ctrl = hand.clone()
