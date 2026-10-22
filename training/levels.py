@@ -21,6 +21,7 @@ LEVELS = {
     ),
     "L2": dict(  # Strike a fixed head target: palm first, >= 8 m/s, striker stays up, inside the 30 s clock
         model="solo", seconds=30.0, pushes=False, role=1, foot_box=(0.20, 0.25),
+        hit_speed=8.0, hit_speed_start=2.0,   # curriculum: clean-hit speed bar 2 -> 8 m/s (stuck at 1 m/s taps without it)
         reward_target=100.0,  # a clean 8 m/s hit pays 114 (v3); the exam is what counts
         check=dict(episodes=100, min_hit=0.90, min_no_fall=0.90),   # hit = palm first, >= 8 m/s (envs/slap.py)
     ),

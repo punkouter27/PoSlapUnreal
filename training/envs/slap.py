@@ -108,6 +108,7 @@ class SlapEnv:
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
         self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 2), torch.zeros(N, dtype=torch.bool, device=dev)
         self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
+        self.hit_v = float(self.cfg.get("hit_speed", 8.0))   # L2: m/s a clean hit needs (the trainer's curriculum; exams use the level's)
         self.episodes = []   # (return, fell, left foot box, length, clean hit, hit speed) of finished episodes; the trainer drains it
         self.struck = torch.zeros(N, dtype=torch.bool, device=dev)
         self.hit_ok = torch.zeros(N, dtype=torch.bool, device=dev)
@@ -234,7 +235,7 @@ class SlapEnv:
         new = hit & ~self.struck
         if bool(new.any()):
             v = speed[new]
-            clean = good[new] & (v >= 8.0)
+            clean = good[new] & (v >= self.hit_v)
             self.hit_ok[new], self.hit_speed[new] = clean, v
             self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -10.0)))
             self.struck |= new
