@@ -22,3 +22,4 @@ training/logs/
 Plugins/UnrealRoboticsLab/
 training/replays/
 Scripts/__pycache__/
+Logs/

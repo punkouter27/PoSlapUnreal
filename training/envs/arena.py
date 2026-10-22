@@ -2,7 +2,7 @@
 
 Agents are (world, athlete) pairs flattened to 2N rows: row 2w is red, 2w+1 blue. Every episode is one turn: a coin toss
 picks the striker (role +1, BRAIN_IO's striker inputs, the defender's head as target); the other defends (role -1: the
-striker's head and right hand). The turn ends 3 s after the striker first touches the defender's head (the KO window),
+striker's head and right hand). The turn ends 5 s after the striker first touches the defender's head (the recovery window),
 at 30 s, or on any knockdown / foot-box exit. KO = the defender knocked down after that touch.
 Same observation, action rule, timing and randomisation as envs/slap.py; the model is the arena Unreal runs.
 """
@@ -21,7 +21,7 @@ from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
 PREFIX = ("red_", "blue_")
-KO_WINDOW = 150     # control steps after the first head touch (3 s)
+KO_WINDOW = 250     # control steps after the first head touch: the match's 5 s recovery window (match.py)
 
 
 class ArenaEnv:
