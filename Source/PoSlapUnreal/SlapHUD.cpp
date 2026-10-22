@@ -66,6 +66,15 @@ void ASlapHUD::DrawHUD()
 	}
 
 	if (Camera) TrackCamera(*Camera);
+	Frames.Add(GetWorld()->GetDeltaSeconds());	// performance pass: average fps every 10 s in the log
+	if (Frames.Num() > 1 && GetWorld()->GetRealTimeSeconds() - FpsSince >= 10.0)
+	{
+		double Sum = 0.0, Worst = 0.0;
+		for (float F : Frames) { Sum += F; Worst = FMath::Max<double>(Worst, F); }
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: %.1f fps average, worst frame %.1f ms (%d frames)"), Frames.Num() / Sum, Worst * 1000.0, Frames.Num());
+		Frames.Reset();
+		FpsSince = GetWorld()->GetRealTimeSeconds();
+	}
 	DrawMatch();
 
 	const FString Stamp = TEXT(POSLAP_BUILD_VERSION);

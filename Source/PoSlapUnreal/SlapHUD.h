@@ -22,6 +22,8 @@ private:
 	void DrawMatch();
 	void TrackCamera(ACameraActor* Cam);
 	TWeakObjectPtr<USlapController> Controller;
+	TArray<float> Frames;
+	double FpsSince = 0.0;
 	float ShotAt = -1.f;
 	bool bShotTaken = false;
 };
