@@ -187,10 +187,14 @@ def main():
     roles = list(L["roles"])
     # curricula, carried in checkpoints. Guard: pushes from 0 up to the level's cap (graduation only at the cap).
     # Strike: target from easy to the real head, then the clean-hit speed bar. Absorb: slap impulse up to the median.
-    env.push_scale = min(extra.get("push_scale", 0.0), L.get("max_push", 1.0)) if L.get("pushes") else 0.0
-    env.hit_v = float(extra.get("hit_v", L.get("hit_speed_start", L.get("hit_speed", 8.0))))
-    env.reach = float(extra.get("reach", 0.0 if "hit_speed_start" in L else 1.0))
-    env.slap_j = float(extra.get("slap_j", L.get("slap_impulse_start", 0.0)))
+    # A value carries over only from a checkpoint whose level trained that role (an L1 checkpoint holds placeholder
+    # strike values that would skip the strike curriculum).
+    had = LEVELS[extra["level"]].get("roles", {}) if extra.get("level") in LEVELS else {}
+    carry = lambda key, role, start: float(extra[key]) if role in had and key in extra else start
+    env.push_scale = min(carry("push_scale", 0, 0.0), L.get("max_push", 1.0)) if L.get("pushes") else 0.0
+    env.hit_v = carry("hit_v", 1, float(L.get("hit_speed_start", L.get("hit_speed", 8.0))))
+    env.reach = carry("reach", 1, 0.0 if "hit_speed_start" in L else 1.0)
+    env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
     curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j}
     target = L["reward_target"]
     recent = {r: deque(maxlen=100) for r in roles}
