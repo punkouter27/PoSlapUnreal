@@ -104,11 +104,10 @@ class SlapEnv:
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
         self.surface[m.geom("podium").id] = True   # Unreal's knockdown rule: floor or podium
-        # strike curriculum (reach < 1): an arm on the podium costs 2 per step instead of a knockdown; the full rule at the
-        # real head and in every exam (2026-10-22: with it strict from the start the striker froze, hand never within 0.5 m)
+        # strike curriculum (reach < 1): touching the podium costs 2 per step instead of a knockdown; the full rule at the
+        # real head and in every exam (2026-10-22: strict from the start, the striker froze, hand never within 0.5 m; with
+        # only the arms exempt his belly, 13 cm from the podium face at rest, met it whenever he leaned)
         self.podium = m.geom("podium").id
-        self.arm = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
-        self.arm[[m.geom(n).id for n in ("hand_l", "hand_r", "forearm_l", "forearm_r")]] = True
         self.pod_touch = torch.zeros(num_envs, dtype=torch.bool, device=dev)
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
@@ -332,11 +331,11 @@ class SlapEnv:
         fell = torch.zeros(self.N, dtype=torch.bool, device=self.device)
         fell[w[hit]] = True
         self.pod_touch = torch.zeros_like(fell)
-        if self.reach < 1.0:   # strike curriculum: arms on the podium are not a knockdown yet (see __init__)
-            pod_arm = (idx < n) & (((g0 == self.podium) & self.arm[g1]) | ((g1 == self.podium) & self.arm[g0]))
-            self.pod_touch[w[pod_arm]] = True
+        if self.reach < 1.0:   # strike curriculum: the podium is not a knockdown yet (see __init__)
+            pod = hit & ((g0 == self.podium) | (g1 == self.podium))
+            self.pod_touch[w[pod]] = True
             soft = torch.zeros_like(fell)
-            soft[w[hit & ~pod_arm]] = True
+            soft[w[hit & ~pod]] = True
             strike = self.role == 1
             fell = torch.where(strike, soft, fell)
             self.pod_touch &= strike
