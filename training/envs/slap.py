@@ -236,7 +236,7 @@ class SlapEnv:
             v = speed[new]
             clean = good[new] & (v >= 8.0)
             self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 30.0 + 3.0 * v, torch.where(good[new], 5.0 + 2.0 * v, torch.full_like(v, -10.0)))
+            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 5.0 + 3.0 * v, torch.full_like(v, -10.0)))
             self.struck |= new
             self.settle[new] = 75
 
@@ -256,15 +256,17 @@ class SlapEnv:
         posture = torch.exp(-((self.qpos[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
         smooth = ((a - self.prev_action) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
-        if self.strike:   # L2: no pay for waiting; reach the target fast, a clean palm strike pays most, then stay up
+        if self.strike:
+            # L2, v2 (the first version paid ~0.8/step for a hand near the target: the brain hovered 30 s, never struck).
+            # Before the strike every step costs a little; closing on the target pays only the distance gained (so
+            # hovering earns nothing); the strike is where the reward is, and it grows with hand speed.
             hand, tgt = self.geom_xpos[:, self.hand], self.mocap[:, 0]
             d = (tgt - hand).norm(dim=-1)
-            u = (tgt - hand) / d[:, None].clamp(min=1e-6)
-            toward = (u * (hand - self.hand_prev_ctrl) / 0.02).sum(-1).clamp(0, 12)
-            reach = torch.exp(-d ** 2 / 0.05) + 0.1 * toward * torch.exp(-d ** 2 / 0.1)
-            before = -0.05 + 0.3 * upright.clamp(min=0) + reach - 0.01 * smooth
-            after = 0.5 + 0.5 * upright.clamp(min=0) + 0.5 * height
+            d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
+            before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) - 0.01 * smooth
+            after = 1.0 + 0.5 * upright.clamp(min=0)
             r = torch.where(self.struck, after, before) + self.bonus
+            r = r - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
             self.bonus.zero_()
             self.hand_prev_ctrl = hand.clone()
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
@@ -275,10 +277,12 @@ class SlapEnv:
             facing = R[:, 0, 0]                                        # cos(yaw): pelvis x-axis on the world x-axis
             head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0) ** 2).sum(-1) / 0.01)
             anchor = torch.exp(-(d ** 2).sum((-1, -2)) / 0.005)         # feet on their marks, before the hard limit
-            r = r + 0.3 * facing + 0.5 * anchor + (0.0 if self.strike else 0.3) * head   # a striker must lean in
+            if not self.strike:   # the striker keeps the box as a rule only: any per-step pay invites hovering
+                r = r + 0.3 * facing + 0.5 * anchor + 0.3 * head
         else:
             out = torch.zeros_like(fell)
-        return torch.where(fell | out, torch.full_like(r, -5.0), r), out
+        penalty = -30.0 if self.strike else -5.0   # L2: falling must not beat waiting out the clock
+        return torch.where(fell | out, torch.full_like(r, penalty), r), out
 
     # ------------------------------------------------------------------ observe (BRAIN_IO)
     def observe(self):

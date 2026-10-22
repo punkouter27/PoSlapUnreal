@@ -24,12 +24,25 @@ HERE = Path(__file__).parent
 RUNS = HERE / "runs"
 
 
-def housekeeping():
-    """Prune abandoned runs: no meta (crashed) or under 5,000 env steps."""
+def housekeeping(keep=()):
+    """Prune abandoned runs (AGENTS.md): under 5,000 env steps by their own record, idle 30 min, not in `keep`.
+    2026-10-22: the first version counted a run without meta.json (any crashed or killed run) as 0 steps and judged
+    idleness by the folder's mtime (which file rewrites don't touch): it deleted long runs, one of them mid-resume."""
+    keep = {Path(k).resolve() for k in keep}
     for d in RUNS.glob("*"):
-        meta = d / "meta.json"
-        steps = json.loads(meta.read_text()).get("steps", 0) if meta.exists() else 0
-        if d.is_dir() and steps < 5000 and time.time() - d.stat().st_mtime > 600:
+        if not d.is_dir() or d.resolve() in keep:
+            continue
+        files = [f for f in d.rglob("*") if f.is_file()]
+        if files and time.time() - max(f.stat().st_mtime for f in files) < 1800:
+            continue
+        meta, tele = d / "meta.json", d / "telemetry.jsonl"
+        if meta.exists():
+            steps = json.loads(meta.read_text()).get("steps", 0)
+        elif tele.exists() and tele.stat().st_size:
+            steps = json.loads(tele.read_text().strip().splitlines()[-1]).get("steps", 0)
+        else:
+            steps = 0
+        if steps < 5000:
             shutil.rmtree(d, ignore_errors=True)
             print(f"pruned {d.name} ({steps} steps)")
 
@@ -111,7 +124,8 @@ def main():
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
-    housekeeping()
+    run_dir = RUNS / (a.run or "")
+    housekeeping(keep=[run_dir] + ([Path(a.resume).parent] if a.resume else []))
     tensorboard()
     run = RUNS / (a.run or f"{a.char}_{a.level}_{time.strftime('%y%m%d_%H%M')}")
     run.mkdir(exist_ok=True)
