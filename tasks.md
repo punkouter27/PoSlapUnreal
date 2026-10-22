@@ -50,9 +50,16 @@ Spec: [BLUEPRINT.md](BLUEPRINT.md) · Rules: [AGENTS.md](AGENTS.md) · PRD: Powe
 - [x] L0 Stand trained and graduated in MuJoCo — 46 min (+13 min before the noise cap), exam 97 % no-fall under full 150–300 N pushes; `training/models/brains/grandpa_L0.onnx`
 - [x] **Matching Check** (Blueprint §8): replay 0.017 mm, **live 0.000 cm** (bit-identical vs URLab's model), same outcome
 - [ ] L1 → L5 in order, each graduating before the next
+  - 2026-10-22: last night's L2 "graduation" predates the podium in the training model (run loaded 03:03, podium added 04:14): its left hand hits the podium (knockdown), and L1 best drops 94 → 28 % with the podium. Strike-only training had also wiped out the guard.
+  - Fix: **one brain, every role**: each world plays guard / strike / absorb per the level's mix; a level passes only when every role's exam passes
+  - [ ] L1 guard with the podium: fine-tune reached 76 % (exam needs 95 %); now trained inside L2 as 30 % of worlds (GUARD exam = L1's)
+  - [ ] L2 strike 0.7 + guard 0.3, from the podium-aware L1 brain (overnight queue, running)
+  - [ ] L3 absorb 0.6 + strike 0.4: one scripted slap to the face (impulse 3 → 15 N·s; 15 = estimated median Grandpa slap), opponent hand seen coming; pass = up + COM back within 5 cm after 5 s, ≥ 90 % (queued after L2)
+  - [ ] L4 self-play in the arena (`envs/arena.py`, built + smoke-tested): KO rate per landed strike 10–40 %, striker self-falls ≤ 5 %
+  - [ ] L5 full match (`training/match.py`, built): 100 matches without blow-ups; Unreal's match log = Python's event for event (pipeline checked: 16/16 events identical)
 
 ## Step 5 — Visual Polish & Gameplay (after L5)
-- [ ] Arena art, lighting rig, tracking camera, 9:16 layout
-- [ ] Match flow: coin toss, turns, 30 s clocks, rounds, KO, 10-point-must judges
-- [ ] HUD telemetry (PRD §6); UI diff HTML reports in `SCREENSHOTS/`
-- [ ] Performance pass (60 fps), save, mark complete
+- [ ] Arena art, lighting rig, tracking camera, 9:16 layout — tracking camera done (frames both athletes, push-in after a strike); athletes' collision shapes hidden in game; arena + crowd + truss lighting in place
+- [x] Match flow: coin toss, turns, 30 s clocks, rounds, KO, 10-point-must judges — done: `USlapController` = `training/match.py` step for step (3 judges weighing speed / head snap / stagger; fouls −1); JSONL to `Logs/Gameplay/<YYMMDD>/`
+- [ ] HUD telemetry (PRD §6); UI diff HTML reports in `SCREENSHOTS/` — round, clock, hand speed, head snap, referee call, judges' cards, result (PRD not in the repo: fields assumed); reports in `SCREENSHOTS/261022_*`
+- [ ] Performance pass (60 fps), save, mark complete — 69–79 fps at 540×960 with training on the GPU (fps logged every 10 s); re-check with a trained brain
