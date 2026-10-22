@@ -236,7 +236,7 @@ class SlapEnv:
             v = speed[new]
             clean = good[new] & (v >= 8.0)
             self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 5.0 + 3.0 * v, torch.full_like(v, -10.0)))
+            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -10.0)))
             self.struck |= new
             self.settle[new] = 75
 
@@ -264,7 +264,7 @@ class SlapEnv:
             d = (tgt - hand).norm(dim=-1)
             d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
             before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) - 0.01 * smooth
-            after = 1.0 + 0.5 * upright.clamp(min=0)
+            after = torch.zeros_like(upright)   # v3: no pay for standing after a tap (a soft touch + 1.5 s stand was worth ~110)
             r = torch.where(self.struck, after, before) + self.bonus
             r = r - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
             self.bonus.zero_()
