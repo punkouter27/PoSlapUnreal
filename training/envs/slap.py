@@ -1,8 +1,14 @@
-"""Slap training env on MuJoCo Warp: N worlds of one athlete, on the GPU (levels L0, L1 for now).
+"""Slap training env on MuJoCo Warp: N worlds of one athlete, on the GPU (levels L0-L3).
 
 Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same 108 numbers.
+One brain, every role (Blueprint 7): each world plays one role per episode, drawn from the level's `roles` mix, so a
+level keeps the earlier ones' skills (2026-10-22: L2 trained on strikes alone had forgotten how to guard).
+    0  guard   (L0, L1): stand in the foot box under random pushes, 30 s
+    +1 strike  (L2):     open-palm hit on the `target` mocap sphere where the opponent's head is; ends 1.5 s after
+    -1 absorb  (L3):     one scripted slap to the face (an impulse on the head, the opponent's hand seen coming);
+                         ends 5 s after it: still up, centre of mass back within 5 cm
 Randomised every episode (Blueprint 6): floor friction, +-5 % mass per part, +-10 % strength, 0-20 ms action
-delay, pushes of 150-300 N on chest or head, a little sensor noise.
+delay, a little sensor noise; guard worlds get pushes of 150-300 N (x push_scale) on chest or head.
 A fall is Unreal's knockdown rule: any non-foot geom touching the floor or podium (MuJoCo contacts, not a height guess).
 """
 from __future__ import annotations
@@ -13,7 +19,6 @@ from pathlib import Path
 
 import mujoco
 import mujoco_warp as mjw
-import numpy as np
 import torch
 import warp as wp
 
@@ -22,6 +27,7 @@ from levels import LEVELS
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
 OBS = 108           # DOCS/BRAIN_IO.md
+OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
 
 
 def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
@@ -33,7 +39,7 @@ def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
 
 class SlapEnv:
     def __init__(self, character="grandpa", level="L0", num_envs=4096, seed=0, randomize=True):
-        if level not in ("L0", "L1", "L2"):
+        if level not in ("L0", "L1", "L2", "L3"):
             raise NotImplementedError(f"{level}: its mechanics are added when the ladder reaches it (levels.py)")
         self.level, self.cfg, self.N, self.randomize = level, LEVELS[level], num_envs, randomize
         dev = self.device = "cuda"
@@ -57,7 +63,7 @@ class SlapEnv:
         self.lo, self.hi = rng[:, 0], rng[:, 1]
         self.scale = 0.5 * (self.hi - self.lo)
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
-        self.T = int(self.cfg["seconds"] * 50)
+        self.T = 1500   # 30 s turn clock, every role
 
         d0 = mujoco.MjData(m)
         d0.qpos[self.jq.cpu().numpy()] = self.stand.cpu().numpy()
@@ -82,9 +88,10 @@ class SlapEnv:
 
         T = lambda a: wp.to_torch(a)
         self.qpos, self.qvel, self.ctrl = T(self.dw.qpos), T(self.dw.qvel), T(self.dw.ctrl)
-        self.xpos, self.xfrc = T(self.dw.xpos), T(self.dw.xfrc_applied)
-        self.geom_xpos = T(self.dw.geom_xpos)
+        self.xpos, self.xfrc, self.com = T(self.dw.xpos), T(self.dw.xfrc_applied), T(self.dw.subtree_com)
+        self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
+        self.con_frame, self.mocap = T(self.dw.contact.frame), T(self.dw.mocap_pos)
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
@@ -94,30 +101,37 @@ class SlapEnv:
         self.surface[self.floor] = True
         self.surface[m.geom("podium").id] = True   # Unreal's knockdown rule: floor or podium
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
-        self.strike = self.cfg["role"] == 1
-        if self.strike:   # L2: the mocap sphere stands in for the opponent's head (arena: 0.80 m ahead, 0.74 m up)
-            self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
-            self.tbase = self.q0[:3] + torch.tensor([0.8015, 0.0, 0.74], device=dev)     # the arena opponent's head
-            self.teasy = self.q0[:3] + torch.tensor([0.43, -0.08, 0.53], device=dev)     # ~0.45 m in front of the right shoulder
-            self.mocap, self.geom_xmat = T(self.dw.mocap_pos), T(self.dw.geom_xmat)
-            self.con_frame = T(self.dw.contact.frame)
+        # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
+        self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
+        self.tbase = self.q0[:3] + torch.tensor(OPP_HEAD, device=dev)                 # the arena opponent's head
+        self.teasy = self.q0[:3] + torch.tensor([0.43, -0.08, 0.53], device=dev)     # ~0.45 m in front of the right shoulder
+        self.tpark = self.q0[:3] + torch.tensor([5.0, 0.0, 0.7], device=dev)
+        # absorb: the opponent's right hand (their right = our +Y), at rest, wound up; it lands on our left cheek
+        self.hrest = self.q0[:3] + torch.tensor([0.80, 0.20, -0.05], device=dev)
+        self.hwind = self.q0[:3] + torch.tensor([0.70, 0.60, 0.55], device=dev)
 
         N, A = num_envs, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
-        self.goal, self.prev_action, self.t = self.stand.repeat(N, 1), z(N, A), torch.zeros(N, dtype=torch.long, device=dev)
-        self.delay = torch.zeros(N, dtype=torch.long, device=dev)
+        zb = lambda: torch.zeros(N, dtype=torch.bool, device=dev)
+        zl = lambda: torch.zeros(N, dtype=torch.long, device=dev)
+        self.roles = {int(r): float(p) for r, p in self.cfg["roles"].items()}
+        self.force_role = None   # exams: every world plays this role
+        self.role = zl()
+        self.goal, self.prev_action, self.t = self.stand.repeat(N, 1), z(N, A), zl()
+        self.delay = zl()
         self.push_wait, self.push_left, self.push_f = z(N), z(N), z(N, 3)
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
-        self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 2), torch.zeros(N, dtype=torch.bool, device=dev)
-        self.push_scale = 1.0   # pushes at this share of 150-300 N (the trainer's curriculum; exams use 1)
-        self.hit_v = float(self.cfg.get("hit_speed", 8.0))
-        self.reach = 1.0   # L2: where the target sits between easy (0) and the real opponent's head (1); trainer's curriculum   # L2: m/s a clean hit needs (the trainer's curriculum; exams use the level's)
-        self.episodes = []   # (return, fell, left foot box, length, clean hit, hit speed) of finished episodes; the trainer drains it
-        self.struck = torch.zeros(N, dtype=torch.bool, device=dev)
-        self.hit_ok = torch.zeros(N, dtype=torch.bool, device=dev)
-        self.done_hit = torch.zeros(N, dtype=torch.bool, device=dev)
-        self.settle = torch.zeros(N, dtype=torch.long, device=dev)   # control steps left after the strike
+        self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 3), zb()
+        self.push_scale = 1.0   # guard pushes at this share of 150-300 N (the trainer's curriculum; exams use the level's)
+        self.hit_v = float(self.cfg.get("hit_speed", 8.0))   # strike: m/s a clean hit needs (the trainer's curriculum)
+        self.reach = 1.0   # strike: target between easy (0) and the real opponent's head (1) (the trainer's curriculum)
+        self.slap_j = float(self.cfg.get("slap_impulse", 0.0))   # absorb: mean slap impulse, N s (the trainer's curriculum)
+        self.exam = False   # absorb: exams hit with exactly slap_j
+        self.episodes = []  # finished episodes, dicts (see step); the trainer drains it
+        self.struck, self.hit_ok, self.done_hit = zb(), zb(), zb()
+        self.settle = zl()   # strike: control steps left after the strike
         self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
+        self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
 
         # CUDA graphs: compile once, then replay
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
@@ -148,41 +162,65 @@ class SlapEnv:
             k = self._u((n, self.gain.shape[1]), 0.9, 1.1)
             self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], self.frange0 * k[..., None]
             self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
+        if self.force_role is not None:
+            self.role[mask] = self.force_role
+        else:
+            keys = torch.tensor(list(self.roles), device=self.device)
+            self.role[mask] = keys[torch.multinomial(torch.tensor(list(self.roles.values()), device=self.device), n, replacement=True)]
         self.goal[mask], self.prev_action[mask], self.t[mask], self.ret[mask] = self.stand, 0.0, 0, 0.0
         self.push_wait[mask], self.push_left[mask] = self._u(n, 1.0, 3.0), 0.0
         self.left_box[mask] = False
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
-        self.head0[mask] = self.xpos[mask][:, self.head, :2]
-        if self.strike:
-            base = self.teasy + self.reach * (self.tbase - self.teasy)   # L2 curriculum: 0 easy -> 1 the real head
-            self.mocap[mask, 0] = base + self._u((n, 3), -0.03, 0.03)
-            self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
-            self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
-            self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
-            self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
-            self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
+        self.head0[mask] = self.xpos[mask][:, self.head]
+        strike = mask & (self.role == 1)
+        base = self.teasy + self.reach * (self.tbase - self.teasy)   # strike curriculum: 0 easy -> 1 the real head
+        self.mocap[mask, 0] = self.tpark
+        self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.03, 0.03)
+        self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
+        self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
+        self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
+        self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
+        self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
+        # absorb: one slap at 1.5-3 s, from the striker's right (+Y here) across the face, a little away from him
+        self.t_hit[mask] = torch.randint(75, 150, (n,), device=self.device)
+        j = self.slap_j * (torch.ones(n, device=self.device) if self.exam else self._u(n, 0.6, 1.4))
+        ang = self._u(n, -0.26, 0.26)                       # +-15 deg around the swing direction
+        dx, dy = -0.3 * torch.cos(ang) + torch.sin(ang), -0.3 * torch.sin(ang) - torch.cos(ang)
+        f = torch.stack([dx, dy, torch.full_like(dx, 0.05)], -1)
+        self.slap_f[mask] = f / f.norm(dim=-1, keepdim=True) * (j / 0.01)[:, None]   # j over 10 ms
+        self.slap_r[mask] = torch.tensor([0.05, 0.07, -0.03], device=self.device)    # left cheek, from the head centre
+        self.com_err[mask] = 0.0
 
     # ------------------------------------------------------------------ step
-    def _pushes(self, dt):
-        if not (self.cfg["pushes"] and self.randomize and self.push_scale > 0):
-            return
+    def _forces(self, dt, s):
+        """Guard worlds: random pushes. Absorb worlds: the slap, two physics steps at control step t_hit."""
         self.xfrc.zero_()
-        self.push_wait -= dt
-        start = (self.push_wait <= 0) & (self.push_left <= 0)
-        n = int(start.sum())
-        if n:
-            ang = self._u(n, -math.pi, math.pi)
-            mag = self._u(n, 150.0, 300.0) * self.push_scale
-            self.push_f[start] = torch.stack([torch.cos(ang) * mag, torch.sin(ang) * mag, torch.zeros_like(mag)], -1)
-            self.push_left[start] = self._u(n, 0.1, 0.2)
-            self.push_wait[start] = self._u(n, 1.0, 3.0)
-            self.push_body[start] = torch.where(torch.rand(n, device=self.device) < 0.5, self.chest, self.head)
-        on = self.push_left > 0
-        if on.any():
-            w = on.nonzero().squeeze(-1)
-            self.xfrc[w, self.push_body[w], :3] = self.push_f[w]
-        self.push_left -= dt
+        if self.randomize and self.push_scale > 0 and self.cfg.get("pushes"):
+            guard = self.role == 0
+            self.push_wait -= dt
+            start = (self.push_wait <= 0) & (self.push_left <= 0) & guard
+            n = int(start.sum())
+            if n:
+                ang = self._u(n, -math.pi, math.pi)
+                mag = self._u(n, 150.0, 300.0) * self.push_scale
+                self.push_f[start] = torch.stack([torch.cos(ang) * mag, torch.sin(ang) * mag, torch.zeros_like(mag)], -1)
+                self.push_left[start] = self._u(n, 0.1, 0.2)
+                self.push_wait[start] = self._u(n, 1.0, 3.0)
+                self.push_body[start] = torch.where(torch.rand(n, device=self.device) < 0.5, self.chest, self.head)
+            on = (self.push_left > 0) & guard
+            if on.any():
+                w = on.nonzero().squeeze(-1)
+                self.xfrc[w, self.push_body[w], :3] = self.push_f[w]
+            self.push_left -= dt
+        if s < 2:
+            slap = (self.role == -1) & (self.t == self.t_hit)
+            if slap.any():
+                w = slap.nonzero().squeeze(-1)
+                self.xfrc[w, self.head, :3] = self.slap_f[w]
+                self.xfrc[w, self.head, 3:] = torch.cross(self.slap_r[w], self.slap_f[w], dim=-1)
+                if s == 0:
+                    self.com0[w] = self.com[w, self.pelvis, :2]
 
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
@@ -191,10 +229,9 @@ class SlapEnv:
         old, self.goal = self.goal, tgt
         for s in range(DECIM):
             self.ctrl[:, self.act_id] = torch.where((s >= self.delay)[:, None], tgt, old)
-            self._pushes(0.005)
+            self._forces(0.005, s)
             wp.capture_launch(self.g_step)
-            if self.strike:
-                self._strike_check()
+            self._strike_check()
         wp.capture_launch(self.g_kin)
 
         fell = self.fell_now = self._fallen()
@@ -202,22 +239,24 @@ class SlapEnv:
         self.prev_action = a
         self.t += 1
         self.ret += rew
-        stop = fell | out                       # L1: leaving the foot box ends the episode like a fall
+        stop = fell | out                       # leaving the foot box ends the episode like a fall
+        strike, absorb = self.role == 1, self.role == -1
+        self.settle = torch.where(self.struck, self.settle - 1, self.settle)
         done = stop | (self.t >= self.T)
-        if self.strike:                         # L2: the episode ends 1.5 s after the strike (did he stay up?)
-            self.settle = torch.where(self.struck, self.settle - 1, self.settle)
-            done = done | (self.struck & (self.settle <= 0))
+        done |= strike & self.struck & (self.settle <= 0)          # strike: did he stay up 1.5 s after?
+        done |= absorb & (self.t >= self.t_hit + 250)              # absorb: 5 s after the slap
         timeout = done & ~stop
         self.done_hit = done & self.hit_ok & ~stop
+        self.done_absorbed = done & ~stop & (self.com_err <= 0.05)    # absorb: up, COM back within 5 cm after 5 s
         if done.any():
-            for r, l, f, b, h, v in zip(self.ret[done].tolist(), self.t[done].tolist(), fell[done].tolist(),
-                                        self.left_box[done].tolist(), self.done_hit[done].tolist(), self.hit_speed[done].tolist()):
-                self.episodes.append((r, f, b, l, h, v))
+            cols = (self.ret, self.t, fell, self.left_box, self.done_hit, self.hit_speed, self.role, self.done_absorbed, self.com_err)
+            for r, l, f, b, h, v, ro, ab, ce in zip(*(c[done].tolist() for c in cols)):
+                self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=ro, absorbed=ab, com_err=ce))
             self.reset(done)
         return self.observe(), rew, done, timeout
 
     def _palm_phi(self, hand, tgt):
-        """L2 v4: 2 x closeness x how squarely the palm faces the target (every first touch had been back/edge/fingers)."""
+        """Strike v4: 2 x closeness x how squarely the palm faces the target (every first touch had been back/edge/fingers)."""
         to = tgt - hand
         d = to.norm(dim=-1)
         palm_dir = -self.geom_xmat[:, self.hand][:, :, 2]
@@ -270,63 +309,78 @@ class SlapEnv:
         posture = torch.exp(-((self.qpos[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
         smooth = ((a - self.prev_action) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
-        if self.strike:
-            # L2, v2 (the first version paid ~0.8/step for a hand near the target: the brain hovered 30 s, never struck).
-            # Before the strike every step costs a little; closing on the target pays only the distance gained (so
-            # hovering earns nothing); the strike is where the reward is, and it grows with hand speed.
-            hand, tgt = self.geom_xpos[:, self.hand], self.mocap[:, 0]
-            d = (tgt - hand).norm(dim=-1)
-            d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
-            phi = self._palm_phi(hand, tgt)
-            before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth
-            self.phi_prev = phi
-            after = torch.zeros_like(upright)   # v3: no pay for standing after a tap (a soft touch + 1.5 s stand was worth ~110)
-            r = torch.where(self.struck, after, before) + self.bonus
-            r = r - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
-            self.bonus.zero_()
-            self.hand_prev_ctrl = hand.clone()
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()
             out = (d[..., 0] > bx).any(-1) | (d[..., 1] > by).any(-1)
             self.left_box |= out
             facing = R[:, 0, 0]                                        # cos(yaw): pelvis x-axis on the world x-axis
-            head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0) ** 2).sum(-1) / 0.01)
+            head = torch.exp(-((self.xpos[:, self.head, :2] - self.head0[:, :2]) ** 2).sum(-1) / 0.01)
             anchor = torch.exp(-(d ** 2).sum((-1, -2)) / 0.005)         # feet on their marks, before the hard limit
-            if not self.strike:   # the striker keeps the box as a rule only: any per-step pay invites hovering
-                r = r + 0.3 * facing + 0.5 * anchor + 0.3 * head
+            r = r + 0.3 * facing + 0.5 * anchor + 0.3 * head
         else:
             out = torch.zeros_like(fell)
-        penalty = -30.0 if self.strike else -5.0   # L2: falling must not beat waiting out the clock
-        return torch.where(fell | out, torch.full_like(r, penalty), r), out
+
+        # absorb (L3): after the slap, pay for the centre of mass coming back over its pre-slap spot
+        self.com_err = (self.com[:, self.pelvis, :2] - self.com0).norm(dim=-1)
+        after = self.t > self.t_hit
+        r_absorb = r + torch.where(after, 1.0 * torch.exp(-self.com_err ** 2 / 0.0025), torch.zeros_like(r))
+
+        # strike (L2), v2 (the first version paid ~0.8/step for a hand near the target: the brain hovered 30 s, never
+        # struck). Before the strike every step costs a little; closing on the target pays only the distance gained (so
+        # hovering earns nothing); the strike is where the reward is, and it grows with hand speed. The box stays a rule
+        # only: any per-step pay for standing invites hovering. v3: no pay for standing after a tap.
+        hand, tgt = self.geom_xpos[:, self.hand], self.mocap[:, 0]
+        d = (tgt - hand).norm(dim=-1)
+        d_prev = (tgt - self.hand_prev_ctrl).norm(dim=-1)
+        phi = self._palm_phi(hand, tgt)
+        before = -0.05 + 0.04 * upright.clamp(min=0) + 10.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev) - 0.01 * smooth
+        self.phi_prev = phi
+        r_strike = torch.where(self.struck, torch.zeros_like(r), before) + self.bonus
+        r_strike = r_strike - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
+        self.bonus.zero_()
+        self.hand_prev_ctrl = hand.clone()
+
+        r = torch.where(self.role == 1, r_strike, torch.where(self.role == -1, r_absorb, r))
+        penalty = torch.where(self.role == 1, -30.0, -5.0)   # strike: falling must not beat waiting out the clock
+        return torch.where(fell | out, penalty, r), out
 
     # ------------------------------------------------------------------ observe (BRAIN_IO)
+    def _heading(self, v, c, s):
+        return torch.stack([c * v[:, 0] + s * v[:, 1], -s * v[:, 0] + c * v[:, 1], v[:, 2]], -1)
+
+    def opp_hand(self):
+        """Absorb: the scripted opponent's right hand: rest -> wound up (0.6-0.15 s before) -> our cheek -> rest (0.5 s)."""
+        t = (self.t - self.t_hit).float()[:, None] / 50.0
+        cheek = self.head0 + self.slap_r
+        wind = self.hrest + ((t + 0.6) / 0.45).clamp(0, 1) * (self.hwind - self.hrest)
+        swing = self.hwind + ((t + 0.15) / 0.15).clamp(0, 1) * (cheek - self.hwind)
+        back = cheek + (t / 0.5).clamp(0, 1) * (self.hrest - cheek)
+        return torch.where(t < -0.15, wind, torch.where(t < 0, swing, back))
+
     def observe(self):
         q, v = self.qpos, self.qvel
         R = quat_mat(q[:, 3:7])
         yaw = torch.atan2(R[:, 1, 0], R[:, 0, 0])
         c, s = torch.cos(yaw), torch.sin(yaw)
-        lin = v[:, 0:3]
-        heading = torch.stack([c * lin[:, 0] + s * lin[:, 1], -s * lin[:, 0] + c * lin[:, 1], lin[:, 2]], -1)
-        bx, by = self.q0[0] - q[:, 0], self.q0[1] - q[:, 1]          # box centre = start pelvis x, y
-        box = torch.stack([c * bx + s * by, -s * bx + c * by, torch.zeros_like(bx)], -1)
-        role_clock = torch.zeros(self.N, 2, device=self.device)
-        if self.strike:
-            rel = self.mocap[:, 0] - q[:, 0:3]
-            box = torch.stack([c * rel[:, 0] + s * rel[:, 1], -s * rel[:, 0] + c * rel[:, 1], rel[:, 2]], -1)
-            role_clock[:, 0] = 1.0
-            role_clock[:, 1] = 1.0 - self.t.float() / self.T
+        role = self.role.float()
+        b = torch.zeros_like(q[:, 0:3])                              # role 0: own foot-box centre (start pelvis x, y; z 0)
+        b[:, 0], b[:, 1] = self.q0[0] - q[:, 0], self.q0[1] - q[:, 1]
+        tgt = torch.where((self.role == 1)[:, None], self.mocap[:, 0], self.tbase)   # strike: target; absorb: opponent head
+        box = torch.where((self.role == 0)[:, None], b, tgt - q[:, 0:3])
+        clock = torch.where(self.role != 0, 1.0 - self.t.float() / self.T, torch.zeros_like(role))
+        hand = torch.where((self.role == -1)[:, None], self.opp_hand() - q[:, 0:3], torch.zeros_like(b))
         obs = torch.cat([
             q[:, self.jq] - self.stand,
             v[:, self.jv] * 0.1,
             q[:, 2:3],
             -R[:, 2, :],                     # R^T (0,0,-1)
-            heading,
+            self._heading(v[:, 0:3], c, s),
             v[:, 3:6] * 0.25,
             self.prev_action,
-            role_clock,                                   # role, turn clock remaining
-            box,                                          # role 0: own foot-box centre; striker: target - pelvis (heading)
-            torch.zeros(self.N, 3, device=self.device),   # opponent hand: none here
+            role[:, None], clock[:, None],                # role, turn clock remaining
+            self._heading(box, c, s),                     # role 0: own foot-box centre; else target / opponent head - pelvis
+            self._heading(hand, c, s),                    # opponent hand - pelvis (absorb only; 0 otherwise)
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

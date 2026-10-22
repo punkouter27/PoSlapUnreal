@@ -28,7 +28,7 @@ class Athlete:
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
 
-    def obs(self, d, role=0.0, clock=0.0, target=None):
+    def obs(self, d, role=0.0, clock=0.0, target=None, hand=None):
         o = np.zeros(108)
         N = len(self.order)
         o[:N] = d.qpos[self.qa] - self.stand
@@ -45,10 +45,13 @@ class Athlete:
         if role == 0:      # own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
             bx, by = self.box[0] - d.qpos[self.rq], self.box[1] - d.qpos[self.rq + 1]
             o[102:105] = [c * bx + s * by, -s * bx + c * by, 0.0]
-        else:              # striker: turn clock left, target (the defender's head centre) - pelvis, heading frame
+        else:              # striker / defender: turn clock left, opponent's head centre - pelvis, heading frame
             o[101] = clock
             r = target - d.xpos[self.pelvis]
             o[102:105] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
+        if hand is not None:   # defender: the opponent's right hand - pelvis, heading frame
+            r = hand - d.xpos[self.pelvis]
+            o[105:108] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         return o.astype(np.float32)
 
     def decide(self, action):
@@ -73,16 +76,19 @@ def onnx_policy(path):
     return lambda o: s.run(None, {"obs": o[None]})[0][0]
 
 
-def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None):
+def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, setup=None):
     """Same order as Unreal: every 4th physics step kinematics -> obs -> brain -> new goals; ctrl = goals; mj_step."""
     d = mujoco.MjData(m)
     stand(m, d, fp)
     ath = [Athlete(m, fp, p) for p in prefixes]
+    obs = obs or (lambda a, d, k: a.obs(d))
+    if setup:
+        setup(d)
     for k in range(int(seconds / m.opt.timestep)):
         if k % 4 == 0:
             mujoco.mj_kinematics(m, d)
             for a in ath:
-                a.decide(policy(a.obs(d)))
+                a.decide(policy(obs(a, d, k)))
         for a in ath:
             d.ctrl[a.act] = a.goal
         if on_step:
@@ -91,20 +97,48 @@ def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None):
     return d
 
 
-def video(policy, out, character="grandpa", seconds=6.0, size=(360, 480)):
-    """A GIF of the brain standing in CPU MuJoCo (pushes off), for reviewing a checkpoint without Unreal."""
+def video(policy, out, character="grandpa", seconds=6.0, size=(360, 480), role=0, slap=15.0):
+    """A GIF of the brain in CPU MuJoCo, for reviewing a checkpoint without Unreal. Role 0: standing (pushes off);
+    +1: striking the target sphere where the opponent's head is; -1: one `slap` N s slap to the face at 2 s
+    (the training env's scripted slap, envs/slap.py)."""
     from PIL import Image
     fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
     m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_solo.xml"))
     r = mujoco.Renderer(m, size[1], size[0])
     cam = mujoco.MjvCamera(); cam.azimuth, cam.elevation, cam.distance = 120, -12, 3.0
     frames = []
+    head = m.body("head").id
+    q0 = opp_head = head0 = None
+    cheek, f = np.array([0.05, 0.07, -0.03]), np.array([-0.3, -1.0, 0.05])
+    f = f / np.linalg.norm(f) * slap / 0.01
+
+    def opp_hand(t, head0):   # rest -> wound up -> our left cheek at 2 s -> rest, as envs/slap.py opp_hand()
+        rest, wind, hit = q0 + [0.80, 0.20, -0.05], q0 + [0.70, 0.60, 0.55], head0 + cheek
+        t = t - 2.0
+        if t < -0.15:
+            return rest + np.clip((t + 0.6) / 0.45, 0, 1) * (wind - rest)
+        if t < 0:
+            return wind + np.clip((t + 0.15) / 0.15, 0, 1) * (hit - wind)
+        return hit + np.clip(t / 0.5, 0, 1) * (rest - hit)
+
+    def setup(d):
+        nonlocal q0, opp_head, head0
+        q0 = d.qpos[:3].copy(); opp_head = q0 + [0.8015, 0.0, 0.74]; head0 = d.xpos[head].copy()
+        d.mocap_pos[0] = opp_head if role == 1 else q0 + [5.0, 0.0, 0.7]
 
     def grab(k, d):
+        d.xfrc_applied[:] = 0
+        if role == -1 and k in (400, 401):   # 2 s, 10 ms
+            d.xfrc_applied[head, :3] = f
+            d.xfrc_applied[head, 3:] = np.cross(cheek, f)
         if k % 8 == 0:   # 25 fps
             cam.lookat[:] = [d.qpos[0], d.qpos[1], 0.9]
             r.update_scene(d, cam); frames.append(Image.fromarray(r.render()))
-    d = rollout(m, fp, policy, seconds=seconds, on_step=grab)
+    def obs(a, d, k):
+        if role == 0:
+            return a.obs(d)
+        return a.obs(d, role, 1 - k * 0.005 / 30, opp_head, opp_hand(k * 0.005, head0) if role == -1 else None)
+    d = rollout(m, fp, policy, seconds=seconds, on_step=grab, obs=obs, setup=setup)
     frames[0].save(out, save_all=True, append_images=frames[1:], duration=40, loop=0)
     return float(d.qpos[2])
 

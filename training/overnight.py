@@ -43,7 +43,11 @@ def train(stage, run, minutes, resume, char):
     if stage.get("keep_going"):
         cmd.append("--keep-going")
     with open(RUNS / f"{run.name}.log", "a") as out:
-        return subprocess.run(cmd, cwd=HERE, stdout=out, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(cmd, cwd=HERE, stdout=out, stderr=subprocess.STDOUT).returncode
+    if code and run.is_dir():   # housekeeping's "failed run" marker (AGENTS.md); a native crash leaves no traceback
+        with open(run / "crash.log", "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} exit code {code}\n")
+    return code
 
 
 def main():
