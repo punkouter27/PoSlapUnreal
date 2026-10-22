@@ -14,6 +14,8 @@ LEVELS = {
     ),
     "L1": dict(  # Guard hold: stand in the foot box facing the opponent, 30 s
         model="solo", seconds=30.0, pushes=True, role=0, foot_box=(0.20, 0.25),
+        max_push=0.6,  # 90-180 N. User 2026-10-21: full 300 N head shoves with planted feet are beyond a 0.5-strength
+                       # grandpa (stalled at 60 %); real slap impacts are tested in L3.
         reward_target=2500.0,
         check=dict(episodes=100, min_no_fall=0.95, min_in_box=0.95),
     ),

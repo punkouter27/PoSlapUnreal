@@ -134,7 +134,7 @@ Training starts in plain MuJoCo (fast, on the GPU). A brain is only brought into
 | Level | Skill | Pass / Fail |
 |---|---|---|
 | **L0** | **Stand** | Upright 30 s, feet planted, under random pushes. **Pass:** ≥ 95 % of 100 episodes with zero non-sole contact. |
-| **L1** | **Guard hold** | Stand in the foot box facing the opponent, head in target zone, 30 s. **Pass:** feet never leave the box in ≥ 95 %. |
+| **L1** | **Guard hold** | Stand in the foot box facing the opponent, head in target zone, 30 s, under pushes **capped at 90–180 N** (decided 2026-10-21: full 300 N head shoves with planted feet are beyond a 0.5-strength Grandpa; slap impacts are L3's test). **Pass:** feet never leave the box in ≥ 95 %. |
 | **L2** | **Strike** (fixed target) | Open-palm lateral swing hits a fixed head target. **Pass:** palm touches first (not wrist), hand ≥ 8 m/s, striker stays up, ≥ 90 % of attempts, inside the 30 s clock. |
 | **L3** | **Absorb** (scripted hits) | Defender takes scripted strikes of rising strength. **Pass:** survives a median strike ≥ 90 %, centre of mass back within 5 cm in ≤ 5 s. |
 | **L4** | **Duel** (self-play) | Trained striker vs trained defender. **Pass:** KO rate 10–40 % per strike, striker self-falls ≤ 5 %. |

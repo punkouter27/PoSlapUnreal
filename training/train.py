@@ -62,6 +62,7 @@ def exam(ppo, character, level):
     """The level's pass/fail check on the deterministic policy, 100 fresh randomised worlds."""
     chk = LEVELS[level]["check"]
     env = SlapEnv(character, level, num_envs=chk["episodes"], seed=12345)
+    env.push_scale = LEVELS[level].get("max_push", 1.0)
     obs = env.observe()
     fell_any = torch.zeros(env.N, dtype=torch.bool, device="cuda")
     left_box = torch.zeros_like(fell_any)
@@ -109,7 +110,7 @@ def main():
     with torch.no_grad():
         ppo.model.log_std.clamp_(max=float(torch.log(torch.tensor(a.max_std))))
     # push curriculum: no pushes until he can stand, then up to full 150-300 N; graduation only at full
-    env.push_scale = extra.get("push_scale", 0.0) if LEVELS[a.level]["pushes"] else 1.0
+    env.push_scale = min(extra.get("push_scale", 0.0), LEVELS[a.level].get("max_push", 1.0)) if LEVELS[a.level]["pushes"] else 1.0
     target = LEVELS[a.level]["reward_target"]
     recent = deque(maxlen=100)
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
@@ -136,7 +137,7 @@ def main():
         eplen = sum(e[3] for e in recent) / max(1, len(recent)) / 50
         if LEVELS[a.level]["pushes"] and len(recent) == 100:
             if eplen > 0.8 * env.T / 50:
-                env.push_scale = min(1.0, env.push_scale + 0.02)
+                env.push_scale = min(LEVELS[a.level].get("max_push", 1.0), env.push_scale + 0.02)
             elif eplen < 0.4 * env.T / 50:
                 env.push_scale = max(0.0, env.push_scale - 0.01)
         for k, v in {**stats, "episode_return": ret, "fall_rate": fall, "episode_s": eplen, "push_scale": env.push_scale}.items():
@@ -154,7 +155,7 @@ def main():
             gif = run / "videos" / f"it{it:05d}_{(time.time() - t0) / 60:04.0f}min.gif"
             z = video(cpu_policy(ppo), gif, a.char)
             print(f"video {gif.name}: pelvis at {z:.2f} m after 6 s", flush=True)
-        if len(recent) == 100 and ret >= target and env.push_scale >= 1.0 and time.time() - last_exam > 120:
+        if len(recent) == 100 and ret >= target and env.push_scale >= LEVELS[a.level].get("max_push", 1.0) and time.time() - last_exam > 120:
             last_exam = time.time()
             ok, res = exam(ppo, a.char, a.level)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}")
