@@ -3,7 +3,7 @@
 Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same 108 numbers.
 Randomised every episode (Blueprint 6): floor friction, +-5 % mass per part, +-10 % strength, 0-20 ms action
 delay, pushes of 150-300 N on chest or head, a little sensor noise.
-A fall is Unreal's knockdown rule: any non-foot geom touching the floor (MuJoCo contacts, not a height guess).
+A fall is Unreal's knockdown rule: any non-foot geom touching the floor or podium (MuJoCo contacts, not a height guess).
 """
 from __future__ import annotations
 
@@ -92,6 +92,7 @@ class SlapEnv:
         self.bad[[g for g in body_geoms if g not in feet]] = True
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
+        self.surface[m.geom("podium").id] = True   # Unreal's knockdown rule: floor or podium
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         self.strike = self.cfg["role"] == 1
         if self.strike:   # L2: the mocap sphere stands in for the opponent's head (arena: 0.80 m ahead, 0.74 m up)

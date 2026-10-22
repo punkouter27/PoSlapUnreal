@@ -369,6 +369,9 @@ def balance_and_drop(xml, stand):
     return m, off, up
 
 
+GAP = 0.85   # pelvis to pelvis (PRD 0.85-1.0 m; shortest so a lean reaches)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("card")
@@ -387,6 +390,9 @@ def main():
         scale, stand = fit(geo, card)
         root = geo["pelvis"]["origin"] + [0, 0, 0.001]
         target = '    <body name="target" mocap="true" pos="5 0 1.6"><geom type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>\n'
+        pod_h = round(0.59 * card["height_m"], 3)   # the arena's podium where the arena has it (L2's free hand found it)
+        target += (f'    <geom name="podium" type="box" pos="{fmt([root[0] + GAP / 2, root[1], pod_h / 2])}" '
+                   f'size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n')
         solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
         (out / f"{card['name']}_solo.xml").write_text(solo)
         m, off, up = balance_and_drop(solo, stand)
@@ -413,7 +419,7 @@ def main():
 
     # arena: red at -X facing +X, blue at +X facing -X, podium between (Blueprint 5)
     (rc, rg, rs, rr), (bc, bg, bs, br) = built[a.card], built[a.blue or a.card]
-    gap = 0.85                                  # pelvis to pelvis (PRD 0.85-1.0 m; shortest so a lean reaches)
+    gap = GAP
     pod_h = round(0.59 * min(rc["height_m"], bc["height_m"]), 3)  # below the belly bulge
     world = (f'    <geom name="podium" type="box" pos="0 0 {fmt(pod_h / 2)}" size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n'
              f'    <site name="footbox_red" type="box" pos="{fmt([-gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.8 0.1 0.1 0.4"/>\n'

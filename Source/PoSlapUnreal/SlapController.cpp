@@ -230,17 +230,11 @@ void USlapController::BindPolicy(mjModel* m)
 	}
 	Floor = Find(m, mjOBJ_GEOM, m->ngeom, TEXT("floor"));
 	Podium = Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium"));
-	for (FAthlete& A : Athletes)	// opponent's face and striking hand; solo: the L2 target
-	{
-		for (const FAthlete& O : Athletes)
-		{
-			if (&O == &A) continue;
-			A.Target = mj_name2id(m, mjOBJ_SITE, TCHAR_TO_UTF8(*(O.Prefix + TEXT("face_zone"))));
-			A.TargetIsSite = 1;
-			A.OppHand = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*(O.Prefix + TEXT("hand_r"))));
-		}
-		if (A.Target < 0) A.Target = Find(m, mjOBJ_BODY, m->nbody, TEXT("target"));
-	}
+	for (FAthlete& A : Athletes) A.Head = mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + TEXT("head"))));
+	Striker = Athletes.Num() == 2 ? FMath::RandRange(0, 1) : -1;	// coin toss
+	TurnStart = 0.0;
+	StruckAt = -1.0;
+	if (Striker >= 0) UE_LOG(LogSlap, Log, TEXT("coin toss: %s strikes first"), *Athletes[Striker].Prefix);
 
 	Instance.Reset();
 	if (Brain)
@@ -331,8 +325,12 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		{
 			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s%s -> reset both athletes (#%d)"), d->time, *Athletes[Down].Prefix, *Why, ++Resets);
 			ResetAthletes(m, d);
+			if (Striker >= 0) Striker = 1 - Striker;	// a knockdown ends the turn too
+			TurnStart = d->time;
+			StruckAt = -1.0;
 		}
 	}
+	if (RecordFile.IsEmpty() && Striker >= 0) MatchFlow(m, d);
 	if (Instance && StepCount % ControlEvery == 0)
 	{
 		mj_kinematics(m, d);	// positions for the current qpos (mj_step leaves xpos one step behind)
@@ -371,6 +369,29 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	}
 }
 
+void USlapController::MatchFlow(const mjModel* m, mjData* d)
+{
+	const FAthlete& S = Athletes[Striker];
+	const int32 Defender = Athletes[1 - Striker].Head;
+	for (int32 c = 0; StruckAt < 0 && c < d->ncon; ++c)	// any striker part on the defender's head (training's "hit")
+	{
+		const mjContact& C = d->contact[c];
+		const int32 Other = C.geom[0] == Defender ? C.geom[1] : C.geom[1] == Defender ? C.geom[0] : -1;
+		if (Other >= 0 && m->body_rootid[m->geom_bodyid[Other]] == S.Pelvis)
+		{
+			StruckAt = d->time;
+			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s %s hits the head"), d->time, *S.Prefix, *Name(m, mjOBJ_GEOM, Other));
+		}
+	}
+	const bool Settled = StruckAt >= 0 && d->time - StruckAt >= 1.5, Timeout = d->time - TurnStart >= 30.0;
+	if (!Settled && !Timeout) return;
+	UE_LOG(LogSlap, Log, TEXT("t=%.3f turn over (%s) -> %s strikes"), d->time, Settled ? TEXT("hit") : TEXT("clock"), *Athletes[1 - Striker].Prefix);
+	ResetAthletes(m, d);	// both back to the stand pose in their boxes, as every training episode starts
+	Striker = 1 - Striker;
+	TurnStart = d->time;
+	StruckAt = -1.0;
+}
+
 void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete& A, float* Obs) const
 {
 	const int32 N = A.Act.Num();
@@ -396,27 +417,17 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, const FAthlete
 	Heading(d->qvel + A.RootV, O + 4);
 	for (int32 k = 0; k < 3; ++k) O[7 + k] = (float)(d->qvel[A.RootV + 3 + k] * 0.25);
 	for (int32 j = 0; j < N; ++j) O[10 + j] = A.PrevAction[j];
-	const float Role = 0.f;	// set by the match flow (Step 5); at role 0 the target and opponent inputs stay zero
-	O[10 + N] = Role;
-	O[11 + N] = 0.f;		// turn clock
-	double Rel[3] = { 0, 0, 0 };
-	if (Role == 0.f)	// own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
+	const bool Striking = RecordFile.IsEmpty() && Striker >= 0 && &A == &Athletes[Striker];
+	O[10 + N] = Striking ? 1.f : 0.f;	// role
+	O[11 + N] = Striking ? (float)(1.0 - (d->time - TurnStart) / 30.0) : 0.f;	// turn clock remaining
+	for (int32 k = 15 + N; k < 18 + N; ++k) O[k] = 0.f;	// opponent hand: zero, as L2 trained alone
+	if (!Striking)	// own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
 	{
 		const double Box[3] = { A.Root0[0] - d->qpos[A.RootQ], A.Root0[1] - d->qpos[A.RootQ + 1], 0.0 };
 		Heading(Box, O + 12 + N);
-		for (int32 k = 15 + N; k < 18 + N; ++k) O[k] = 0.f;
 		return;
 	}
-	if (A.Target >= 0)
-	{
-		const double* P = A.TargetIsSite ? d->site_xpos + 3 * A.Target : d->xpos + 3 * A.Target;
-		for (int32 k = 0; k < 3; ++k) Rel[k] = P[k] - Pelvis[k];
-	}
+	const double* P = d->geom_xpos + 3 * Athletes[1 - Striker].Head;	// striker: the defender's head - pelvis
+	const double Rel[3] = { P[0] - Pelvis[0], P[1] - Pelvis[1], P[2] - Pelvis[2] };
 	Heading(Rel, O + 12 + N);
-	Rel[0] = Rel[1] = Rel[2] = 0;
-	if (A.OppHand >= 0)
-	{
-		for (int32 k = 0; k < 3; ++k) Rel[k] = d->xpos[3 * A.OppHand + k] - Pelvis[k];
-	}
-	Heading(Rel, O + 15 + N);
 }

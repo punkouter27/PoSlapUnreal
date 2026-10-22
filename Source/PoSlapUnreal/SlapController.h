@@ -54,7 +54,7 @@ private:
 	struct FAthlete
 	{
 		FString Prefix;
-		int32 Pelvis = -1, RootQ = -1, RootV = -1, Target = -1, TargetIsSite = 0, OppHand = -1;
+		int32 Pelvis = -1, RootQ = -1, RootV = -1, Head = -1;
 		TArray<int32> Act, Qadr, Vadr, Feet;
 		TArray<double> Stand, Lo, Hi, Goal, Root0;
 		TArray<float> PrevAction;
@@ -64,6 +64,11 @@ private:
 	int32 Fallen(const mjModel* m, const mjData* d, FString& Why) const;
 	void ResetAthletes(const mjModel* m, mjData* d);
 	int32 Floor = -1, Podium = -1;
+
+	// match flow: the striker (coin toss) slaps the other's head; the turn ends 1.5 s after the touch or at 30 s
+	int32 Striker = -1;
+	double TurnStart = 0.0, StruckAt = -1.0;
+	void MatchFlow(const mjModel* m, mjData* d);
 
 	void BindReplay(mjModel* m);
 	void BindPolicy(mjModel* m);

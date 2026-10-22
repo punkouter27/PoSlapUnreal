@@ -28,7 +28,7 @@ class Athlete:
         self.max_step = fp["max_joint_speed_rad_s"] * 0.02
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
 
-    def obs(self, d, role=0.0):
+    def obs(self, d, role=0.0, clock=0.0, target=None):
         o = np.zeros(108)
         N = len(self.order)
         o[:N] = d.qpos[self.qa] - self.stand
@@ -45,6 +45,10 @@ class Athlete:
         if role == 0:      # own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
             bx, by = self.box[0] - d.qpos[self.rq], self.box[1] - d.qpos[self.rq + 1]
             o[102:105] = [c * bx + s * by, -s * bx + c * by, 0.0]
+        else:              # striker: turn clock left, target (the defender's head centre) - pelvis, heading frame
+            o[101] = clock
+            r = target - d.xpos[self.pelvis]
+            o[102:105] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         return o.astype(np.float32)
 
     def decide(self, action):

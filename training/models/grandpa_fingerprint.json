@@ -1,7 +1,7 @@
 {
  "mujoco": "3.10.0",
  "model": "grandpa_solo.xml",
- "sha256": "9dc511c6a038e0883fee8ea372054c4e64c66b26767a4087e993f25226403e0d",
+ "sha256": "5f89975d8d921d1739f4c45095394c62d52c36208265f23e24973e9922c9d0a4",
  "option": {
   "timestep": 0.005,
   "integrator": 3,
@@ -18,7 +18,7 @@
   "nv": 36,
   "nu": 30,
   "nbody": 19,
-  "ngeom": 19
+  "ngeom": 20
  },
  "mass_kg": 78.0,
  "body_mass": {
@@ -251,7 +251,7 @@
   -0.013937207882078154,
   0.0
  ],
- "drop_test_upright_s": 1.544999999999989,
+ "drop_test_upright_s": 2.9999999999999583,
  "card": {
   "name": "grandpa",
   "display": "GRANDPA",
