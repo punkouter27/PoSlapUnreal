@@ -98,9 +98,9 @@ def main():
 
     if carry:   # final weights: the last stage's best brain
         ppo = PPO(OBS, 30, 8, "cuda", PPOConfig())
-        ppo.load(str(carry), widen=True)
+        extra = ppo.load(str(carry), widen=True)
         final = HERE / "models" / "brains" / f"{a.char}_final"
-        ppo.save(str(final.with_suffix(".pt")))
+        ppo.save(str(final.with_suffix(".pt")), extra)   # with its curricula and rate: a resume from it carries on
         export_onnx(ppo, str(final.with_suffix(".onnx")), OBS, fixed_batch=True)
         log(event="final", from_=str(carry), pt=str(final.with_suffix(".pt")), onnx=str(final.with_suffix(".onnx")))
 
