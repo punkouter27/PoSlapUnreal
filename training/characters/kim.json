@@ -12,8 +12,8 @@
   "toughness": 0.85,
   "stamina_per_strike": 0.035,
   "neck_damage_per_snap": 0.05,
-  "strike_mass": 2.62,
-  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength. Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23: 3.4 kg for a 78 kg athlete knocks a braced guard off balance ~30 % of clean slaps; scaled to body mass).",
+  "strike_mass": 2.31,
+  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength. Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23 against the L2 brain graduated at 11:08, clean slaps ~11.5 m/s: 3.0 kg for a 78 kg athlete knocks a braced guard off balance 31 % of clean slaps; scaled to body mass).",
   "style": {
     "summary": "Balance: a low, bouncy athletic stance - knees bent 25 deg, feet a little wider, weight on the balls of the feet, a high guard (lead hand by the chin, slapping hand cocked at the chest). Slap: short and snappy - little wind-up, high elbow, a late elbow and wrist whip.",
     "stance_deg": {
