@@ -78,7 +78,9 @@ class SlapEnv:
         self.q0 = torch.tensor(d0.qpos, device=dev, dtype=torch.float32)
         self.h0 = float(d0.qpos[2])
         self.mw = mjw.put_model(m)
-        self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 24, njmax=256)
+        # room as envs/arena.py: at the full lean the striker leans onto target and podium at once; a world past
+        # njmax=256 crashed the GPU ("unspecified launch failure", twice in 12 min, 2026-10-23)
+        self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
 
         # model fields randomised per world: one row each
         def per_world(name):
