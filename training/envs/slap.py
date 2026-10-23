@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 
 import mujoco
@@ -31,6 +32,7 @@ from levels import LEVELS
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
 OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
+LEAN = float(os.environ.get("SLAP_LEAN", "1.0"))   # how far a braced defender leans in (see reset), stepped up by hand
 SETTLE = 250        # brain steps (5 s) a strike episode runs on after the touch: the match's recovery window; he stays up, slaps once
 WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
 
@@ -236,10 +238,11 @@ class SlapEnv:
         self.mocap[mask, 0] = self.tpark
         self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.06, 0.06)   # +-6 cm: a braced, leaning defender's face moves
         # a braced defender leans in and down over the podium: Kim's face sat 13-14 cm lower and 5-10 cm closer than
-        # a braced Grandpa's in Unreal (2026-10-23), past this range's old edge (-9 cm); Grandpa fell onto the podium
+        # a braced Grandpa's in Unreal (2026-10-23), past this range's old edge (-9 cm); Grandpa fell onto the podium.
+        # SLAP_LEAN scales the lean (0..1): the full range at once froze the striker (0 swings in 40 min), so step it
         ns = int(strike.sum())
-        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike] + self._u(ns, 0.0, 0.08)
-        self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10)
+        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike] + self._u(ns, 0.0, 0.08 * LEAN)
+        self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10 * LEAN)
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
