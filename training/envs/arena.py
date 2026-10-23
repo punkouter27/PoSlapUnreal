@@ -263,6 +263,7 @@ class ArenaEnv:
         good[w[palm]] = True
         early = self.t < WAIT                                # the 4 s stand (envs/slap.py WAIT): an early touch is a foul
         self.bonus[hit & early & ~self.struck] -= 0.5
+        self.bonus[hit & self.struck & (self.t > self.t_hit + 15)] -= 1.0   # one slap per turn: a second touch costs
         new = hit & ~self.struck & ~early
         if bool(new.any()):
             v = speed[new]

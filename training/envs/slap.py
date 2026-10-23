@@ -31,6 +31,7 @@ from levels import LEVELS
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
 OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
+SETTLE = 250        # brain steps (5 s) a strike episode runs on after the touch: the match's recovery window; he stays up, slaps once
 WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
 
 
@@ -292,7 +293,7 @@ class SlapEnv:
         strike, absorb = self.role == 1, self.role == -1
         self.settle = torch.where(self.struck, self.settle - 1, self.settle)
         done = stop | (self.t >= self.T)
-        done |= strike & self.struck & (self.settle <= 0)          # strike: did he stay up 1.5 s after?
+        done |= strike & self.struck & (self.settle <= 0)          # strike: did he stay up the 5 s recovery window?
         done |= absorb & (self.t >= self.t_hit + 250)              # absorb: 5 s after the slap
         timeout = done & ~stop
         self.done_hit = done & self.hit_ok & ~stop
@@ -339,8 +340,10 @@ class SlapEnv:
         self.hit_speed = torch.where(new, v, self.hit_speed)
         pay = torch.where(clean, 50.0 + 8.0 * v, torch.where(good, 3.0 * v + v * v, torch.full_like(v, -2.0)))
         self.bonus += torch.where(new, pay, torch.zeros_like(v))
+        # one slap per turn (user): touching the target again 0.3 s or more after the strike costs 1 per physics step
+        self.bonus -= 1.0 * (hit & self.struck & (self.settle < SETTLE - 15)).float()
         self.struck |= new
-        self.settle = torch.where(new, torch.full_like(self.settle, 75), self.settle)
+        self.settle = torch.where(new, torch.full_like(self.settle, SETTLE), self.settle)
 
     def _fallen(self):
         n = self.nacon[0]
