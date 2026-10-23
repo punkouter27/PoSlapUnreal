@@ -96,6 +96,9 @@ def main():
             log(event="stopped", level=stage["level"], run=run.name, reason="not graduated; later stages wait")
             break
 
+    if carry and carry.name != "best.pt":   # a stage that never sat an exam must not replace a tested final brain
+        log(event="final_skipped", from_=str(carry), reason="no exam taken (no best.pt)")   # (2026-10-23: 25 iterations
+        carry = None                                                                         # overwrote the 17:05 L3 brain)
     if carry:   # final weights: the last stage's best brain
         ppo = PPO(OBS, 30, 8, "cuda", PPOConfig())
         extra = ppo.load(str(carry), widen=True)
