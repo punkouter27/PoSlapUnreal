@@ -145,7 +145,7 @@ def exam(ppo, character, level):
         if "min_absorbed" in chk:   # up 5 s after a median slap, COM back within 5 cm
             r[f"{tag}_absorbed"] = absorbed.float().mean().item()
         for k, v in r.items():
-            passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0)
+            passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0) - 1e-6   # float32 means: 90/100 reads 0.8999999762
         res.update(r)
     env.force_role, env.exam = None, False
     torch.cuda.set_stream(ppo_stream)                 # the exam env switched both streams to its own

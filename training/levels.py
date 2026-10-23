@@ -9,6 +9,8 @@ only when every role in it passes.
 """
 GUARD = dict(episodes=100, min_no_fall=0.95, min_in_box=0.95)
 STRIKE = dict(episodes=100, min_hit=0.90, min_no_fall=0.90)        # hit = palm first, >= 8 m/s, up 1.5 s after
+# and the striker's feet stay in the box (2026-10-23: Kim scored 94 % clean, 99 % up, then stepped out in every arena turn)
+STRIKE["min_in_box"] = 0.90
 ABSORB = dict(episodes=100, min_absorbed=0.90)                       # up 5 s after a median slap, COM back within 5 cm
 
 LEVELS = {
