@@ -149,5 +149,15 @@
       },
       "search_sigma_deg": 12.0
     }
+  },
+  "sparring": {
+    "head": [
+      0.78,
+      0.0,
+      0.825
+    ],
+    "shorter_max": 0.0,
+    "lean": 0.0,
+    "note": "Practice opponent: Grandpa, 7 cm taller; his braced face sat 0.78 m ahead, 0.825 m above her start pelvis in Unreal (2026-10-23); she had trained 9-25 cm below it and landed with the back of the hand"
   }
 }

@@ -31,7 +31,6 @@ from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
 DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
-OPP_HEAD = (0.8015, 0.0, 0.74)   # the arena opponent's head, from own start pelvis (heading frame)
 LEAN = float(os.environ.get("SLAP_LEAN", "1.0"))   # how far a braced defender leans in (see reset), stepped up by hand
 SETTLE = 250        # brain steps (5 s) a strike episode runs on after the touch: the match's recovery window; he stays up, slaps once
 WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
@@ -136,7 +135,10 @@ class SlapEnv:
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
-        self.tbase = self.q0[:3] + torch.tensor(OPP_HEAD, device=dev)                 # the arena opponent's head
+        # the practice opponent (character card "sparring"): his face from our start pelvis, how much shorter he may be,
+        # how far he leans in when braced (x SLAP_LEAN)
+        self.spar = json.loads((HERE / "characters" / f"{character}.json").read_text())["sparring"]
+        self.tbase = self.q0[:3] + torch.tensor(self.spar["head"], device=dev)          # the arena opponent's head
         self.teasy = self.q0[:3] + torch.tensor([0.30, -0.40, 0.45], device=dev)     # front-right at chest height: clear of the
                                                                                     # podium (x 0.305-0.505, y +-0.3) and of his own head (0.43 forward
                                                                                     # sat over the podium; 0.25 forward / 0.62 up was touched by his head)
@@ -221,7 +223,7 @@ class SlapEnv:
             self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
             # the opponent up to 10 cm shorter (Kim is 7 cm shorter than Grandpa): the podium (0.59 x the shorter
             # athlete's height) and his head (~0.93 x) sit lower; Grandpa's L2 brain overreached onto Kim's podium
-            self.shorter[mask] = self._u(n, 0.0, 0.10)
+            self.shorter[mask] = self._u(n, 0.0, self.spar["shorter_max"])
             self.gpos[mask, self.podium, 2] = self.pod_z0 - 0.59 * self.shorter[mask]
             self.geom_xpos[mask, self.podium, 2] = self.gpos[mask, self.podium, 2]   # a world geom: kinematics skips it
         if self.force_role is not None:
@@ -243,8 +245,9 @@ class SlapEnv:
         # a braced Grandpa's in Unreal (2026-10-23), past this range's old edge (-9 cm); Grandpa fell onto the podium.
         # SLAP_LEAN scales the lean (0..1): the full range at once froze the striker (0 swings in 40 min), so step it
         ns = int(strike.sum())
-        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike] + self._u(ns, 0.0, 0.08 * LEAN)
-        self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10 * LEAN)
+        lean = self.spar["lean"] * LEAN
+        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike] + self._u(ns, 0.0, 0.08 * lean)
+        self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10 * lean)
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
