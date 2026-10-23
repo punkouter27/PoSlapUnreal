@@ -14,5 +14,8 @@
     "@mujoco/mujoco": "^3.10.0",
     "onnxruntime-web": "^1.22.0",
     "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.5.1"
   }
 }

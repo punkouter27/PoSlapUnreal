@@ -4,7 +4,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
-import { loadMatch } from "./loader.js";
+import { loadMatch, CORNERS } from "./loader.js";
+import { loadArena, loadAthlete } from "./art.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
 ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
@@ -56,7 +57,7 @@ const canvas = $("view");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.4;   // the arena art is dark at 1.05 (Unreal meters on the lit stage)
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0b0d); scene.fog = new THREE.Fog(0x0b0b0d, 8, 18);
 const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 50);
@@ -67,26 +68,27 @@ let view = 0;
 function setView(i) { const v = VIEWS[i]; camera.position.set(...v.pos); controls.target.set(...v.at); controls.update(); }
 setView(0);
 
-scene.add(new THREE.HemisphereLight(0x8890a8, 0x201814, 0.6));
+scene.add(new THREE.HemisphereLight(0x8890a8, 0x201814, 1.1));
 const key = new THREE.SpotLight(0xfff1dc, 60, 12, 0.55, 0.5, 1.2);
 key.position.set(0.3, 1.2, 5.5); key.target.position.set(0, 0, 1); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
 scene.add(key, key.target);
 for (const [x, c] of [[-2.4, 0xff8a5c], [2.4, 0x7aa0ff]]) { const r = new THREE.PointLight(c, 6, 6); r.position.set(x, -1.6, 2.6); scene.add(r); }
 
 // the mat: dark floor, a red half and a blue half under the corners, a white ring, the foot boxes
-const mat = new THREE.Group(); scene.add(mat);
+const mat = new THREE.Group(); scene.add(mat);   // the stand-in mat and floor, until the arena art loads
 const disc = (r0, r1, color, a0 = 0, len = Math.PI * 2, z = 0.001) => {
   const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 96, 1, a0, len), new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
   m.position.z = z; m.receiveShadow = true; mat.add(m); return m;
 };
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 1 }));
-floor.receiveShadow = true; scene.add(floor);
+floor.receiveShadow = true; mat.add(floor);
 disc(0, 2.6, 0x7e2a26, Math.PI / 2, Math.PI);      // red corner at -X
 disc(0, 2.6, 0x26407e, -Math.PI / 2, Math.PI);     // blue corner at +X
 disc(2.6, 2.75, 0xe9e6dd, 0, Math.PI * 2, 0.002);
 disc(0, 1.35, 0x3a3a40, 0, Math.PI * 2, 0.0015).material.transparent = true;
 
 const shapes = [];   // [mesh, geom id]
+const art = { athletes: [], arena: null, physics: false };   // the art view (meshes) or the physics view (shapes)
 function buildShapes(m, sides) {
   const owner = g => sides.find(s => s.geoms.has(g));
   for (let g = 0; g < m.ngeom; g++) {
@@ -113,6 +115,7 @@ function footBoxes(d, sides) {
   }
 }
 function draw(d) {
+  for (const a of art.athletes) a.update(d);
   const P = d.geom_xpos, X = d.geom_xmat;
   for (const [mesh, g] of shapes) {
     const b = 9 * g;
@@ -142,6 +145,7 @@ try {
   $("loadmsg").textContent = "Loading the arena and both brains…";
   game = await loadMatch(mj, ort, get, onEvent);
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
+  loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   $("tape").innerHTML = game.match.sides.map(s => { const c = s.card; return `<div><b class="${s.name === "red" ? "r" : "b"}">${c.display}</b> ${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}</div>`; }).join("");
   $("loading").remove();
   requestAnimationFrame(loop);
@@ -169,3 +173,18 @@ document.querySelectorAll("[data-speed]").forEach(b => b.onclick = () => {
   speed = +b.dataset.speed; document.querySelectorAll("[data-speed]").forEach(x => x.setAttribute("aria-pressed", x === b));
 });
 $("cam").onclick = () => { view = (view + 1) % VIEWS.length; setView(view); };
+$("phys").onclick = e => { art.physics = !art.physics; e.target.setAttribute("aria-pressed", art.physics); showArt(); };
+
+async function loadArt(mj) {
+  const TINTS = { red_: 0xd9473f, blue_: 0x4f7fe0 };
+  const [arena, ...athletes] = await Promise.all([loadArena(scene),
+    ...CORNERS.map(c => loadAthlete(scene, `./assets/${c.char}.glb`, mj, game.m, c.prefix, TINTS[c.prefix]))]);
+  art.arena = arena; art.athletes = athletes; showArt();
+}
+function showArt() {   // art view: meshes and arena; physics view: every MuJoCo shape on the stand-in mat
+  const on = !art.physics && art.arena;
+  for (const [mesh] of shapes) mesh.visible = !on;
+  mat.visible = !on;
+  if (art.arena) art.arena.visible = !art.physics;
+  for (const a of art.athletes) a.root.visible = !art.physics;
+}
