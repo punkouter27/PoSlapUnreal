@@ -172,6 +172,12 @@ class SlapEnv:
             mjw.kinematics(self.mw, self.dw)
         self.g_kin = c.graph
         self.reset(torch.ones(N, dtype=torch.bool, device=dev))
+        # desynchronise the episode clocks once: a run (or a resume) starting every world at t = 0 put all strikes in the same
+        # iteration and the resumed striker unlearned the slap (2026-10-22: 0 touches 12 min after resuming a 61 % brain).
+        # Strikers stay inside the 4 s stand (< WAIT), guards spread over the 30 s clock; absorbers keep t = 0 (their slap timing).
+        zero = torch.zeros(N, dtype=torch.long, device=dev)
+        self.t += torch.where(self.role == 1, torch.randint(0, WAIT - 50, (N,), device=dev),
+                              torch.where(self.role == 0, torch.randint(0, self.T - 200, (N,), device=dev), zero))
 
     # ------------------------------------------------------------------ reset
     def _u(self, n, lo, hi):
