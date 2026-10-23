@@ -138,6 +138,7 @@ class PPO:
         self.model = ActorCritic(obs_dim, act_dim, init_std=cfg.init_std).to(device)
         self.obs_rms = RunningMeanStd(obs_dim, device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr)
+        self.actor_frozen = False
         T, N = cfg.steps_per_env, num_envs
         self.buf = {
             "obs": torch.zeros(T, N, obs_dim, device=device),
@@ -223,7 +224,9 @@ class PPO:
                 with torch.no_grad():
                     kl = torch.sum(torch.log(sigma / sigma_old[idx] + 1e-5)
                                    + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2)) - 0.5, dim=-1).mean()
-                    if kl > c.desired_kl * 2.0:
+                    if self.actor_frozen:   # no policy step, so no KL: the rate must not climb to its max meanwhile
+                        pass
+                    elif kl > c.desired_kl * 2.0:
                         self.cfg.lr = max(c.lr_min, self.cfg.lr / c.lr_adapt)
                     elif kl < c.desired_kl / 2.0 and kl > 0.0:
                         self.cfg.lr = min(c.lr_max, self.cfg.lr * c.lr_adapt)
@@ -235,6 +238,8 @@ class PPO:
                 # critic held within `clip` (0.2) of its last answer cannot follow a change of stage.
                 v_loss = (v - ret_f[idx]).pow(2).mean()
                 loss = surr + c.value_coef * v_loss - c.entropy_coef * ent.mean()
+                if self.actor_frozen:   # critic warm-up after a resume: the policy waits for advantages it can trust
+                    loss = c.value_coef * v_loss
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 # The actor and the critic share no weights: clipped together, a large value gradient shrinks

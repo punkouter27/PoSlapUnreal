@@ -163,6 +163,7 @@ def main():
     ap.add_argument("--resume", default=None)
     ap.add_argument("--max-std", type=float, default=0.3, help="cap on exploration noise (it ran away to 0.47 in grandpa_L0_v1)")
     ap.add_argument("--entropy", type=float, default=0.001)
+    ap.add_argument("--critic-warmup", type=int, default=0, help="iterations the critic learns alone after --resume (a fine-tune on new conditions collapsed the slap within minutes)")
     ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
@@ -223,6 +224,7 @@ def main():
             obs, rew, done, timeout = env.step(act)
             ppo.record(rew, done, timeout)
         steps += ppo.cfg.steps_per_env * env.N
+        ppo.actor_frozen = it < a.critic_warmup
         stats = ppo.update(obs)
         it += 1
         eps, env.episodes = env.episodes, []
