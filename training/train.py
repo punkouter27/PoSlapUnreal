@@ -181,6 +181,8 @@ def main():
     ppo_stream = env.stream
     ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
     extra = ppo.load(a.resume, widen=True) if a.resume else {}
+    if a.resume:   # carry on at the rate it had reached: the 1e-3 default broke a resumed slap within minutes (2026-10-23)
+        ppo.cfg.lr = float(extra.get("lr", ppo.cfg.lr_min))
     if a.resume and obs_dim_of(a.resume) == 108:   # memory inputs start with the scale of what they remember (102-107)
         for i in range(len(LAGS)):
             ppo.obs_rms.mean[108 + 6 * i:114 + 6 * i] = ppo.obs_rms.mean[102:108]
@@ -209,7 +211,7 @@ def main():
     env.reach = carry("reach", 1, float(L.get("reach_start", 0.0 if "hit_speed_start" in L else 1.0)))
     env.imit = carry("imit", 1, float(L.get("imit_start", 0.0)))
     env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
-    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit}
+    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit, "lr": ppo.cfg.lr}
     target = L["reward_target"]
     recent = {r: deque(maxlen=100) for r in roles}
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
