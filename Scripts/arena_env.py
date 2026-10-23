@@ -71,15 +71,15 @@ def build(spawn, reimport=True):
         return s
 
     # the stage leads (~6:1 over the crowd): hot key, truss spots, team-colour rims from behind, dim house light
-    spot("KeyLight", (0, 0, 680), 4500.0, 26.0, beams=1.5)
+    spot("KeyLight", (0, 0, 680), 3000.0, 26.0, beams=0.6)   # 2026-10-23: 4500 + heavy beams washed the athletes out
     cs = [(-350, -350), (350, -350), (350, 350), (-350, 350)]
     for k in range(16):
         t = k / 16 * 4; side, f = int(t), t - int(t)
         (x0, y0), (x1, y1) = cs[side], cs[(side + 1) % 4]
-        spot(f"TrussSpot{k}", (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 675), 1500.0, 20.0, beams=0.8, shadows=False)
+        spot(f"TrussSpot{k}", (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 675), 1000.0, 20.0, beams=0.3, shadows=False)
     # rims: behind the athletes from the camera (camera at UE y = -520, so behind = +y), warm red corner, cool blue corner
-    spot("RimRed", (-180, 320, 320), 2500.0, 22.0, to=(-43, 0, 130), color=(255, 140, 90), beams=0.5)
-    spot("RimBlue", (180, 320, 320), 2500.0, 22.0, to=(43, 0, 130), color=(115, 150, 255), beams=0.5)
+    spot("RimRed", (-180, 320, 320), 2500.0, 22.0, to=(-43, 0, 130), color=(255, 140, 90), beams=0.3)
+    spot("RimBlue", (180, 320, 320), 2500.0, 22.0, to=(43, 0, 130), color=(115, 150, 255), beams=0.3)
     for k in range(8):
         a = k / 8 * 2 * math.pi
         p = spawn(unreal.PointLight, f"HouseLight{k}", (1100 * math.cos(a), 1100 * math.sin(a), 1150))
@@ -91,7 +91,7 @@ def build(spawn, reimport=True):
         pc.set_editor_property("light_color", unreal.Color(180, 190, 255, 255))
         p.set_folder_path("ArenaLights")
     fog = spawn(unreal.ExponentialHeightFog, "ArenaHaze", (0, 0, -60)).component
-    fog.set_editor_property("fog_density", 0.003)
+    fog.set_editor_property("fog_density", 0.0015)   # a thin haze: 0.003 laid a milky veil over the stage
     fog.set_editor_property("enable_volumetric_fog", True)
     fog.set_editor_property("volumetric_fog_scattering_distribution", 0.6)   # forward scattering: beams toward the camera
     for prop in ("fog_inscattering_luminance", "fog_inscattering_color"):   # renamed across UE versions; cosmetic
@@ -103,9 +103,12 @@ def build(spawn, reimport=True):
 
 
 def grade(pp):
-    """Camera post: histogram exposure (as calibrated), slower adaptation (no pumping), crushed blacks, warm highlights."""
-    for k, v in (("auto_exposure_method", unreal.AutoExposureMethod.AEM_HISTOGRAM), ("auto_exposure_bias", -1.5),
-                 ("auto_exposure_speed_up", 1.0), ("auto_exposure_speed_down", 0.5), ("bloom_intensity", 0.6),
+    """Camera post: histogram exposure metered on the brightest quarter of the frame (the lit stage, not the dark crowd
+    that over-brightened the athletes), slow adaptation (no pumping), crushed blacks, warm highlights, a little contrast."""
+    for k, v in (("auto_exposure_method", unreal.AutoExposureMethod.AEM_HISTOGRAM), ("auto_exposure_bias", -2.5),
+                 ("auto_exposure_low_percent", 75.0), ("auto_exposure_high_percent", 98.0),
+                 ("auto_exposure_speed_up", 1.0), ("auto_exposure_speed_down", 0.5), ("bloom_intensity", 0.3),
+                 ("color_contrast", unreal.Vector4(1.1, 1.1, 1.1, 1.0)),
                  ("film_toe", 0.62), ("vignette_intensity", 0.45),
                  ("color_gain_highlights", unreal.Vector4(1.05, 1.0, 0.93, 1.0)), ("color_saturation", unreal.Vector4(1.05, 1.05, 1.05, 1.0))):
         pp.set_editor_property("override_" + k, True)
@@ -126,7 +129,7 @@ if __name__ == "__main__":
         a.set_actor_label(label)
         return a
 
-    build(spawn)
+    build(spawn, reimport=__import__("os").environ.get("SLAP_REIMPORT") == "1")   # the look only, unless asked
     for a in eas.get_all_level_actors():
         if isinstance(a, unreal.CineCameraActor):
             cc = a.get_cine_camera_component()
