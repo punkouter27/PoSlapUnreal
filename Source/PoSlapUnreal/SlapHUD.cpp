@@ -498,9 +498,9 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 	// brain), menu, X; each followed by its expected state. Then waits for a match to end and the next to start
 	// (Gameplay -> Win/Loss -> Loop Reset). Logs PASS or FAIL.
 	struct FStep { int32 Target; bool bMenuAfter; int32 TabAfter; bool bTelemetryAfter; };
-	static const FStep Steps[] = { { HitMenu, true, 0, true }, { HitTabView, true, 2, true }, { HitTelemetry, true, 2, false },
-		{ HitScrim, false, 2, false }, { HitMenu, true, 2, false }, { HitTabMatch, true, 0, false }, { HitRedNext, true, 0, false },
-		{ HitStart, false, 0, false }, { HitMenu, true, 0, false }, { HitClose, false, 0, false } };
+	static const FStep Steps[] = { { HitMenu, true, 0, false }, { HitTabView, true, 2, false }, { HitTelemetry, true, 2, true },
+		{ HitScrim, false, 2, true }, { HitMenu, true, 2, true }, { HitTabMatch, true, 0, true }, { HitRedNext, true, 0, true },
+		{ HitStart, false, 0, true }, { HitMenu, true, 0, true }, { HitClose, false, 0, true } };
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (UiMatch0 == 0 && H.Match > 0) UiMatch0 = H.Wins[0] + H.Wins[1] + H.Draws + 1;	// series tally + 1: START abandons, only a real end counts
 	if (UiStep > 0 && UiStep <= UE_ARRAY_COUNT(Steps))	// check the last click, a frame or more later

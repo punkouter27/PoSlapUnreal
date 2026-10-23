@@ -57,10 +57,10 @@ import broadcast_fx
 def athlete(card):
     """The skinned mesh and its skin material (scan PBR textures + cheek ripple + wear), imported once per character."""
     Name = card.capitalize()
-    folder, mesh_path, skin_path = f"/Game/Athletes/{Name}", f"/Game/Athletes/{Name}/{Name}_rigged", f"/Game/Athletes/{Name}/M_{Name}"
+    folder, mesh_path, skin_path = f"/Game/Athletes/{Name}", f"/Game/Athletes/{Name}/SK_{Name}", f"/Game/Athletes/{Name}/M_{Name}"
     if not REIMPORT and ASSETS.does_asset_exist(mesh_path) and ASSETS.does_asset_exist(skin_path):
         return ASSETS.load_asset(mesh_path), ASSETS.load_asset(skin_path)
-    mesh = next(a for a in import_file(f"Content/Art/Exports/{Name}_rigged.fbx", folder, fbx) if isinstance(a, unreal.SkeletalMesh))
+    mesh = next(a for a in import_file(f"Content/Art/Exports/{Name}_rigged.fbx", folder, fbx, f"SK_{Name}") if isinstance(a, unreal.SkeletalMesh))
     # skin material from the scan's PBR textures (Interchange drops the FBX's texture links)
     tex = {}
     for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
@@ -141,22 +141,20 @@ body[BLUE] = body.get(BLUE) or athlete(BLUE)
 mat_path = "/Game/Athletes/M_TeamOverlay"
 if ASSETS.does_asset_exist(mat_path):  # rebuilt each run so its flags stay current
     ASSETS.delete_asset(mat_path)
-if True:
-    MEL = unreal.MaterialEditingLibrary
-    m = tools.create_asset("M_TeamOverlay", "/Game/Athletes", unreal.Material, unreal.MaterialFactoryNew())
-    m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
-    m.set_editor_property("used_with_skeletal_mesh", True)
-    m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
-    col = MEL.create_material_expression(m, unreal.MaterialExpressionVectorParameter, -400, 0)
-    col.set_editor_property("parameter_name", "TeamColor")
-    fres = MEL.create_material_expression(m, unreal.MaterialExpressionFresnel, -400, 200)
-    mul = MEL.create_material_expression(m, unreal.MaterialExpressionMultiply, -200, 200)
-    mul.set_editor_property("const_b", 0.7)
-    MEL.connect_material_expressions(fres, "", mul, "A")
-    MEL.connect_material_property(col, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-    MEL.connect_material_property(mul, "", unreal.MaterialProperty.MP_OPACITY)
-    MEL.recompile_material(m)
-    ASSETS.save_loaded_asset(m)
+m = tools.create_asset("M_TeamOverlay", "/Game/Athletes", unreal.Material, unreal.MaterialFactoryNew())
+m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+m.set_editor_property("used_with_skeletal_mesh", True)
+m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+col = MEL.create_material_expression(m, unreal.MaterialExpressionVectorParameter, -400, 0)
+col.set_editor_property("parameter_name", "TeamColor")
+fres = MEL.create_material_expression(m, unreal.MaterialExpressionFresnel, -400, 200)
+mul = MEL.create_material_expression(m, unreal.MaterialExpressionMultiply, -200, 200)
+mul.set_editor_property("const_b", 0.7)
+MEL.connect_material_expressions(fres, "", mul, "A")
+MEL.connect_material_property(col, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+MEL.connect_material_property(mul, "", unreal.MaterialProperty.MP_OPACITY)
+MEL.recompile_material(m)
+ASSETS.save_loaded_asset(m)
 overlay = {}
 for team, rgb in (("Red", (0.9, 0.08, 0.05)), ("Blue", (0.05, 0.2, 0.9))):
     path = f"/Game/Athletes/MI_Team{team}"

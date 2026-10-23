@@ -68,7 +68,7 @@ private:
 	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
 	int32 RosterSel = 0;
-	bool bMenu = false, bShowTelemetry = true, bShowCommentary = true, bShowDebug = false;	// debug (FPS, frame time) is opt-in: VIEW tab
+	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: VIEW tab
 	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
 	enum EHit { HitMenu, HitTabMatch, HitTabView, HitTelemetry, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
