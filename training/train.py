@@ -240,6 +240,7 @@ def main():
             m[f"{tag}_episode_s"] = mean([e["len"] for e in rec]) / 50
             if r == 1:
                 m["strike_hit"] = mean([e["hit"] for e in rec])
+                m["strike_whiff"] = mean([e.get("whiff", False) for e in rec])   # missed swings (each ends the attempt)
                 m["strike_speed"] = mean([e["speed"] for e in rec if e["speed"] > 0])   # m/s at contact
             if r == 1 and arena:
                 m["strike_ko"] = sum(e["ko"] for e in rec) / max(1, sum(e["struck"] for e in rec))   # per landed strike
@@ -254,8 +255,8 @@ def main():
                 env.push_scale = max(0.0, env.push_scale - 0.01)
             env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
         if 1 in recent and len(recent[1]) == 100 and m["strike_hit"] > 0.5:   # first move the target out, then raise the bar
-            if getattr(env, "imit", 0) > 0.2:   # clean hits coming: lean less on the reference slap
-                env.imit = max(0.2, round(env.imit - 0.02, 2))
+            if getattr(env, "imit", 0) > 0.5:   # clean hits coming: lean less on the reference slap, but keep its single
+                env.imit = max(0.5, round(env.imit - 0.02, 2))   # swing (floor 0.5; at 0.2-0.3 he drifted into flailing)
             if env.reach < 1.0:
                 env.reach = min(1.0, round(env.reach + 0.05, 2))
             else:

@@ -160,6 +160,7 @@ class SlapEnv:
         self.struck, self.hit_ok, self.done_hit = zb(), zb(), zb()
         self.settle = zl()   # strike: control steps left after the strike
         self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
+        self.near, self.whiff = torch.full((N,), 9.0, device=dev), zb()   # strike: closest approach of a fast swing; a miss
         self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
         self.stamina, self.neck = torch.ones(N, device=dev), torch.ones(N, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
@@ -225,11 +226,12 @@ class SlapEnv:
         strike = mask & (self.role == 1)
         base = self.teasy + self.reach * (self.tbase - self.teasy)   # strike curriculum: 0 easy -> 1 the real head
         self.mocap[mask, 0] = self.tpark
-        self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.03, 0.03)
+        self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.06, 0.06)   # +-6 cm: a braced, leaning defender's face moves
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
         self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
+        self.near[mask], self.whiff[mask] = 9.0, False
         self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
         # absorb: one slap at 1.5-3 s, from the striker's right (+Y here) across the face, a little away from him
         habit = (self.mem[mask, 0] > 0) & (torch.rand(n, device=self.device) < 0.5)   # same timing as last time
@@ -289,7 +291,7 @@ class SlapEnv:
         self.prev_action = a
         self.t += 1
         self.ret += rew
-        stop = fell | out                       # leaving the foot box ends the episode like a fall
+        stop = fell | out | self.whiff          # leaving the foot box ends the episode like a fall; so does a missed swing
         strike, absorb = self.role == 1, self.role == -1
         self.settle = torch.where(self.struck, self.settle - 1, self.settle)
         done = stop | (self.t >= self.T)
@@ -299,9 +301,9 @@ class SlapEnv:
         self.done_hit = done & self.hit_ok & ~stop
         self.done_absorbed = done & ~stop & (self.com_err <= 0.05)    # absorb: up, COM back within 5 cm after 5 s
         if done.any():
-            cols = (self.ret, self.t, fell, self.left_box, self.done_hit, self.hit_speed, self.role, self.done_absorbed, self.com_err)
-            for r, l, f, b, h, v, ro, ab, ce in zip(*(c[done].tolist() for c in cols)):
-                self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=ro, absorbed=ab, com_err=ce))
+            cols = (self.ret, self.t, fell, self.left_box, self.done_hit, self.hit_speed, self.role, self.done_absorbed, self.com_err, self.whiff)
+            for r, l, f, b, h, v, ro, ab, ce, wf in zip(*(c[done].tolist() for c in cols)):
+                self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=ro, absorbed=ab, com_err=ce, whiff=wf))
             self.reset(done)
         return self.observe(), rew, done, timeout
 
@@ -415,6 +417,12 @@ class SlapEnv:
             during = (self.t < len(self.ref_q)).float()   # only while the reference plays: holding its last (stand) pose
             r_strike = r_strike + self.imit * torch.exp(-err) * during   # out the 30 s clock had paid more than slapping
         r_strike = r_strike - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()      # the clock ran out: no strike
+        # one accurate swing (user: no flailing, always the face): a fast swing (> 3 m/s) that came within 30 cm of the face
+        # and is moving away again (15 cm past its closest) without a touch is a miss: the attempt ends, -50
+        v_hand = (hand - self.hand_prev_ctrl).norm(dim=-1) / 0.02
+        self.near = torch.where((v_hand > 3.0) & (d < self.near), d, self.near)
+        self.whiff = (self.role == 1) & ~self.struck & (self.t >= WAIT) & (self.near < 0.30) & (d > self.near + 0.15)
+        r_strike = r_strike - 50.0 * self.whiff.float()
         self.bonus.zero_()
         self.hand_prev_ctrl = hand.clone()
 
