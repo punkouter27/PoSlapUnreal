@@ -119,7 +119,7 @@ def grade(pp):
 if __name__ == "__main__":
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-    les.load_level("/Game/Levels/Arena")
+    les.load_level(__import__("os").environ.get("SLAP_LEVEL", "/Game/Levels/Arena"))   # e.g. /Game/Levels/Arena_grandpa_vs_kim
     for a in eas.get_all_level_actors():
         if a.get_actor_label().startswith(LABELS):
             eas.destroy_actor(a)

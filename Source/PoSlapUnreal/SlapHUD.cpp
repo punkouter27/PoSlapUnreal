@@ -68,10 +68,10 @@ void ASlapGameMode::StartPlay()
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
 		TInlineComponentArray<UMjGeom*> Geoms(*It);
-		for (UMjGeom* G : Geoms)	// an athlete's MuJoCo collision shape: physics only, the skinned mesh is what we draw
+		for (UMjGeom* G : Geoms)	// MuJoCo collision shapes are physics only: the skinned athletes and the arena art are drawn
 		{
 			const FString N = G->GetMjName();
-			if (N.Contains(TEXT("red_")) || N.Contains(TEXT("blue_")))
+			if (N.Contains(TEXT("red_")) || N.Contains(TEXT("blue_")) || N.EndsWith(TEXT("podium")) || N.EndsWith(TEXT("floor")))
 			{
 				G->SetHiddenInGame(true, true);
 				++Hidden;
