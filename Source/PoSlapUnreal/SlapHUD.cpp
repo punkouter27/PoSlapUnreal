@@ -361,6 +361,7 @@ void ASlapHUD::BuildUi()
 				+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
 				[
 					SNew(SBox).HeightOverride(TopBar).VAlign(VAlign_Center)
+					.Visibility_Lambda([Self] { return Self.IsValid() && Self->bShowDebug ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 					[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(FString::Printf(TEXT("%d FPS"), Self.IsValid() ? FMath::RoundToInt(Self->Fps) : 0)); }), 18,
 						TAttribute<FSlateColor>::CreateLambda([Self] { const float F = Self.IsValid() ? Self->Fps : 0.f; return FSlateColor(F >= 55.f ? FLinearColor(0.35f, 0.9f, 0.45f) : F >= 30.f ? FLinearColor(1.f, 0.8f, 0.2f) : FLinearColor(1.f, 0.3f, 0.25f)); }))]
 				]
@@ -433,7 +434,7 @@ void ASlapHUD::BuildUi()
 								SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Telemetry (momentum, balance, palm, head g, condition)"), &ASlapHUD::bShowTelemetry)]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Commentary"), &ASlapHUD::bShowCommentary)]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Debug line"), &ASlapHUD::bShowDebug)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Debug (FPS, match / camera / frame time)"),&ASlapHUD::bShowDebug)]
 							]
 							+ SWidgetSwitcher::Slot()
 							[Label(FText::FromString(FString(TEXT("Two AI athletes trade open-palm slaps across a podium. MuJoCo runs the physics; Unreal only draws it.\n\n"
