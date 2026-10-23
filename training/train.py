@@ -281,9 +281,10 @@ def main():
             and (0 not in roles or not L.get("pushes") or env.push_scale >= L.get("max_push", 1.0)) \
             and (1 not in roles or (env.hit_v >= float(L["hit_speed"]) and env.reach >= 1.0)) \
             and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0)))
-        if ready and time.time() - last_exam > 120:
-            last_exam = time.time()
-            ok, res = (arena_exam if arena else exam)(ppo, a.char, a.level)
+        if ready and time.time() - last_exam > 600:   # 10 min of training between exams, counted from the last one's end:
+            ok, res = (arena_exam if arena else exam)(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
+            last_exam = time.time()                                          # mostly CPU); at 120 s from its start, L2 did
+            # 8 exams and 10 iterations in 23 min (2026-10-22)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
             for k, v in res.items():
                 tb.add_scalar("exam_" + k, v, steps)
