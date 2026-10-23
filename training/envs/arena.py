@@ -24,6 +24,7 @@ from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
 PREFIX = ("red_", "blue_")
+KICK_STEPS = 2      # the slap's impact impulse lasts 10 ms (match.py)
 KO_WINDOW = 250     # control steps after the first head touch: the match's 5 s recovery window (match.py)
 
 
@@ -53,6 +54,9 @@ class ArenaEnv:
         self.pelvis = t([m.body(p + "pelvis").id for p in PREFIX])
         self.head_g = t([m.geom(p + "head").id for p in PREFIX])
         self.hand_g = t([m.geom(p + "hand_r").id for p in PREFIX])
+        self.head_b = t([m.geom_bodyid[m.geom(p + "head").id] for p in PREFIX])
+        # the slap's impact (match.py): the striker's card mass behind the palm, as an impulse on the head after the touch
+        self.strike_mass = json.loads((HERE / "characters" / f"{character}.json").read_text())["strike_mass"]
         self.feet = t([[m.geom(p + "foot_l").id, m.geom(p + "foot_r").id] for p in PREFIX])
         self.stand = t([fp["stand_pose_rad"].get(n, 0.0) for n in order])
         rng = t(fp["ctrl_range_rad"])
@@ -87,6 +91,7 @@ class ArenaEnv:
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.con_frame = T(self.dw.contact.frame)
+        self.xfrc, self.xipos = T(self.dw.xfrc_applied), T(self.dw.xipos)
         # geom -> athlete (0 red, 1 blue, -1 world); knockdown = a non-foot geom of an athlete on floor or podium
         owner = [-1] * m.ngeom
         for g in range(m.ngeom):
@@ -121,6 +126,8 @@ class ArenaEnv:
         self.t_hit, self.hit_speed, self.bonus = torch.zeros(W, dtype=torch.long, device=dev), z(W), z(W)
         self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(W, 3), z(W, 3), z(W)
         self.com0, self.com_err = z(W, 2), z(W)
+        self.kick, self.kick_left = z(W, 6), torch.zeros(W, dtype=torch.long, device=dev)
+        self.wid = torch.arange(W, device=dev)
         self.force_striker = None   # exams: None = coin toss
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
@@ -159,6 +166,7 @@ class ArenaEnv:
         for k in range(2):
             q[:, self.jq[k]] += self._u((n, self.A), -0.05, 0.05)
         self.qpos[mask], self.qvel[mask] = q, 0.0
+        self.kick_left[mask] = 0
         if self.randomize:
             self.friction[mask, self.floor, 0] = self._u(n, 0.6, 1.2)
             s = self._u((n, self.mass.shape[1]), 0.95, 1.05)
@@ -200,6 +208,9 @@ class ArenaEnv:
             u = torch.where(on, tw, ow)
             for k in range(2):
                 self.ctrl[:, self.act_id[k]] = u[:, k]
+            self.xfrc[:, self.head_b] = 0.0
+            self.xfrc[self.wid, self.head_b[1 - self.striker]] = self.kick * (self.kick_left > 0)[:, None]
+            self.kick_left = (self.kick_left - 1).clamp(min=0)
             wp.capture_launch(self.g_step)
             self._strike_check()
         wp.capture_launch(self.g_kin)
@@ -239,7 +250,8 @@ class ArenaEnv:
     def _strike_check(self):
         """After each physics step: the striker's first touch on the defender's head decides the strike."""
         hand = self._sd(self.geom_xpos[:, self.hand_g])[0]
-        speed = (hand - self.hand_prev).norm(dim=-1) / 0.005
+        vel = (hand - self.hand_prev) / 0.005
+        speed = vel.norm(dim=-1)
         self.hand_prev = hand.clone()
         n = self.nacon[0]
         idx = torch.arange(self.con_geom.shape[0], device=self.device)
@@ -272,6 +284,9 @@ class ArenaEnv:
             self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
             dh = self._sd(self.geom_xpos[:, self.head_g])[1][new] - self._sd(self.head0)[1][new]   # feint: he had flinched
             self.bonus[new] += torch.where(good[new], 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15), torch.zeros_like(v))
+            f = vel[new] * (self.strike_mass / (KICK_STEPS * 0.005))
+            r = hand[new] - self.xipos[new.nonzero().squeeze(-1), self.head_b[1 - self.striker[new]]]
+            self.kick[new], self.kick_left[new] = torch.cat([f, torch.cross(r, f, dim=-1)], -1), KICK_STEPS
             self.struck |= new
             self.t_hit[new] = self.t[new]
             self.com0[new] = self._sd(self.com[:, self.pelvis, :2])[1][new]

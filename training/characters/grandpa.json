@@ -12,7 +12,8 @@
   "toughness": 1.0,
   "stamina_per_strike": 0.05,
   "neck_damage_per_snap": 0.04,
-  "notes": "v1 athlete, used for both players. Strength/speed/flexibility are multiples of a trained adult (Blueprint section 1). Toughness = KO resistance: multiplies the neck motors' strength on top of strength (a tougher athlete braces the head; the same slap snaps it less). Fatigue (match only, resets each match): stamina drops by stamina_per_strike for every turn struck (joint speed x stamina, floor 0.7); the neck motors' strength drops by neck_damage_per_snap per m/s of head snap absorbed (floor 0.5).",
+  "strike_mass": 3.4,
+  "notes": "v1 athlete, used for both players. Strength/speed/flexibility are multiples of a trained adult (Blueprint section 1). Toughness = KO resistance: multiplies the neck motors' strength on top of strength (a tougher athlete braces the head; the same slap snaps it less). Fatigue (match only, resets each match): stamina drops by stamina_per_strike for every turn struck (joint speed x stamina, floor 0.7); the neck motors' strength drops by neck_damage_per_snap per m/s of head snap absorbed (floor 0.5). Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23: 3.4 kg for a 78 kg athlete knocks a braced guard off balance ~30 % of clean slaps; scaled to body mass).",
   "style": {
     "summary": "Balance: upright and straight-legged, arms hanging. Slap: big and loopy - a long trunk wind-up and a full arm swing (his reference slap, found by search from the default guess)."
   }

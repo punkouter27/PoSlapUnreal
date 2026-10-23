@@ -36,6 +36,7 @@ HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
 BOX = (0.20, 0.25)
 WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, defence
+KICK_STEPS = 2      # the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
 
 
@@ -66,6 +67,7 @@ class Side:
         g = lambda n: m.geom(prefix + n).id
         self.head, self.hand, self.feet = g("head"), g("hand_r"), (g("foot_l"), g("foot_r"))
         self.hands = (g("hand_l"), g("hand_r"))
+        self.head_body = m.geom_bodyid[self.head]
         self.geoms = {i for i in range(m.ngeom) if m.body_rootid[m.geom_bodyid[i]] == self.a.pelvis}
 
 
@@ -110,6 +112,7 @@ class Match:
         rec = dict(round=rnd, striker=S.name, touch=None, part=None, palm=False, speed=0.0, head_peak=0.0, stagger=False,
                    fouls=[], ko=False, end=None)
         touch_k, com0 = None, None
+        kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
         self.emit(type="turn_start", round=rnd, striker=S.name, defender=D.name)
         k = 0
         while True:
@@ -154,6 +157,7 @@ class Match:
                         action=np.round(x.a.prev, 2).tolist()) for x in self.sides})
             for x in self.sides:
                 d.ctrl[x.a.act] = x.a.goal
+            d.xfrc_applied[D.head_body] = kick if touch_k is not None and k - touch_k < KICK_STEPS else 0.0
             mujoco.mj_step(m, d)
             k += 1
             if not np.isfinite(d.qpos).all() or np.abs(d.qvel).max() > 1e3:
@@ -163,6 +167,7 @@ class Match:
                 return rec
             hand = d.geom_xpos[S.hand].copy()
             speed = dist(hand, hand_prev) / m.opt.timestep
+            vel = (hand - hand_prev) / m.opt.timestep
             hand_prev = hand
             head = d.geom_xpos[D.head].copy()
             if touch_k is not None:
@@ -177,6 +182,10 @@ class Match:
                             z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
                             palm = bool(other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
                             touch_k, com0 = k, d.subtree_com[D.a.pelvis][:2].copy()
+                            # the body behind the palm: the arm's motors are too soft to pass on more than the hand's
+                            # own mass, so the rest of the striker's mass driving through it comes as an impulse
+                            f = vel * (S.card["strike_mass"] / (KICK_STEPS * m.opt.timestep))
+                            kick = np.concatenate([f, np.cross(c.pos - d.xipos[D.head_body], f)])
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2))
                             self.emit(type="strike", t=rec["touch"], striker=S.name, part=rec["part"], palm=palm, speed=rec["speed"])

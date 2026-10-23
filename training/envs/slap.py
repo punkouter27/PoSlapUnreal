@@ -161,6 +161,7 @@ class SlapEnv:
         self.settle = zl()   # strike: control steps left after the strike
         self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
         self.near, self.whiff = torch.full((N,), 9.0, device=dev), zb()   # strike: closest approach of a fast swing; a miss
+        self.recoil, self.tgt_hit, self.back = z(N, 3), z(N, 3), z(N, 1)   # strike: the struck target's recoil, where it was hit, how fast it comes back
         self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
         self.stamina, self.neck = torch.ones(N, device=dev), torch.ones(N, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
@@ -284,6 +285,11 @@ class SlapEnv:
             self._forces(0.005, s)
             wp.capture_launch(self.g_step)
             self._strike_check()
+        # strike: the struck head recoils along the swing (mostly back, away from the striker) and comes back in ~1.5 s,
+        # or, 1 in 3 (knocked off balance), keeps going: a 78 kg braced guard's head in match.py with the impact impulse.
+        # The L2 striker had only ever seen a target that stayed put, and in matches chased it and fell
+        k = (SETTLE - self.settle).float()[:, None]
+        self.mocap[:, 0] = torch.where(self.struck[:, None], self.tgt_hit + self.recoil * (1 - torch.exp(-k / 5)) * torch.exp(-k * self.back), self.mocap[:, 0])
         wp.capture_launch(self.g_kin)
 
         fell = self.fell_now = self._fallen()
@@ -318,7 +324,8 @@ class SlapEnv:
     def _strike_check(self):
         """After each physics step: the first contact with the target decides the strike (Blueprint L2)."""
         hand = self.geom_xpos[:, self.hand]
-        speed = (hand - self.hand_prev).norm(dim=-1) / 0.005
+        vel = (hand - self.hand_prev) / 0.005
+        speed = vel.norm(dim=-1)
         self.hand_prev = hand.clone()
         n = self.nacon[0]
         idx = torch.arange(self.con_geom.shape[0], device=self.device)
@@ -344,6 +351,11 @@ class SlapEnv:
         self.bonus += torch.where(new, pay, torch.zeros_like(v))
         # one slap per turn (user): touching the target again 0.3 s or more after the strike costs 1 per physics step
         self.bonus -= 1.0 * (hit & self.struck & (self.settle < SETTLE - 15)).float()
+        flat = vel * torch.tensor([1.0, 1.0, 0.0], device=self.device)
+        flat = flat / flat.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        self.recoil = torch.where(new[:, None], flat * self._u(self.N, 0.10, 0.60)[:, None], self.recoil)
+        self.back = torch.where(new[:, None], (torch.rand(self.N, 1, device=self.device) < 0.67).float() / 75, self.back)
+        self.tgt_hit = torch.where(new[:, None], self.mocap[:, 0], self.tgt_hit)
         self.struck |= new
         self.settle = torch.where(new, torch.full_like(self.settle, SETTLE), self.settle)
 

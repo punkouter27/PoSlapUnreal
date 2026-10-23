@@ -22,6 +22,7 @@ Every athlete is a mesh plus a card. New meshes later = new card, same pipeline,
 | Toughness | 1.0 | KO resistance: neck motors' strength on top of Strength (braces the head; a slap snaps it less). Added 2026-10-22 (user: every mesh gets unique characteristics) |
 | Stamina per strike | 0.05 | Each turn struck costs this much stamina (joint speed × stamina, floor 0.7); resets each match. Added 2026-10-22 |
 | Neck damage per snap | 0.04 | Each strike absorbed costs this × head snap (m/s) of neck strength (neck motors' strength × neck, floor 0.5); resets each match. Added 2026-10-22 |
+| Strike mass | 3.4 kg (scaled to body mass) | The body behind the palm: the arm's soft motors pass on only the hand's own mass, so a touch adds strike mass × hand velocity as a 10 ms impulse on the defender's head (MuJoCo `xfrc_applied`, same in training, `match.py` and Unreal). Calibrated 2026-10-23 (user: a slap knocks the defender off balance ~30 % of the time): 3.4 kg → 27 % of clean 10.5 m/s slaps knock a braced guard out of his box or down (3.2 kg → 6 %, 3.6 kg → 73 %). Re-check at L4 |
 | Tint | Red / Blue | Two copies of the same athlete |
 
 ## 2. Body Setup

@@ -233,10 +233,12 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		{
 			A.StaminaPerStrike = Card->GetNumberField(TEXT("stamina_per_strike"));
 			A.NeckDamage = Card->GetNumberField(TEXT("neck_damage_per_snap"));
+			A.StrikeMass = Card->GetNumberField(TEXT("strike_mass"));
 		}
 		auto Geom = [&](const TCHAR* N) { return mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + N))); };
 		A.Feet = { Geom(TEXT("foot_l")), Geom(TEXT("foot_r")) };	// the foot box is the sole (Blueprint 2.1)
 		A.Head = Geom(TEXT("head"));
+		A.HeadBody = m->geom_bodyid[A.Head];
 		A.Hand = Geom(TEXT("hand_r"));
 		A.Palms = { Geom(TEXT("hand_l")), A.Hand };
 	}
@@ -362,6 +364,7 @@ namespace
 
 	constexpr int32 Rounds = 3;
 	constexpr double StrikeClock = 30.0, Recovery = 5.0, BoxX = 0.20, BoxY = 0.25;
+	constexpr int64 KickSteps = 2;	// the slap's impact impulse lasts 10 ms (match.py KICK_STEPS)
 	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };	// judges: speed, head, stagger, defence
 }
 
@@ -579,6 +582,14 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		Turn.Com0[1] = d->subtree_com[3 * D.Pelvis + 1];
 		Turn.Part = Part(Slap::Name(m, mjOBJ_GEOM, Other));
 		Turn.Speed = RoundTo(Speed, 2);
+		// the body behind the palm (match.py): the striker's card mass times the hand's velocity, over KickSteps
+		const double* Ci = d->xipos + 3 * D.HeadBody;
+		const double R[3] = { C.pos[0] - Ci[0], C.pos[1] - Ci[1], C.pos[2] - Ci[2] };
+		double* K = Turn.Kick;
+		for (int32 i = 0; i < 3; ++i) K[i] = Travel[i] / m->opt.timestep * (S.StrikeMass / (KickSteps * m->opt.timestep));
+		K[3] = R[1] * K[2] - R[2] * K[1];
+		K[4] = R[2] * K[0] - R[0] * K[2];
+		K[5] = R[0] * K[1] - R[1] * K[0];
 		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s}"),
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2)));
 		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm: foul)"));
@@ -832,7 +843,10 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	for (const FAthlete& A : Athletes)
 	{
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->ctrl[A.Act[j]] = A.Goal[j];
+		FMemory::Memzero(d->xfrc_applied + 6 * A.HeadBody, 6 * sizeof(mjtNum));
 	}
+	if (Athletes.Num() == 2 && bInTurn && Turn.TouchStep >= 0 && Turn.Step - Turn.TouchStep < KickSteps)
+		FMemory::Memcpy(d->xfrc_applied + 6 * Athletes[1 - Turn.Striker].HeadBody, Turn.Kick, sizeof(Turn.Kick));
 }
 
 void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const
