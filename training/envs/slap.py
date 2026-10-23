@@ -235,7 +235,11 @@ class SlapEnv:
         base = self.teasy + self.reach * (self.tbase - self.teasy)   # strike curriculum: 0 easy -> 1 the real head
         self.mocap[mask, 0] = self.tpark
         self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.06, 0.06)   # +-6 cm: a braced, leaning defender's face moves
-        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike]
+        # a braced defender leans in and down over the podium: Kim's face sat 13-14 cm lower and 5-10 cm closer than
+        # a braced Grandpa's in Unreal (2026-10-23), past this range's old edge (-9 cm); Grandpa fell onto the podium
+        ns = int(strike.sum())
+        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike] + self._u(ns, 0.0, 0.08)
+        self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10)
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
