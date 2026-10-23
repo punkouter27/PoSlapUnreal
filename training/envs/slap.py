@@ -87,6 +87,7 @@ class SlapEnv:
             return t
         self.friction, self.mass, self.inertia = per_world("geom_friction"), per_world("body_mass"), per_world("body_inertia")
         self.gain, self.bias, self.frange = per_world("actuator_gainprm"), per_world("actuator_biasprm"), per_world("actuator_forcerange")
+        self.gpos = per_world("geom_pos")   # the podium's height (a shorter opponent, see reset)
         self.mass0, self.inertia0 = self.mass[0].clone(), self.inertia[0].clone()
         self.gain0, self.bias0, self.frange0 = self.gain[0].clone(), self.bias[0].clone(), self.frange[0].clone()
         self.floor = m.geom("floor").id
@@ -116,6 +117,7 @@ class SlapEnv:
         pg = m.geom("podium")
         near, top = float(pg.pos[0] - pg.size[0]), float(pg.pos[2] + pg.size[2])
         self.brace_pt = torch.tensor([[near + 0.07, 0.17, top + 0.02], [near + 0.07, -0.17, top + 0.02]], device=dev)
+        self.pod_z0, self.shorter = float(pg.pos[2]), torch.zeros(num_envs, device=dev)
         # strike imitation (2026-10-22): the reference slap from slap_demo.py (wind-up, strike, follow-through), its joint
         # angles per brain step from the stand pose; the striker earns up to `imit` per step for matching it
         demo = HERE / "models" / f"{character}_slap_demo.json"
@@ -213,6 +215,11 @@ class SlapEnv:
             fr[:, self.neck_act] *= self.neck[mask][:, None, None]
             self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], fr
             self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
+            # the opponent up to 10 cm shorter (Kim is 7 cm shorter than Grandpa): the podium (0.59 x the shorter
+            # athlete's height) and his head (~0.93 x) sit lower; Grandpa's L2 brain overreached onto Kim's podium
+            self.shorter[mask] = self._u(n, 0.0, 0.10)
+            self.gpos[mask, self.podium, 2] = self.pod_z0 - 0.59 * self.shorter[mask]
+            self.geom_xpos[mask, self.podium, 2] = self.gpos[mask, self.podium, 2]   # a world geom: kinematics skips it
         if self.force_role is not None:
             self.role[mask] = self.force_role
         else:
@@ -228,6 +235,7 @@ class SlapEnv:
         base = self.teasy + self.reach * (self.tbase - self.teasy)   # strike curriculum: 0 easy -> 1 the real head
         self.mocap[mask, 0] = self.tpark
         self.mocap[strike, 0] = base + self._u((int(strike.sum()), 3), -0.06, 0.06)   # +-6 cm: a braced, leaning defender's face moves
+        self.mocap[strike, 0, 2] -= 0.93 * self.shorter[strike]
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
@@ -401,7 +409,8 @@ class SlapEnv:
             r = r + 0.3 * facing + 0.5 * anchor + 0.3 * head
             # the brace: both palms on the podium's near edge, shoulder-width apart (pays the guard and the absorber)
             hands = self.geom_xpos[:, self.hands]                       # (N, 2, 3)
-            r = r + 0.4 * torch.exp(-((hands - self.brace_pt) ** 2).sum(-1) / 0.01).sum(-1)
+            bp = self.brace_pt - torch.stack([torch.zeros_like(self.shorter), torch.zeros_like(self.shorter), 0.59 * self.shorter], -1)[:, None]
+            r = r + 0.4 * torch.exp(-((hands - bp) ** 2).sum(-1) / 0.01).sum(-1)
         else:
             out = torch.zeros_like(fell)
 

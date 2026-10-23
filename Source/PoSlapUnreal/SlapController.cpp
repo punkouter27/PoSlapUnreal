@@ -438,12 +438,12 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}}"), *Str(Athletes[First].Name), Rounds));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
 	const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
+	StartTurn(m, d);	// first: a turn clears the last turn's call, the toss is this one's
 	SetHud([&](FSlapHud& H)
 	{
 		H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
-		FMemory::Memzero(H.Cards); H.Event = Toss; H.Speed = H.HeadPeak = 0.0; H.Part.Reset();
+		FMemory::Memzero(H.Cards); H.Event = Toss;
 	});
-	StartTurn(m, d);
 }
 
 void USlapController::StartTurn(mjModel* m, mjData* d)
@@ -481,7 +481,8 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	FMemory::Memcpy(Turn.HeadPrev, d->geom_xpos + 3 * D.Head, sizeof(Turn.HeadPrev));
 	bInTurn = true;
 	Emit(FString::Printf(TEXT("{\"type\": \"turn_start\", \"round\": %d, \"striker\": %s, \"defender\": %s}"), Round, *Str(S.Name), *Str(D.Name)));
-	SetHud([&](FSlapHud& H) { H.Round = Round; H.Striker = S.Name; H.Defender = D.Name; H.Clock = StrikeClock; H.bStruck = false; });
+	SetHud([&](FSlapHud& H) { H.Round = Round; H.Striker = S.Name; H.Defender = D.Name; H.Clock = StrikeClock; H.bStruck = false;
+		H.Speed = H.HeadPeak = 0.0; H.Part.Reset(); H.Event.Reset(); });	// the last turn's strike stats and call had stayed up through this one
 }
 
 bool USlapController::PreStep(const mjModel* m, mjData* d)
