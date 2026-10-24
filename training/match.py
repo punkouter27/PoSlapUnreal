@@ -261,8 +261,8 @@ def log_path(first):
     return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True, blue=None):
-    m, fp, pre = load(mjb)
+def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa"):
+    m, fp, pre = load(mjb, character)
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
     try:
@@ -274,16 +274,16 @@ def play(onnx, first, mjb=None, log=True, blue=None):
 
 
 def _exam_one(args):
-    onnx, i, mjb = args
-    res, turns, path = play(onnx, i % 2, mjb)
+    onnx, i, mjb, character = args
+    res, turns, path = play(onnx, i % 2, mjb, character=character)
     return res, turns, path
 
 
-def exam(onnx, matches, mjb=None):
+def exam(onnx, matches, mjb=None, character="grandpa"):
     """L5: `matches` full matches (coin toss alternating), all must end without a sim blow-up."""
     from multiprocessing import Pool
     with Pool(min(20, matches)) as p:
-        out = p.map(_exam_one, [(onnx, i, mjb) for i in range(matches)])
+        out = p.map(_exam_one, [(onnx, i, mjb, character) for i in range(matches)])
     blowups = sum(r["how"] == "blow-up" for r, _, _ in out)
     kos = sum(r["how"] == "KO" for r, _, _ in out)
     strikes = [t for _, ts, _ in out for t in ts]
@@ -297,11 +297,11 @@ def exam(onnx, matches, mjb=None):
     return ok
 
 
-def compare(onnx, ue_log, mjb, blue=None):
+def compare(onnx, ue_log, mjb, blue=None, character="grandpa"):
     """Unreal's match log vs this simulator, same first striker, same model: every event must match."""
     ue = [json.loads(l) for l in Path(ue_log).read_text().splitlines() if l.strip()]
     first = next(e for e in ue if e["type"] == "match_start")["first"]
-    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue)
+    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue, character=character)
     py = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
     keys = ("strike", "knockdown", "foul", "turn_end", "condition", "round", "result")
     a = [e for e in py if e["type"] in keys]
@@ -321,15 +321,16 @@ if __name__ == "__main__":
     ap.add_argument("--matches", type=int, default=100)
     ap.add_argument("--mjb", default=None)
     ap.add_argument("--blue", default=None, help="blue's own brain (default: the same as red's)")
+    ap.add_argument("--char", default="grandpa", help="both corners' character (<char>_vs_<char>_arena.xml)")
     ap.add_argument("--defender-role", type=float, default=DEFENDER_ROLE, help="-1 absorb (brains from L3), 0 guard (Unreal's DefenderRole)")
     x = ap.parse_args()
     DEFENDER_ROLE = x.defender_role
     if x.cmd == "play":
-        res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue)
+        res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue, character=x.char)
         for t in turns:
             print(t)
         print(res, "\nlog:", path)
     elif x.cmd == "exam":
-        sys.exit(0 if exam(x.onnx, x.matches, x.mjb) else 1)
+        sys.exit(0 if exam(x.onnx, x.matches, x.mjb, x.char) else 1)
     else:
-        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue) else 1)
+        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue, x.char) else 1)
