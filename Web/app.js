@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
-import { loadMatch, CORNERS } from "./loader.js";
+import { loadMatch, MATCHUPS } from "./loader.js";
 import { loadArena, loadAthlete } from "./art.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
@@ -138,12 +138,15 @@ addEventListener("resize", resize); resize();
 
 // ---- the loop: physics in real time, drawing every frame ---------------------------------------------------
 const get = async (p, kind) => { const r = await fetch("../" + p); if (!r.ok) throw new Error(`${p}: ${r.status}`); return kind === "text" ? r.text() : kind === "json" ? r.json() : new Uint8Array(await r.arrayBuffer()); };
+const MATCHUP = MATCHUPS[new URLSearchParams(location.search).get("m")] ? new URLSearchParams(location.search).get("m") : "gg";
 let game, speed = 1, paused = false, busy = false, debt = 0, prevT = performance.now();
 try {
   $("loadmsg").textContent = "Loading MuJoCo…";
   const mj = await loadMujoco();
   $("loadmsg").textContent = "Loading the arena and both brains…";
-  game = await loadMatch(mj, ort, get, onEvent);
+  game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
+  $("matchup").innerHTML = Object.entries(MATCHUPS).map(([k, v]) => `<a href="?m=${k}" aria-current="${k === MATCHUP}">${v.name}${v.untrained ? " *" : ""}</a>`).join("")
+    + (MATCHUPS[MATCHUP].untrained ? `<span class="note">* never trained together: expect falls</span>` : "");
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   $("tape").innerHTML = game.match.sides.map(s => { const c = s.card; return `<div><b class="${s.name === "red" ? "r" : "b"}">${c.display}</b> ${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}</div>`; }).join("");
@@ -178,7 +181,7 @@ $("phys").onclick = e => { art.physics = !art.physics; e.target.setAttribute("ar
 async function loadArt(mj) {
   const TINTS = { red_: 0xd9473f, blue_: 0x4f7fe0 };
   const [arena, ...athletes] = await Promise.all([loadArena(scene),
-    ...CORNERS.map(c => loadAthlete(scene, `./assets/${c.char}.glb`, mj, game.m, c.prefix, TINTS[c.prefix]))]);
+    ...game.matchup.corners.map(c => loadAthlete(scene, `./assets/${c.char}.glb`, mj, game.m, c.prefix, TINTS[c.prefix]))]);
   art.arena = arena; art.athletes = athletes; showArt();
 }
 function showArt() {   // art view: meshes and arena; physics view: every MuJoCo shape on the stand-in mat

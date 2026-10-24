@@ -8,7 +8,7 @@ import { loadMatch } from "./loader.js";
 const mj = await loadMujoco();
 const get = (p, kind) => kind === "text" ? fs.readFileSync(p, "utf8") : kind === "json" ? JSON.parse(fs.readFileSync(p, "utf8")) : new Uint8Array(fs.readFileSync(p));
 const events = [];
-const { match } = await loadMatch(mj, ort, get, e => { if (e.type !== "turn_start") events.push(e); console.log(JSON.stringify(e, (k, v) => typeof v === "number" ? Math.round(v * 100) / 100 : v)); });
+const { match } = await loadMatch(mj, ort, get, e => { if (e.type !== "turn_start") events.push(e); console.log(JSON.stringify(e, (k, v) => typeof v === "number" ? Math.round(v * 100) / 100 : v)); }, process.argv[2] || "gg");
 const t0 = performance.now();
 let steps = 0;
 while (events.filter(e => e.type === "turn_end").length < 2 && steps < 200 * 40) { await match.step(); steps++; }

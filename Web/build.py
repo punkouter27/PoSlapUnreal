@@ -17,7 +17,8 @@ LIBS = ["@mujoco/mujoco/mujoco.js", "@mujoco/mujoco/mujoco.wasm",
 loader = (WEB / "loader.js").read_text(encoding="utf-8")
 chars = sorted(set(re.findall(r'char: "(\w+)"', loader)))
 brains = re.findall(r'brain: "(\w+)"', loader)
-data = ["training/models/grandpa_vs_kim_arena.xml"] + [f"training/models/{c}_fingerprint.json" for c in chars] \
+xmls = re.findall(r'xml: "([\w.]+)"', loader)
+data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerprint.json" for c in chars] \
     + [f"training/characters/{c}.json" for c in chars] + [f"training/models/brains/{b}.onnx" for b in brains]
 
 shutil.rmtree(DIST, ignore_errors=True)

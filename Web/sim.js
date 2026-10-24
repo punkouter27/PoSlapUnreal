@@ -6,7 +6,7 @@ export const OBS = 136;                    // DOCS/BRAIN_IO.md
 const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
 export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2;
-const BOX = [0.20, 0.25], KICK_STEPS = 2, DEFENDER_ROLE = 0;   // the scene's defenders guard and brace (Unreal DefenderRole 0)
+const BOX = [0.20, 0.25], KICK_STEPS = 2;
 const WEIGHTS = [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]];      // judges: speed, head, stagger, defence
 
 const quatMat = (w, x, y, z) => [
@@ -81,8 +81,9 @@ class Athlete {
 }
 
 export class Match {
-  constructor(mj, m, d, corners, emit) {
-    this.mj = mj; this.m = m; this.d = d; this.emit = emit;
+  // defenderRole: -1 absorb (brains from L3 on: they see the striker's head and hand), 0 guard and brace (earlier brains)
+  constructor(mj, m, d, corners, emit, defenderRole = 0) {
+    this.mj = mj; this.m = m; this.d = d; this.emit = emit; this.defenderRole = defenderRole;
     this.sides = corners.map(c => new Athlete(m, c.fp, c.card, c.prefix, c.policy));
     const gid = n => { const a = m.geom(n); const i = a.id; a.delete(); return i; };
     this.floor = gid("floor"); this.podium = gid("podium"); this.surface = new Set([this.floor, this.podium]);
@@ -164,7 +165,8 @@ export class Match {
       mj.mj_kinematics(m, d);
       const clock = 1 - t / STRIKE_CLOCK, hd = v3(d.geom_xpos, D.head);
       // one brain at a time: the browser's ONNX Runtime refuses a second run while one is in flight
-      const aS = await S.policy(S.obs(d, 1, clock, hd)), aD = await D.policy(D.obs(d, DEFENDER_ROLE));
+      const dObs = this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), v3(d.geom_xpos, S.hand)) : D.obs(d, 0);
+      const aS = await S.policy(S.obs(d, 1, clock, hd)), aD = await D.policy(dObs);
       S.decide(aS); D.decide(aD);
       this.clock = STRIKE_CLOCK - t;
     }
