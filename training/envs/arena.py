@@ -30,6 +30,8 @@ KO_WINDOW = 250     # control steps after the first head touch: the match's 5 s 
 
 class ArenaEnv:
     def __init__(self, character="grandpa", level="L4", num_envs=4096, seed=0, randomize=True):
+        # character: one name (both corners) or (red, blue) for a mixed pairing (<red>_vs_<blue>_arena.xml); each corner
+        # then keeps its own stand pose, joint ranges and speeds, start height and slap mass
         self.level, self.cfg, self.W, self.randomize = level, LEVELS[level], num_envs, randomize
         self.N = 2 * num_envs          # agents
         dev = self.device = "cuda"
@@ -39,9 +41,11 @@ class ArenaEnv:
         torch.cuda.set_stream(self.stream)
         wp.set_stream(wp.stream_from_torch(self.stream))
 
-        fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
-        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_vs_{character}_arena.xml"))
-        order = fp["joint_order"]
+        self.chars = (character, character) if isinstance(character, str) else tuple(character)
+        fps = [json.loads((HERE / "models" / f"{c}_fingerprint.json").read_text()) for c in self.chars]
+        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{self.chars[0]}_vs_{self.chars[1]}_arena.xml"))
+        order = fps[0]["joint_order"]
+        assert fps[1]["joint_order"] == order, "both corners need the same joint order"
         self.A = len(order)
         t = lambda xs: torch.tensor(xs, device=dev)
         jid = [[m.joint(p + n).id for n in order] for p in PREFIX]
@@ -56,20 +60,24 @@ class ArenaEnv:
         self.hand_g = t([m.geom(p + "hand_r").id for p in PREFIX])
         self.head_b = t([m.geom_bodyid[m.geom(p + "head").id] for p in PREFIX])
         # the slap's impact (match.py): the striker's card mass behind the palm, as an impulse on the head after the touch
-        self.strike_mass = json.loads((HERE / "characters" / f"{character}.json").read_text())["strike_mass"]
+        self.strike_mass = t([json.loads((HERE / "characters" / f"{c}.json").read_text())["strike_mass"] for c in self.chars])   # (2,)
         self.feet = t([[m.geom(p + "foot_l").id, m.geom(p + "foot_r").id] for p in PREFIX])
-        self.stand = t([fp["stand_pose_rad"].get(n, 0.0) for n in order])
-        rng = t(fp["ctrl_range_rad"])
-        self.lo, self.hi = rng[:, 0], rng[:, 1]
-        self.max_step = t(fp["max_joint_speed_rad_s"]) * 0.02   # per joint (scalar in older fingerprints)
+        self.stand = t([[fp["stand_pose_rad"].get(n, 0.0) for n in order] for fp in fps])          # (2 corners, A)
+        rng = t([fp["ctrl_range_rad"] for fp in fps])                                             # (2, A, 2)
+        self.lo, self.hi = rng[..., 0], rng[..., 1]
+        per_joint = lambda v: v if isinstance(v, list) else [v] * len(order)   # a scalar in older fingerprints
+        self.max_step = t([per_joint(fp["max_joint_speed_rad_s"]) for fp in fps]) * 0.02   # per joint
+        # per agent row (row 2w + k is corner k): the action rule's bounds
+        rows = lambda x: x.repeat(num_envs, 1)
+        self.stand_n, self.lo_n, self.hi_n, self.ms_n = rows(self.stand), rows(self.lo), rows(self.hi), rows(self.max_step)
         self.T = 1500
 
         d0 = mujoco.MjData(m)
         for k in range(2):
-            d0.qpos[self.jq[k].cpu().numpy()] = self.stand.cpu().numpy()
+            d0.qpos[self.jq[k].cpu().numpy()] = self.stand[k].cpu().numpy()
         mujoco.mj_forward(m, d0)
         self.q0 = torch.tensor(d0.qpos, device=dev, dtype=torch.float32)
-        self.h0 = float(d0.qpos[2])
+        self.h0 = self.q0[self.rq + 2]   # (2,) each corner's start pelvis height
         self.mw = mjw.put_model(m)
         self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
 
@@ -115,7 +123,7 @@ class ArenaEnv:
         W, N, A = num_envs, self.N, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
         self.striker = torch.zeros(W, dtype=torch.long, device=dev)
-        self.goal, self.prev_action = self.stand.repeat(N, 1), z(N, A)
+        self.goal, self.prev_action = self.stand_n.clone(), z(N, A)
         self.t = torch.zeros(W, dtype=torch.long, device=dev)
         self.delay = torch.zeros(W, dtype=torch.long, device=dev)
         self.ret, self.left_box = z(N), torch.zeros(N, dtype=torch.bool, device=dev)
@@ -184,7 +192,7 @@ class ArenaEnv:
         self.fresh |= mask
         self.striker[mask] = torch.randint(0, 2, (n,), device=self.device) if self.force_striker is None else self.force_striker
         am = mask.repeat_interleave(2)
-        self.goal[am], self.prev_action[am], self.ret[am], self.left_box[am] = self.stand, 0.0, 0.0, False
+        self.goal[am], self.prev_action[am], self.ret[am], self.left_box[am] = self.stand_n[am], 0.0, 0.0, False
         self.t[mask] = 0
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
@@ -198,8 +206,9 @@ class ArenaEnv:
     # ------------------------------------------------------------------ step
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
-        tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
-        ms = self.max_step * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
+        st, lo, hi = self.stand_n, self.lo_n, self.hi_n
+        tgt = torch.clamp(st + torch.where(a > 0, a * (hi - st), a * (st - lo)), lo, hi)
+        ms = self.ms_n * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
         tw, ow = tgt.view(self.W, 2, self.A), old.view(self.W, 2, self.A)
@@ -233,10 +242,10 @@ class ArenaEnv:
             dd = done.repeat_interleave(2)
             cols = (self.ret[dd], self.t.repeat_interleave(2)[dd], self._pair(fell)[dd], self._pair(out)[dd],
                     self.hit_ok.repeat_interleave(2)[dd], self.hit_speed.repeat_interleave(2)[dd], self._pair(role)[dd],
-                    ko.repeat_interleave(2)[dd], self.struck.repeat_interleave(2)[dd])
-            for r, l, f, b, h, v, ro, k, st in zip(*(c.tolist() for c in cols)):
+                    ko.repeat_interleave(2)[dd], self.struck.repeat_interleave(2)[dd], (torch.arange(self.N, device=self.device) % 2)[dd])
+            for r, l, f, b, h, v, ro, k, st, sd in zip(*(c.tolist() for c in cols)):
                 self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=int(ro), ko=k, struck=st,
-                                          absorbed=(not f) if ro < 0 else False, com_err=0.0))
+                                          absorbed=(not f) if ro < 0 else False, com_err=0.0, side=sd))
             self.reset(done)
         return self.observe(), rew, done.repeat_interleave(2), timeout.repeat_interleave(2)
 
@@ -284,7 +293,7 @@ class ArenaEnv:
             self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
             dh = self._sd(self.geom_xpos[:, self.head_g])[1][new] - self._sd(self.head0)[1][new]   # feint: he had flinched
             self.bonus[new] += torch.where(good[new], 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15), torch.zeros_like(v))
-            f = vel[new] * (self.strike_mass / (KICK_STEPS * 0.005))
+            f = vel[new] * (self.strike_mass[self.striker[new]] / (KICK_STEPS * 0.005))[:, None]
             r = hand[new] - self.xipos[new.nonzero().squeeze(-1), self.head_b[1 - self.striker[new]]]
             self.kick[new], self.kick_left[new] = torch.cat([f, torch.cross(r, f, dim=-1)], -1), KICK_STEPS
             self.struck |= new
@@ -377,7 +386,7 @@ class ArenaEnv:
             opp_hand = torch.where((role[:, k] < 0)[:, None], hand[:, 1 - k] - pel, torch.zeros_like(pel))
             cur = torch.cat([hd(head[:, 1 - k] - pel), hd(opp_hand)], -1)
             rows.append(torch.cat([
-                q[:, self.jq[k]] - self.stand,
+                q[:, self.jq[k]] - self.stand[k],
                 v[:, self.jv[k]] * 0.1,
                 pel[:, 2:3],
                 -R[:, 2, :],
@@ -399,3 +408,48 @@ class ArenaEnv:
             noise[:30], noise[30:60], noise[61:64] = 0.005, 0.05, 0.01
             obs = obs + torch.randn_like(obs) * noise
         return obs
+
+
+class VsFrozen:
+    """L4 against a fixed opponent: the learner drives its corner of a mixed arena, the opponent's brain (a run's .pt,
+    its mean action) the other. Grandpa vs Kim never sparred together (each L4 brain only met its double; 2026-10-24
+    Grandpa's fell at 1-2 s every turn on Kim's lower podium), so the two take turns learning against each other.
+    Looks like an ArenaEnv with one agent per world (the learner's rows); everything else is the arena's."""
+    _own = ("env", "side", "N", "opp", "_full")
+
+    def __init__(self, learner, opponent, opp_ckpt, level="L4", num_envs=4096, seed=0, randomize=True):
+        from ppo import PPO, PPOConfig
+        pair = (learner, opponent) if (HERE / "models" / f"{learner}_vs_{opponent}_arena.xml").exists() else (opponent, learner)
+        self.env = ArenaEnv(pair, level, num_envs, seed, randomize)
+        self.side, self.N = pair.index(learner), num_envs
+        self.opp = PPO(OBS, self.env.A, 1, "cuda", PPOConfig())
+        self.opp.load(str(opp_ckpt))
+        self._full = self.env.observe()
+
+    def __getattr__(self, k):
+        return getattr(self.env, k)
+
+    def __setattr__(self, k, v):
+        if k in VsFrozen._own:
+            object.__setattr__(self, k, v)
+        else:
+            setattr(self.env, k, v)
+
+    @property
+    def episodes(self):
+        return [e for e in self.env.episodes if e["side"] == self.side]
+
+    def observe(self):
+        self._full = self.env.observe()
+        return self._full[self.side::2]
+
+    @torch.no_grad()
+    def step(self, action):
+        full = torch.empty(self.env.N, self.env.A, device=self.env.device)
+        full[self.side::2] = action
+        o = self._full[1 - self.side::2]
+        full[1 - self.side::2] = self.opp.model.actor(self.opp.obs_rms.normalize(o, self.opp.cfg.obs_clip))
+        obs, rew, done, timeout = self.env.step(full)
+        self._full = obs
+        k = self.side
+        return obs[k::2], rew[k::2], done[k::2], timeout[k::2]

@@ -16,7 +16,7 @@ import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, video
-from envs.arena import ArenaEnv
+from envs.arena import ArenaEnv, VsFrozen
 from envs.slap import SlapEnv
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx, obs_dim_of
@@ -72,12 +72,13 @@ _exam_envs = {}
 
 
 @torch.no_grad()
-def arena_exam(ppo, character, level):
+def arena_exam(ppo, character, level, opponent=None):
     """L4: 100 fresh worlds, one turn each, coin-toss striker: KO rate per landed strike, striker self-falls, strikes."""
     chk = LEVELS[level]["check"]
-    env = _exam_envs.get((character, level))
-    if env is None:
-        env = _exam_envs[(character, level)] = ArenaEnv(character, level, num_envs=chk["episodes"], seed=12345)
+    env = _exam_envs.get((character, level, opponent))
+    if env is None:   # opponent: (character, checkpoint) of a frozen corner (VsFrozen): the exam scores the matchup
+        env = _exam_envs[(character, level, opponent)] = (VsFrozen(character, *opponent, level, num_envs=chk["episodes"], seed=12345)
+                                                          if opponent else ArenaEnv(character, level, num_envs=chk["episodes"], seed=12345))
     torch.cuda.set_stream(env.stream)
     wp.set_stream(wp.stream_from_torch(env.stream))
     env.reset(torch.ones(env.W, dtype=torch.bool, device="cuda"))
@@ -87,7 +88,7 @@ def arena_exam(ppo, character, level):
         a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
         st = env.struck.clone()
         obs, _, done, _ = env.step(a)
-        dw = done.view(env.W, 2)[:, 0]
+        dw = done.view(env.W, -1)[:, 0]
         live = ~seen & dw
         ko |= live & env.ko_now
         fall |= live & env.self_fall_now
@@ -165,6 +166,7 @@ def main():
     ap.add_argument("--entropy", type=float, default=0.001)
     ap.add_argument("--critic-warmup", type=int, default=0, help="iterations the critic learns alone after --resume (a fine-tune on new conditions collapsed the slap within minutes)")
     ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
+    ap.add_argument("--opponent", default=None, help="L4 against a frozen brain: <character>:<checkpoint .pt> (a mixed pairing)")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
@@ -176,7 +178,9 @@ def main():
     tb, tele = SummaryWriter(str(run)), open(run / "telemetry.jsonl", "a")
 
     arena = LEVELS[a.level].get("model") == "arena"
-    env = (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)   # arena: 2 agents per world
+    opp = tuple(a.opponent.split(":", 1)) if a.opponent else None
+    vs = f"_vs_{opp[0]}" if opp else ""   # brains from a mixed pairing never overwrite the self-play graduates
+    env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)
     global ppo_stream
     ppo_stream = env.stream
     ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
@@ -287,7 +291,7 @@ def main():
             and (1 not in roles or (env.hit_v >= float(L["hit_speed"]) and env.reach >= 1.0)) \
             and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0)))
         if ready and time.time() - last_exam > 600:   # 10 min of training between exams, counted from the last one's end:
-            ok, res = (arena_exam if arena else exam)(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
+            ok, res = arena_exam(ppo, a.char, a.level, opp) if arena else exam(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
             last_exam = time.time()                                          # mostly CPU); at 120 s from its start, L2 did
             # 8 exams and 10 iterations in 23 min (2026-10-22)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
@@ -299,7 +303,7 @@ def main():
                 ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, **curr(), "exam": res})
             if ok and not graduated:
                 graduated = res
-                out = HERE / "models" / "brains" / f"{a.char}_{a.level}.onnx"
+                out = HERE / "models" / "brains" / f"{a.char}_{a.level}{vs}.onnx"
                 export_onnx(ppo, str(out), OBS, fixed_batch=True)
                 print(f"GRADUATED -> {out}", flush=True)
                 if not a.keep_going:
@@ -310,7 +314,7 @@ def main():
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             **({k: v for k, v in m.items()} if it else {}), "graduated": graduated, "nan": nan, "exit_code": 0}
     if graduated and not nan:
-        meta["onnx"] = f"models/brains/{a.char}_{a.level}.onnx"
+        meta["onnx"] = f"models/brains/{a.char}_{a.level}{vs}.onnx"
     meta["best_exam"] = best_exam
     if (run / "crash.log").exists():   # crashed earlier, then resumed to the end: not a failed run
         (run / "crash.log").replace(run / "recovered.log")
