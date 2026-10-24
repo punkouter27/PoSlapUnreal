@@ -5,10 +5,13 @@
 
 Stages come from runs/overnight_queue.json, re-read before every stage (a stage can be appended while one runs):
     [{"level": "L2", "minutes": 360, "keep_going": false, "resume": "<optional .pt>"}, ...]
-Each stage resumes from the previous stage's brain (its best.pt, else latest.pt) unless it names one. A stage that
+Each stage resumes from the previous stage's brain (its best.pt, else latest.pt) unless it names one. A mixed pairing
+alternates two athletes in one queue: {"level": "L4", "char": "kim", "vs": "grandpa", ...} trains Kim against Grandpa's
+latest brain in this queue (else models/brains/grandpa_final.pt), frozen. A stage that
 crashes is retried once from its own latest.pt. A stage that ends without graduating stops the queue (the ladder;
 "no_gate": true on a stage lets the queue go on after it). Milestones go to runs/overnight.jsonl; every stage keeps train.py's
-TensorBoard, telemetry, checkpoints, videos and report. At the end: models/brains/<char>_final.pt + .onnx and
+TensorBoard, telemetry, checkpoints, videos and report. At the end: models/brains/<char>_final.pt + .onnx per athlete
+(<char>_final_vs_<opponent> from a mixed pairing, so the self-play finals stay) and
 runs/overnight_summary.html.
 """
 import argparse, json, subprocess, sys, time
@@ -67,7 +70,7 @@ def main():
         LOG, summary = QUEUE.with_suffix(".jsonl"), QUEUE.with_suffix(".html")
     deadline = time.time() + a.hours * 3600
     log(event="start", hours=a.hours)
-    carry, done = None, []
+    carry, done, vs_of = {}, [], {}   # per athlete: its latest brain, the opponent of its last stage
     while time.time() < deadline - 120:
         queue = json.loads(QUEUE.read_text())
         todo = [s for s in queue if not s.get("done")]
@@ -75,18 +78,24 @@ def main():
             break
         stage = todo[0]
         minutes = min(stage["minutes"], (deadline - time.time()) / 60 - 1)
-        run = RUNS / f"{a.char}_{stage['level']}_night{len(done) + 1}_{time.strftime('%H%M')}"
-        resume = stage.get("resume") or carry
+        char, vs = stage.get("char", a.char), stage.get("vs")
+        vs_of[char] = f"_vs_{vs}" if vs else ""
+        run = RUNS / f"{char}_{stage['level']}{vs_of[char]}_night{len(done) + 1}_{time.strftime('%H%M')}"
+        resume = stage.get("resume") or carry.get(char)
+        if vs:
+            opp = carry.get(vs) or HERE / "models" / "brains" / f"{vs}_final.pt"
+            stage = {**stage, "args": stage.get("args", []) + ["--opponent", f"{vs}:{opp}"]}
         log(event="stage", level=stage["level"], run=run.name, minutes=round(minutes, 1), resume=str(resume))
         end = time.time() + minutes * 60
-        code = train(stage, run, minutes, resume, a.char)
+        code = train(stage, run, minutes, resume, char)
         for _ in range(5):   # retries from where it got to (a crash, or a trainer restarted to pick up a fix)
             if code == 0 or not (run / "latest.pt").exists() or time.time() > end - 300:
                 break
             log(event="crash", run=run.name, code=code)
-            code = train(stage, run, (end - time.time()) / 60, run / "latest.pt", a.char)
+            code = train(stage, run, (end - time.time()) / 60, run / "latest.pt", char)
         meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
-        carry = brain(run) or carry
+        carry[char] = brain(run) or carry.get(char)
+        stage = next(s for s in queue if s is todo[0])   # (the copy above carries the --opponent; the file keeps the stage)
         stage.update(done=True, run=run.name, code=code, graduated=meta.get("graduated"), best_exam=meta.get("best_exam"))
         QUEUE.write_text(json.dumps(queue, indent=1))
         done.append(stage)
@@ -96,16 +105,16 @@ def main():
             log(event="stopped", level=stage["level"], run=run.name, reason="not graduated; later stages wait")
             break
 
-    if carry and carry.name != "best.pt":   # a stage that never sat an exam must not replace a tested final brain
-        log(event="final_skipped", from_=str(carry), reason="no exam taken (no best.pt)")   # (2026-10-23: 25 iterations
-        carry = None                                                                         # overwrote the 17:05 L3 brain)
-    if carry:   # final weights: the last stage's best brain
+    for char, c in carry.items():   # final weights per athlete: its last stage's best brain
+        if c.name != "best.pt":   # a stage that never sat an exam must not replace a tested final brain
+            log(event="final_skipped", from_=str(c), reason="no exam taken (no best.pt)")   # (2026-10-23: 25 iterations
+            continue                                                                         # overwrote the 17:05 L3 brain)
         ppo = PPO(OBS, 30, 8, "cuda", PPOConfig())
-        extra = ppo.load(str(carry), widen=True)
-        final = HERE / "models" / "brains" / f"{a.char}_final"
+        extra = ppo.load(str(c), widen=True)
+        final = HERE / "models" / "brains" / f"{char}_final{vs_of[char]}"
         ppo.save(str(final.with_suffix(".pt")), extra)   # with its curricula and rate: a resume from it carries on
         export_onnx(ppo, str(final.with_suffix(".onnx")), OBS, fixed_batch=True)
-        log(event="final", from_=str(carry), pt=str(final.with_suffix(".pt")), onnx=str(final.with_suffix(".onnx")))
+        log(event="final", from_=str(c), pt=str(final.with_suffix(".pt")), onnx=str(final.with_suffix(".onnx")))
 
     rows = "".join(f"<tr><td>{s['level']}</td><td>{s.get('run')}</td><td>{s.get('graduated') or 'no'}</td>"
                    f"<td>{s.get('best_exam')}</td><td><a href='{s.get('run')}/report.html'>report</a></td></tr>" for s in done)
