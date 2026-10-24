@@ -1,0 +1,78 @@
+<!doctype html><meta charset="utf-8"><title>MCP verification - PoSlapUnreal</title>
+<style>body{font:15px system-ui;max-width:1100px;margin:24px auto;padding:0 16px;line-height:1.5}
+.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:250px;margin:0}
+img{width:100%;border:1px solid #ccc}code{background:#f3f3f3;padding:1px 4px}
+table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding:5px 9px;text-align:left}
+.ok{color:#0a7d28}.bad{color:#b3261e}.warn{color:#9a6700}</style>
+
+<h1>MCP connection &amp; scene verification — PoSlapUnreal (2026-10-24)</h1>
+
+<p>Editor: UE 5.8, project <code>PoSlapUnreal.uproject</code>, level <code>/Game/Levels/Arena.Arena</code>.
+MCP server on <code>http://127.0.0.1:8000/mcp</code> (<code>ModelContextProtocol</code> + <code>AllToolsets</code>).
+Everything below was driven through MCP from the running editor; no manual clicking.</p>
+
+<h2>1. Editor loaded</h2>
+<div class="row"><figure><img src="01_editor_loaded.jpg">
+<figcaption>Editor up on the Arena level. Toolbar shows the URLab bridge live on port 5559; Outliner holds the arena set (60 actors).</figcaption></figure>
+<figure><img src="06_skeletal_mesh_editor.jpg">
+<figcaption><code>OpenEditorForAsset</code> on SK_Grandpa: 20 000 tris, and the rig hierarchy pelvis &rarr; belly &rarr; chest &rarr; neck &rarr; head and upperarm_l &rarr; forearm_l &hellip; — exactly BLUEPRINT &sect;2.3.</figcaption></figure></div>
+
+<h2>2. Match running under PIE</h2>
+<div class="row"><figure><img src="02_pie_round1_hud.jpg">
+<figcaption>Round 1/3, coin toss, judges' table and series tally on the HUD.</figcaption></figure>
+<figure><img src="03_pie_impact_fx_clean_palm.jpg">
+<figcaption>Impact FX on a 13.5 m/s <em>clean palm</em> (palm, not wrist). HUD: head snap 3.6 m/s, series RED 1–2 BLUE.</figcaption></figure></div>
+
+<h2>3. Scene browse</h2>
+<div class="row"><figure><img src="04_viewport_annotated_arena.jpg">
+<figcaption><code>CaptureViewport</code> with annotations: world grid, coordinate labels, actor names. 38 actors in frustum; 13 spot + 5 point lights, 2 athletes, 8 arena meshes, the 9:16 cine camera.</figcaption></figure>
+<figure><img src="11_statusbar_74_unsaved.png">
+<figcaption>Status bar reads <b>74 Unsaved</b> — dirty in-memory packages left by the startup Interchange reimport (see issue 4).</figcaption></figure></div>
+
+<h2>4. Assets render</h2>
+<div class="row">
+<figure><img src="07_asset_sk_grandpa.jpg"><figcaption>SK_Grandpa</figcaption></figure>
+<figure><img src="08_asset_sk_kim.jpg"><figcaption>SK_Kim</figcaption></figure>
+<figure><img src="09_asset_m_grandpa.jpg"><figcaption>M_Grandpa</figcaption></figure>
+<figure><img src="10_asset_m_kim.jpg"><figcaption>M_Kim</figcaption></figure>
+</div>
+
+<h2>5. What was verified</h2>
+<table>
+<tr><th>Area</th><th>Result</th><th>Evidence</th></tr>
+<tr><td>MCP handshake</td><td class="ok">PASS</td><td>initialize &rarr; 2024-11-05 + session id; initialized &rarr; 202; tools/list &rarr; 3 meta-tools; DELETE &rarr; 202</td></tr>
+<tr><td>Tool catalogue</td><td class="ok">PASS</td><td>53 toolsets; EditorAppToolset 21 tools, LogsToolset 4</td></tr>
+<tr><td>Real engine round trip</td><td class="ok">PASS</td><td><code>call_tool GetVerbosity</code> &rarr; <code>{"returnValue":"Log"}</code></td></tr>
+<tr><td>Match flow</td><td class="ok">PASS</td><td>5 consecutive matches: coin toss &rarr; turns &rarr; strikes 13.5/12.9 m/s &rarr; KO by belly knockdown &rarr; result. 1 KO in 3 strikes = 33 % (L4 target 10&ndash;40 %)</td></tr>
+<tr><td>Palm scoring rule</td><td class="ok">PASS</td><td><code>"palm": true</code> on clean strikes; web build also emits the foul <code>clubbing (not the palm)</code> when a forearm lands</td></tr>
+<tr><td>Judges / 10-point-must</td><td class="ok">PASS</td><td>cards <code>[[10,9],[10,9],[10,9]]</code> from 3 judges</td></tr>
+<tr><td>Fatigue + neck damage</td><td class="ok">PASS</td><td><code>condition</code> falls per strike, e.g. red <code>[0.950,1.000] &rarr; [0.900,0.880]</code></td></tr>
+<tr><td>Telemetry JSONL</td><td class="ok">PASS</td><td><code>Logs/Gameplay/261024/</code> — 221 files; full match = match_start, turn_start&times;3, frame&times;259, strike&times;3, condition&times;3, knockdown, turn_end&times;3, round, result</td></tr>
+<tr><td>Build stamp</td><td class="warn">STALE (by design)</td><td>shows <code>261022</code>; binary compiled 23 Oct against a 22 Oct commit. Last two commits are content-only</td></tr>
+<tr><td>Spatial maths</td><td class="ok">PASS</td><td>world origin &rarr; screen 0.497; +100 cm X &rarr; 0.425 (left, correct for yaw 90); +59 cm Z &rarr; higher; screen centre &rarr; world</td></tr>
+<tr><td>Web build</td><td class="ok">PASS</td><td><code>node Web/check.mjs</code> for gg / kk / gk — MuJoCo WASM + onnxruntime-web, ~11&times; real time (21 s sim in 1.9 s)</td></tr>
+<tr><td>Editor throttling</td><td class="ok">PASS</td><td><code>bThrottleCPUWhenNotForeground=False</code> in DefaultEditorPerProjectUserSettings.ini</td></tr>
+<tr><td>Log health</td><td class="ok">PASS</td><td>MapCheck 0 errors / 0 warnings; no LogSlap errors; MuJoCo, libzmq and CoACD natives all loaded</td></tr>
+</table>
+
+<h2>6. Issues found</h2>
+<table>
+<tr><th>#</th><th>Issue</th><th>Severity</th></tr>
+<tr><td>1</td><td><code>SelectAssets</code> needs a full object path (<code>/Game/Athletes/Kim/SK_Kim.SK_Kim</code>). A bare package path (<code>/Game/Athletes/Kim/SK_Kim</code>) times out with &ldquo;Timed out waiting for asset selection.&rdquo;</td><td class="warn">Medium — usable, wrong shape fails</td></tr>
+<tr><td>2</td><td><code>GetSelectedAssets</code> returns <code>[]</code> even after <code>SelectAssets</code> reports success. The content browser does navigate to the asset's folder, so the selection is half-applied but unreadable back.</td><td class="warn">Medium — round-trip broken</td></tr>
+<tr><td>3</td><td><code>CaptureViewport</code> rejects an omitted or null <code>annotations</code> (&ldquo;input param &lsquo;annotations&rsquo; needs a default value&rdquo;). It has to be sent as a full object every time, even for a plain screenshot.</td><td class="warn">Low — workaround known</td></tr>
+<tr><td>4</td><td>Editor reports <b>74 Unsaved</b> packages after the startup Interchange reimport. 23 files are already written to disk (13 modified .uasset + 10 untracked in <code>Content/Art/Exports/Arena.fbm/</code>); the rest are dirty in memory only.</td><td class="warn">Medium — decide before closing the editor</td></tr>
+<tr><td>5</td><td><code>FocusOnActors</code> is refused while PIE runs (documented). Fine, but it means scene navigation and simulation cannot be interleaved.</td><td class="warn">Low — by design</td></tr>
+<tr><td>6</td><td>Frame telemetry is sampled at 10 Hz and <code>t</code> resets each turn, so the 5 s recovery window is not recorded. A full replay cannot be reconstructed from the JSONL alone.</td><td class="warn">Low — sampling choice</td></tr>
+<tr><td>7</td><td><code>mujoco.dll</code> and <code>amfrt64.dll</code> fail to load on the first attempt, then resolve a few seconds later; <code>LogPixelStreaming2RTC</code> reports &ldquo;GEngine is not valid&rdquo; during startup. All self-correct before the first frame.</td><td class="warn">Low — startup race, harmless</td></tr>
+</table>
+
+<h2>7. Working MCP recipe (for reuse)</h2>
+<p>UE 5.8 uses <b>Streamable HTTP</b>, not plain POST:</p>
+<ul>
+<li><code>GET /mcp</code> returns <b>405</b> — that is spec-compliant, not a fault.</li>
+<li>POST responses arrive as <b>SSE frames</b> (<code>data: {...}</code>); the server holds the connection ~30 s, so a short client timeout looks like a failure even after the request was processed (check <code>LogModelContextProtocol</code>).</li>
+<li>Send <code>Accept: application/json, text/event-stream</code> and echo the <code>Mcp-Session-Id</code> header on every later call.</li>
+<li>Always post <code>{"jsonrpc":"2.0","id":N,"method":...}</code>; call inner tools through <code>call_tool</code> with <code>toolset_name</code> / <code>tool_name</code> / <code>arguments</code>, where <code>tool_name</code> is the <b>short</b> name (<code>SetVerbosity</code>, not <code>EditorToolset.LogsToolset.SetVerbosity</code>).</li>
+<li>Images come back as <code>returnValue.data</code> (editor image) or <code>returnValue.image.data</code> (viewport).</li>
+</ul>
