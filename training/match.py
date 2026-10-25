@@ -46,8 +46,10 @@ DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and ha
 GAZE_GAIN = 1.0        # the bias OWNS the neck goal pre-touch (the mandate is stronger than the brain's habit)
 GAZE_MAX_STEP = 0.08    # rad per decision the bias may walk: the deliberate head turn of a man squaring up
 WATCH_MAX_STEP = 0.25   # rad per decision while PLANTED: re-acquiring a snapping head inside a short window
-PLANT_KEEP = 0.15       # the striker retains this fraction of the brain's urge after the slap (follow-through melting into stance)
-STAB_MAX_STEP = 0.12    # rad per decision the POST-STRIKE poise servo may move a joint toward its plant pose
+# NB (2026-10-25 QA): an imposed post-slap POSE hold was tried and rejected - freezing any joints after the
+# touch fought the brain's own balance and tripled striker self-knockdowns (7-9/3 matches vs a 1.3 baseline,
+# even at barely-there strengths and restricted to the striking arm). The striker's "stay balanced" duty is
+# served by leaving the brain in charge of the body; the servo contributes only the WATCH (below).
 GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
 
 
@@ -178,18 +180,11 @@ class Match:
             side.a.goal[idx] = max(lo, min(hi, blend))
 
     def strike_hold(self, side, m, d):
-        """Post-slap poise (user 2026-10-24): having thrown the slap, the striker PLANTS - his joints melt back
-        to the balanced stand pose (the brain keeps only PLANT_KEEP of its urge, approached at STAB_MAX_STEP so
-        nothing teleports) - and his eyes track the defender to see whether he goes down. Mirror of
-        USlapController::ApplyGaze's post-touch branch."""
-        for j in range(len(side.a.goal)):
-            if j in (side.i_yaw, side.i_pitch):
-                continue
-            cand = side.a.stand[j] + PLANT_KEEP * (side.a.goal[j] - side.a.stand[j])
-            prev = side.plant[j]
-            nxt = prev + max(-STAB_MAX_STEP, min(STAB_MAX_STEP, cand - prev))
-            side.plant[j] = side.a.goal[j] = max(side.a.lo[j], min(side.a.hi[j], nxt))
-        self.gaze_apply(side, m, d, step=WATCH_MAX_STEP)   # still watching him, fast enough for a fall
+        """Post-slap watch (user 2026-10-24: the striker "awaits to see if his opponent falls"): his eyes track
+        the defender through the recovery window. Deliberately NO pose takeover - the brain keeps full command
+        of the body (see the QA note on the constants: imposed poses tripled self-knockdowns). Mirrors the
+        post-touch branch of USlapController::ApplyGaze."""
+        self.gaze_apply(side, m, d, step=WATCH_MAX_STEP)   # watching him, fast enough for a fall
 
     def turn(self, rnd, s):
         """One turn, striker index s. Returns the turn record (touch, fouls, KO, effect parts)."""
@@ -199,7 +194,6 @@ class Match:
         for x in self.sides:
             x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
             x.wbias = self.gaze_desire(x, m, self.d).copy()   # eye contact: world bias starts on the eye line
-            x.plant = x.a.stand.copy()                        # post-slap poise melts back to here
             m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength   # damage: a weaker neck
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}

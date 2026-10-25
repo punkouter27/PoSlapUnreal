@@ -233,7 +233,6 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			}
 		}
 		A.Goal = A.Stand;
-		A.Plant = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
 		if (Card)
 		{
@@ -462,7 +461,6 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	{
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->qpos[A.Qadr[j]] = A.Stand[j];
 		A.Goal = A.Stand;
-		A.Plant = A.Stand;		// post-slap poise melts back to here
 		A.PrevAction.Init(0.f, A.Act.Num());
 		A.bFresh = true;
 		for (int32 k = 0; k < A.NeckAct.Num(); ++k)	// damage: a weaker neck (match.py: forcerange = own x neck strength)
@@ -751,16 +749,9 @@ void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 	FAthlete& Watcher = Athletes[bPlanted ? Turn.Striker : 1 - Turn.Striker];	// defender pre-touch, striker after
 	const FAthlete& Focus = Athletes[bPlanted ? 1 - Turn.Striker : Turn.Striker];
 	if (Watcher.YawIdx < 0 || Watcher.PitchIdx < 0) return;
-	if (bPlanted)	// the striker plants and awaits the verdict (goals melt back to the balanced stand pose)
-	{
-		for (int32 j = 0; j < Watcher.Goal.Num(); ++j)
-		{
-			if (j == Watcher.YawIdx || j == Watcher.PitchIdx) continue;
-			const double Cand = Watcher.Stand[j] + PlantKeep * (Watcher.Goal[j] - Watcher.Stand[j]);
-			const double Next = Watcher.Plant[j] + FMath::Clamp(Cand - Watcher.Plant[j], -StabMaxStep, StabMaxStep);
-			Watcher.Plant[j] = Watcher.Goal[j] = FMath::Clamp(Next, Watcher.Lo[j], Watcher.Hi[j]);
-		}
-	}
+	// NB (2026-10-25 QA): an imposed post-slap POSE hold was tried and rejected - freezing any joints after
+	// the touch fought the brain's own balance and tripled striker self-knockdowns. The striker's "stay
+	// balanced" duty is served by leaving the brain in charge of the body; only the WATCH below remains.
 	const double* Own = d->geom_xpos + 3 * Watcher.Head;
 	const double* Op = d->geom_xpos + 3 * Focus.Head;
 	// desire: unit world direction from the watcher's eyes to the focus's eyes
