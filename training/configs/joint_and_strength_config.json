@@ -1,0 +1,135 @@
+{
+  "schema_version": "2026.10.25",
+  "status": "READY_TO_RUN_DO_NOT_START",
+  "description": "Natural body mechanics, anatomical human joint limits, PD firmness tunings, Earth gravity & anthropometric mass distribution, human strength/stamina ceilings, and simplified collision primitives.",
+  "physics_engine": {
+    "simulator": "MuJoCo 3.10.0 (URLab pinned)",
+    "timestep_s": 0.005,
+    "physics_hz": 200,
+    "control_hz": 50,
+    "decimation": 4,
+    "integrator": "implicitfast",
+    "solver": "Newton",
+    "solver_iterations": 20,
+    "gravity_m_s2": [0.0, 0.0, -9.81],
+    "floor_friction": {
+      "sliding": 0.9,
+      "torsional": 0.02,
+      "rolling": 0.01,
+      "domain_randomization_range": [0.6, 1.2]
+    },
+    "body_geom_default_friction": [0.8, 0.02, 0.01],
+    "condim": 3
+  },
+  "joint_firmness_and_damping": {
+    "kp_per_nm": 2.857142857142857,
+    "full_torque_error_rad": 0.35,
+    "damping_ratio_zeta": 0.8,
+    "trunk_leg_kv_floor_ratio": 0.05,
+    "default_joint_damping_nms_rad": 0.5,
+    "default_joint_armature_kg_m2": 0.02,
+    "arm_joint_armature_kg_m2": 0.005,
+    "free_chain_segments": ["neck", "upperarm", "forearm", "hand"],
+    "load_bearing_segments": ["belly", "thigh", "shin", "foot"],
+    "formula": "kp = max_torque * (1 / 0.35); kv_aim = max(0, 2 * zeta * sqrt(kp * I_stand) - 0.5); kv = kv_aim for free_chain else max(0.05 * kp, kv_aim)"
+  },
+  "anthropometric_mass_distribution_pct": {
+    "pelvis": 14.2,
+    "belly": 13.9,
+    "chest": 21.6,
+    "neck": 1.2,
+    "head": 6.9,
+    "upperarm_l": 2.8,
+    "upperarm_r": 2.8,
+    "forearm_l": 1.6,
+    "forearm_r": 1.6,
+    "hand_l": 0.6,
+    "hand_r": 0.6,
+    "thigh_l": 10.0,
+    "thigh_r": 10.0,
+    "shin_l": 4.65,
+    "shin_r": 4.65,
+    "foot_l": 1.45,
+    "foot_r": 1.45,
+    "total_pct": 100.0,
+    "com_alignment_tolerance_m": {
+      "fore_aft_max_offset_m": 0.04,
+      "lateral_max_offset_m": 0.02
+    }
+  },
+  "simplified_collision_primitives": {
+    "policy": "Primitives only (capsules, spheres, boxes) fitted inside visual skin; visual meshes never used for physics collision.",
+    "self_collision_rule": "All body pairs collide except direct parent-child pairs; verified 0.0 mm overlap (>0.1 mm threshold) in rest pose, stand stance, and full swing arcs.",
+    "parts": {
+      "pelvis": "capsule",
+      "belly": "capsule",
+      "chest": "capsule",
+      "neck": "capsule",
+      "head": "sphere",
+      "upperarm_l_r": "capsule",
+      "forearm_l_r": "capsule",
+      "hand_l_r": "box (anthropometric length = 10.8% height)",
+      "thigh_l_r": "capsule",
+      "shin_l_r": "capsule",
+      "foot_l_r": "box (sole contact surface)"
+    }
+  },
+  "human_joint_limits_and_adult_strength_baseline": {
+    "notes": "Anatomical limits eliminate hyperextension (e.g., knees and elbows strictly 0 deg minimum flex; spine lateral/axial twist bounded). Scaled per character card by flexibility and strength multipliers.",
+    "joints": {
+      "waist_twist": { "segment": "belly", "axis": [0, 0, 1], "range_deg": [-40, 40], "adult_torque_nm": 120, "max_speed_rad_s": 12.0 },
+      "waist_flex": { "segment": "belly", "axis": [0, 1, 0], "range_deg": [-20, 60], "adult_torque_nm": 200, "max_speed_rad_s": 12.0 },
+      "waist_side": { "segment": "belly", "axis": [1, 0, 0], "range_deg": [-30, 30], "adult_torque_nm": 160, "max_speed_rad_s": 12.0 },
+      "neck_turn": { "segment": "neck", "axis": [0, 0, 1], "range_deg": [-70, 70], "adult_torque_nm": 40, "max_speed_rad_s": 12.0 },
+      "neck_nod": { "segment": "neck", "axis": [0, 1, 0], "range_deg": [-40, 50], "adult_torque_nm": 40, "max_speed_rad_s": 12.0 },
+      "neck_tilt": { "segment": "neck", "axis": [1, 0, 0], "range_deg": [-40, 40], "adult_torque_nm": 40, "max_speed_rad_s": 12.0 },
+      "shoulder_swing": { "segment": "upperarm", "axis_l": [0, 0, 1], "range_deg": [-130, 40], "adult_torque_nm": 90, "max_speed_rad_s": 20.0 },
+      "shoulder_raise": { "segment": "upperarm", "axis_l": [1, 0, 0], "range_deg": [-95, 80], "adult_torque_nm": 90, "max_speed_rad_s": 20.0 },
+      "shoulder_twist": { "segment": "upperarm", "axis_l": [0, 1, 0], "range_deg": [-80, 80], "adult_torque_nm": 60, "max_speed_rad_s": 20.0 },
+      "elbow": { "segment": "forearm", "axis_l": [0, 0, -1], "range_deg": [0, 140], "adult_torque_nm": 70, "max_speed_rad_s": 25.0, "anti_hyperextension": true },
+      "wrist_flex": { "segment": "hand", "axis_l": [-1, 0, 0], "range_deg": [-60, 70], "adult_torque_nm": 20, "max_speed_rad_s": 25.0 },
+      "wrist_dev": { "segment": "hand", "axis_l": [0, 0, 1], "range_deg": [-25, 25], "adult_torque_nm": 15, "max_speed_rad_s": 25.0 },
+      "hip_flex": { "segment": "thigh", "axis_l": [0, -1, 0], "range_deg": [-20, 110], "adult_torque_nm": 220, "max_speed_rad_s": 12.0 },
+      "hip_abd": { "segment": "thigh", "axis_l": [1, 0, 0], "range_deg": [-25, 40], "adult_torque_nm": 160, "max_speed_rad_s": 12.0 },
+      "hip_rot": { "segment": "thigh", "axis_l": [0, 0, 1], "range_deg": [-40, 40], "adult_torque_nm": 100, "max_speed_rad_s": 12.0 },
+      "knee": { "segment": "shin", "axis_l": [0, 1, 0], "range_deg": [0, 140], "adult_torque_nm": 220, "max_speed_rad_s": 12.0, "anti_hyperextension": true },
+      "ankle_flex": { "segment": "foot", "axis_l": [0, -1, 0], "range_deg": [-45, 20], "adult_torque_nm": 180, "max_speed_rad_s": 12.0 },
+      "ankle_roll": { "segment": "foot", "axis_l": [1, 0, 0], "range_deg": [-20, 20], "adult_torque_nm": 60, "max_speed_rad_s": 12.0 }
+    }
+  },
+  "stamina_and_fatigue_limits": {
+    "stamina_range": [0.7, 1.0],
+    "neck_strength_range": [0.5, 1.0],
+    "continuous_metabolic_fatigue": {
+      "enabled_in_extended_realism": true,
+      "torque_effort_drain_rate_per_s": 0.008,
+      "passive_recovery_rate_per_s": 0.015,
+      "minimum_stamina_floor": 0.70,
+      "effect": "Scales per-step joint angular velocity ceiling (max_step = max_joint_speed_rad_s * 0.02 * stamina) and optional peak torque envelope."
+    },
+    "athlete_profiles": {
+      "grandpa": {
+        "height_m": 1.70,
+        "mass_kg": 78.0,
+        "strength_mult": 0.50,
+        "speed_mult": 0.75,
+        "flexibility_mult": 0.85,
+        "toughness_mult": 1.00,
+        "stamina_per_strike": 0.05,
+        "neck_damage_per_snap": 0.04,
+        "strike_mass_kg": 3.00
+      },
+      "kim": {
+        "height_m": 1.63,
+        "mass_kg": 60.0,
+        "strength_mult": 0.60,
+        "speed_mult": 0.95,
+        "flexibility_mult": 1.00,
+        "toughness_mult": 0.85,
+        "stamina_per_strike": 0.035,
+        "neck_damage_per_snap": 0.05,
+        "strike_mass_kg": 2.31
+      }
+    }
+  }
+}

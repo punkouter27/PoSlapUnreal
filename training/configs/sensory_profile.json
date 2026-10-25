@@ -1,0 +1,74 @@
+{
+  "schema_version": "2026.10.25",
+  "status": "READY_TO_RUN_DO_NOT_START",
+  "description": "Clean proprioceptive sensory profile, smooth motor activation control, and simulation performance hygiene settings.",
+  "proprioception_observation_space": {
+    "contract_reference": "DOCS/BRAIN_IO.md",
+    "base_dimension": 136,
+    "extended_locomotion_dimension": 148,
+    "kinematic_source": "mj_kinematics evaluated on current qpos prior to decision step (zero 1-step lag)",
+    "coordinate_frame": "Heading frame (world rotated by pelvis yaw only; pelvis X-axis projected onto horizontal floor)",
+    "core_channels_136": [
+      { "indices": [0, 29], "name": "joint_pos_delta_rad", "size": 30, "scale": 1.0, "units": "rad", "description": "Joint angle minus character stand-pose angle in canonical 30-joint order" },
+      { "indices": [30, 59], "name": "joint_vel_scaled", "size": 30, "scale": 0.1, "units": "rad/s", "description": "Joint angular velocities scaled by 0.1" },
+      { "indices": [60, 60], "name": "pelvis_height_m", "size": 1, "scale": 1.0, "units": "m", "description": "Pelvis vertical height above floor (Z)" },
+      { "indices": [61, 63], "name": "gravity_pelvis_frame", "size": 3, "scale": 1.0, "units": "unit", "description": "Local torso/pelvis lean awareness: R_pelvis^T * (0, 0, -1)" },
+      { "indices": [64, 66], "name": "pelvis_lin_vel_heading", "size": 3, "scale": 1.0, "units": "m/s", "description": "Pelvis linear velocity in heading frame" },
+      { "indices": [67, 69], "name": "pelvis_ang_vel_local", "size": 3, "scale": 0.25, "units": "rad/s", "description": "Pelvis angular velocity in local frame scaled by 0.25" },
+      { "indices": [70, 99], "name": "previous_action", "size": 30, "scale": 1.0, "units": "[-1, 1]", "description": "Previous control step motor actions for smooth trajectory continuity" },
+      { "indices": [100, 100], "name": "tactical_role", "size": 1, "scale": 1.0, "units": "{-1, 0, +1}", "description": "+1 strike, -1 defend, 0 guard/locomotion" },
+      { "indices": [101, 101], "name": "turn_clock_remaining", "size": 1, "scale": 1.0, "units": "[0, 1]", "description": "Normalized episode/turn clock remaining (1.0 -> 0.0 over 30 s)" },
+      { "indices": [102, 104], "name": "target_rel_heading", "size": 3, "scale": 1.0, "units": "m", "description": "Target waypoint / footbox center / opponent head relative to pelvis in heading frame" },
+      { "indices": [105, 107], "name": "opponent_hand_rel_heading", "size": 3, "scale": 1.0, "units": "m", "description": "Opponent striking hand relative to pelvis (0 when role=0)" },
+      { "indices": [108, 125], "name": "short_term_sensory_memory", "size": 18, "scale": 1.0, "units": "m", "description": "Inputs 102-107 buffered at 5, 10, and 15 decisions ago (0.1 s, 0.2 s, 0.3 s)" },
+      { "indices": [126, 127], "name": "match_strike_memory", "size": 2, "scale": 1.0, "units": "norm", "description": "Opponent last strike touch time / 30 s and palm speed / 10 m/s" },
+      { "indices": [128, 128], "name": "own_stamina", "size": 1, "scale": 1.0, "units": "[0.7, 1.0]", "description": "Internal stamina reserve scaling joint speed ceilings" },
+      { "indices": [129, 129], "name": "own_neck_strength", "size": 1, "scale": 1.0, "units": "[0.5, 1.0]", "description": "Neck bracing strength reserve scaling neck motor forcerange" },
+      { "indices": [130, 132], "name": "own_palm_pos_heading", "size": 3, "scale": 1.0, "units": "m", "description": "Own right hand geom center relative to pelvis in heading frame" },
+      { "indices": [133, 135], "name": "own_palm_facing_heading", "size": 3, "scale": 1.0, "units": "unit", "description": "Own right hand palm normal (-Z axis) in heading frame" }
+    ],
+    "optional_locomotion_proprioception_channels_12": [
+      { "offset": 0, "name": "foot_l_pos_heading", "size": 3, "units": "m", "description": "Left foot sole center relative to pelvis in heading frame" },
+      { "offset": 3, "name": "foot_r_pos_heading", "size": 3, "units": "m", "description": "Right foot sole center relative to pelvis in heading frame" },
+      { "offset": 6, "name": "foot_contact_state", "size": 2, "units": "{0, 1}", "description": "Binary ground contact indicators for [foot_l, foot_r] soles" },
+      { "offset": 8, "name": "foot_vertical_load_norm", "size": 2, "units": "[0, 2]", "description": "Normalized vertical ground reaction force on [foot_l, foot_r] divided by body weight" },
+      { "offset": 10, "name": "gait_phase_clock", "size": 2, "units": "[-1, 1]", "description": "[sin(2*pi*phi), cos(2*pi*phi)] stride phase oscillator for natural alternating steps" }
+    ],
+    "sensory_noise_injection": {
+      "enabled_in_training": true,
+      "joint_pos_std_rad": 0.005,
+      "joint_vel_std_scaled": 0.05,
+      "gravity_lean_std": 0.01
+    },
+    "normalization": {
+      "running_mean_std": true,
+      "group_obs_dim": 100,
+      "obs_clip": 5.0
+    }
+  },
+  "smooth_motor_control": {
+    "raw_action_clip": [-1.0, 1.0],
+    "target_angle_mapping": "clip(stand + (a > 0 ? a * (hi - stand) : a * (stand - lo)), lo, hi)",
+    "per_step_velocity_rate_limit": "abs(target - prev_target) <= max_joint_speed_rad_s[j] * 0.02 * stamina",
+    "neural_reflex_delay_substeps": {
+      "min_substeps": 0,
+      "max_substeps": 4,
+      "delay_ms_range": [0.0, 20.0],
+      "description": "Simulates human spinal/cortical motor conduction latency across 5 ms physics steps"
+    },
+    "activation_lowpass_ema": {
+      "optional_ema_enabled": false,
+      "alpha_ema": 0.75,
+      "formula": "u_t = alpha * target_t + (1 - alpha) * u_{t-1}"
+    }
+  },
+  "performance_hygiene": {
+    "unreal_chaos_physics_disabled": true,
+    "primitive_collision_preset": "NoCollision",
+    "scene_raycasts_in_sim_loop": "OFF (zero raycasts; contacts read directly from MuJoCo mjData.contact)",
+    "decorative_visuals_in_training": "OFF (headless MuJoCo Warp GPU execution; Niagara/Audio/WPO run only in UE render thread)",
+    "cuda_graph_capture": true,
+    "zero_host_sync_per_step": true,
+    "editor_background_throttling": false
+  }
+}
