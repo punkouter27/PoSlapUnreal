@@ -58,6 +58,9 @@ verified: defender eye-lock 4–6° median (baseline 62°), L5 compare PASS 28/2
 QA trap: NEVER impose a post-slap POSE on the striker — freezing joints after the touch fights the brain's own
 balance and multiplies self-knockdowns (tested: melt-to-stand, release-pose, spring-compensated, arm-only — all
 far worse than baseline). The post-touch servo watches (gaze only); the brain keeps the body.
+Anti-fall reward economics (2026-10-25): a striker's self-fall must cost MORE than his hit pays (hit was +146,
+fall −30 → profitable tumbles; now −150) and the recovery window must PAYOUT for staying upright (was flat zeros).
+Result: 0 self-downs over 10 matches, hits and speeds intact.
 Adding an athlete (roster, 16 slots): rigged FBX -> `blender -b --python Scripts/rig_mixamo.py -- <fbx> <name> <height>` -> card `training/characters/<name>.json`
 (`"slot"`, stats, `style`: stance_deg + slap) -> `build_body.py` (+ `--blue` per pairing) -> `slap_demo.py search --char <name>` -> own ladder
 (`overnight.py --char <name> --queue <name>_queue.json`) -> pairing level (`build_scene.py` with SLAP_RED/SLAP_BLUE; from Git Bash set
