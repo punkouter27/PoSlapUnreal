@@ -42,14 +42,18 @@ import over a BP the open level still instantiates and `delete_asset` fails on a
 `DefenderRole` must be **-1** for L3+ brains (a level built with 0 feeds the defender different inputs and he collapses in
 seconds; `Scripts/set_defender_role.py` fixes them all). All arena XMLs carry `iterations="20"` (the e73efa1 audit) —
 rebuild with `build_body.py` after builder changes, then reimport the levels.
-Eye contact (2026-10-24, user: "the person getting slapped should look his opponent in the eye before the slap"):
-`match.py` GAZE_GAIN/GAZE_MAX_STEP and `USlapController::ApplyGaze` run IDENTICAL maths — the defender's neck
-yaw/pitch GOALS are walked to stare at the striker's eyes for the whole turn, released the instant the slap lands
-(brace wins). Observations are untouched, so no retraining. Kill switches: `SLAP_EYE_CONTACT=0` (Python),
-`-SlapEyeContact=0` (Unreal). Three traps encoded in the code: aim from the HEAD CENTRES (the eye line — the
-chest pivot adds ~11° at 0.85 m), aim in the CHEST frame (waist ball ≠ pelvis during motion), and expect
-`neck_nod` to clip at its range end when the heights differ. Verified: bench converges to 0.00°, live error
-4–6°, L5 compare PASS 28/28.
+Eye contact (2026-10-24, user: "the person getting slapped should look his opponent in the eye before the slap";
+then "after the slapper slaps he should stay standing up and balanced and await to see if his opponent falls"):
+`match.py` GAZE/WATCH/PLANT/STAB constants and `USlapController::ApplyGaze` run IDENTICAL maths. The gaze bias
+lives in WORLD SPACE (great-circle walk, converted to the chest frame's ZYX yaw/pitch only at application) —
+because the chest WHIPS during a follow-through and a chest-relative bias chases a spinning target. Roles flip
+at the touch: the defender eye-locks until the slap LANDS (then he braces), and the striker PLANTS (goals melt
+back to the balanced stand pose, brain keeps 15 % of its urge) while watching the verdict — continuing through
+the inter-turn hold (display-only, so event parity is untouched). Observations are untouched, no retraining.
+Kill switches: `SLAP_EYE_CONTACT=0` (Python), `-SlapEyeContact=0` (Unreal). Four traps encoded in the code:
+anchor on the HEAD CENTRES (the eye line — the chest pivot adds ~11° at 0.85 m), aim in the CHEST frame (waist
+ball ≠ pelvis), bias in WORLD space (torso whip), and `neck_nod` clipping at its range end when heights differ.
+Verified: defender eye-lock 5° median (baseline 62°), striker plant 3.7° median deviation, L5 compare PASS 28/28.
 Adding an athlete (roster, 16 slots): rigged FBX -> `blender -b --python Scripts/rig_mixamo.py -- <fbx> <name> <height>` -> card `training/characters/<name>.json`
 (`"slot"`, stats, `style`: stance_deg + slap) -> `build_body.py` (+ `--blue` per pairing) -> `slap_demo.py search --char <name>` -> own ladder
 (`overnight.py --char <name> --queue <name>_queue.json`) -> pairing level (`build_scene.py` with SLAP_RED/SLAP_BLUE; from Git Bash set

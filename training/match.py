@@ -45,6 +45,9 @@ DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and ha
 # the identical formulas, so the match log still compares event for event.
 GAZE_GAIN = 1.0        # the bias OWNS the neck goal pre-touch (the mandate is stronger than the brain's habit)
 GAZE_MAX_STEP = 0.08    # rad per decision the bias may walk: the deliberate head turn of a man squaring up
+WATCH_MAX_STEP = 0.25   # rad per decision while PLANTED: re-acquiring a snapping head inside a short window
+PLANT_KEEP = 0.15       # the striker retains this fraction of the brain's urge after the slap (follow-through melting into stance)
+STAB_MAX_STEP = 0.12    # rad per decision the POST-STRIKE poise servo may move a joint toward its plant pose
 GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
 
 
@@ -130,32 +133,63 @@ class Match:
                     return self.m.geom(x).name
         return None
 
-    def gaze_bias(self, side, m, d):
-        """Eye contact: where THIS athlete's neck should steer to stare at the opponent's head - the desired
-        chest-relative yaw/pitch (ZYX Euler; the head hangs rigid off the neck body, whose hinge axes are the
-        chest frame's Z/Y/X, so yaw = atan2(dy, dx), pitch = -asin(dz)).
-        Anchored on the two HEAD CENTRES (the eye line): aiming from the chest pivot misaligns by
-        atan(height diff / standoff) ~= 11 deg at 0.85 m."""
-        Rc = d.xmat[side.chest].reshape(3, 3)
-        u = Rc.T @ (d.geom_xpos[side.op_head] - d.geom_xpos[side.own_head])
+    def gaze_desire(self, side, m, d):
+        """Unit world direction from this athlete's eyes to the opponent's eyes (the eye line)."""
+        u = d.geom_xpos[side.op_head] - d.geom_xpos[side.own_head]
         n = math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) or 1.0
-        u = u / n
+        return u / n
+
+    def gaze_walk(self, side, d, step):
+        """Walk the WORLD-space gaze bias toward the desire by at most `step` radians (great-circle, never a
+        teleport). World space matters: the chest WHIPS during a slap's follow-through, and a chest-relative
+        bias would chase a target spinning hundreds of degrees per second - the head stays glued to the
+        opponent in the world while the neck quietly counter-rotates the torso."""
+        wd = self.gaze_desire(side, None, d)
+        bw = side.wbias
+        c = max(-1.0, min(1.0, float(bw[0] * wd[0] + bw[1] * wd[1] + bw[2] * wd[2])))
+        theta = math.acos(c)
+        if theta <= step:
+            side.wbias = wd
+            return
+        px, py, pz = wd[0] - c * bw[0], wd[1] - c * bw[1], wd[2] - c * bw[2]
+        pn = math.sqrt(px * px + py * py + pz * pz)
+        if pn < 1e-9:   # antipodal: snap (physically unreachable for two facing athletes)
+            side.wbias = wd
+            return
+        cs, sn = math.cos(step), math.sin(step)
+        v = [bw[0] * cs + px / pn * sn, bw[1] * cs + py / pn * sn, bw[2] * cs + pz / pn * sn]
+        vn = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) or 1.0
+        side.wbias = [v[0] / vn, v[1] / vn, v[2] / vn]
+
+    def gaze_apply(self, side, m, d, step=None):
+        """Drive the neck GOAL to the world bias projected into the chest frame (ZYX yaw/pitch; the head hangs
+        rigid off the neck body, whose hinge axes are the chest frame's Z/Y/X), blended with the brain's own
+        neck goal by GAZE_GAIN. Called right after each decision, as Unreal does."""
+        step = GAZE_MAX_STEP if step is None else step
+        self.gaze_walk(side, d, step)
+        Rc = d.xmat[side.chest].reshape(3, 3)
+        u = Rc.T @ side.wbias
         yc = math.atan2(u[1], u[0])
         pc = -math.asin(max(-1.0, min(1.0, u[2])))
-        return yc, pc
-
-    def gaze_apply(self, side, m, d):
-        """Walk the neck goal toward the bias (bounded step, clamped to the joint range), blended with the
-        brain's own neck goal by GAZE_GAIN. Called right after each decision, as Unreal does."""
-        yc, pc = self.gaze_bias(side, m, d)
-        for idx, targ, span in ((side.i_yaw, yc, 0), (side.i_pitch, pc, 1)):
+        for idx, targ in ((side.i_yaw, yc), (side.i_pitch, pc)):
             lo, hi = side.a.lo[idx], side.a.hi[idx]
             want = max(lo, min(hi, targ))
-            prev = side.bias[span]
-            nb = prev + max(-GAZE_MAX_STEP, min(GAZE_MAX_STEP, want - prev))
-            side.bias[span] = nb
-            blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * nb
+            blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * want
             side.a.goal[idx] = max(lo, min(hi, blend))
+
+    def strike_hold(self, side, m, d):
+        """Post-slap poise (user 2026-10-24): having thrown the slap, the striker PLANTS - his joints melt back
+        to the balanced stand pose (the brain keeps only PLANT_KEEP of its urge, approached at STAB_MAX_STEP so
+        nothing teleports) - and his eyes track the defender to see whether he goes down. Mirror of
+        USlapController::ApplyGaze's post-touch branch."""
+        for j in range(len(side.a.goal)):
+            if j in (side.i_yaw, side.i_pitch):
+                continue
+            cand = side.a.stand[j] + PLANT_KEEP * (side.a.goal[j] - side.a.stand[j])
+            prev = side.plant[j]
+            nxt = prev + max(-STAB_MAX_STEP, min(STAB_MAX_STEP, cand - prev))
+            side.plant[j] = side.a.goal[j] = max(side.a.lo[j], min(side.a.hi[j], nxt))
+        self.gaze_apply(side, m, d, step=WATCH_MAX_STEP)   # still watching him, fast enough for a fall
 
     def turn(self, rnd, s):
         """One turn, striker index s. Returns the turn record (touch, fouls, KO, effect parts)."""
@@ -164,7 +198,8 @@ class Match:
         stand_both(m, d, self.sides)   # each corner to its own stand pose (per-corner fingerprints)
         for x in self.sides:
             x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
-            x.bias = [x.a.goal[x.i_yaw], x.a.goal[x.i_pitch]]   # eye contact restarts square each turn
+            x.wbias = self.gaze_desire(x, m, self.d).copy()   # eye contact: world bias starts on the eye line
+            x.plant = x.a.stand.copy()                        # post-slap poise melts back to here
             m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength   # damage: a weaker neck
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}
@@ -212,8 +247,11 @@ class Match:
                     D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, d.geom_xpos[S.hand].copy())))
                 else:
                     D.a.decide(D.policy(D.a.obs(d)))
-                if GAZE_ON and touch_k is None:   # eye contact until the slap lands (then he braces for it)
-                    self.gaze_apply(D, m, d)
+                if GAZE_ON:
+                    if touch_k is None:
+                        self.gaze_apply(D, m, d)   # eye contact until the slap lands (then he braces for it)
+                    else:
+                        self.strike_hold(S, m, d)  # the striker plants and awaits the verdict
                 if k % 20 == 0:
                     self.emit(type="frame", t=round(t, 3), **{x.name: dict(
                         pelvis=np.round(d.xpos[x.a.pelvis], 3).tolist(), head=np.round(d.geom_xpos[x.head], 3).tolist(),

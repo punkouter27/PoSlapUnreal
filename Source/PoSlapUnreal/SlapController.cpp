@@ -233,6 +233,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			}
 		}
 		A.Goal = A.Stand;
+		A.Plant = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
 		if (Card)
 		{
@@ -461,10 +462,9 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	{
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->qpos[A.Qadr[j]] = A.Stand[j];
 		A.Goal = A.Stand;
+		A.Plant = A.Stand;		// post-slap poise melts back to here
 		A.PrevAction.Init(0.f, A.Act.Num());
 		A.bFresh = true;
-		A.BiasYaw = A.YawIdx >= 0 ? A.Stand[A.YawIdx] : 0.0;	// eye contact restarts square each turn
-		A.BiasPitch = A.PitchIdx >= 0 ? A.Stand[A.PitchIdx] : 0.0;
 		for (int32 k = 0; k < A.NeckAct.Num(); ++k)	// damage: a weaker neck (match.py: forcerange = own x neck strength)
 		{
 			m->actuator_forcerange[2 * A.NeckAct[k]] = A.Fr0[2 * k] * A.NeckStrength;
@@ -474,6 +474,16 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	bTelReady = false;
 	mj_forward(m, d);
 	mj_forward(m, d);
+	for (int32 a = 0; a < 2 && Athletes.Num() == 2; ++a)	// eye contact: world gaze biases start on the eye line
+	{
+		FAthlete& W = Athletes[a];
+		const FAthlete& Fo = Athletes[1 - a];
+		double Dx = d->geom_xpos[3 * Fo.Head] - d->geom_xpos[3 * W.Head];
+		double Dy = d->geom_xpos[3 * Fo.Head + 1] - d->geom_xpos[3 * W.Head + 1];
+		double Dz = d->geom_xpos[3 * Fo.Head + 2] - d->geom_xpos[3 * W.Head + 2];
+		const double L = FMath::Sqrt(Dx * Dx + Dy * Dy + Dz * Dz);
+		if (L > 1e-9) { W.BiasWX = Dx / L; W.BiasWY = Dy / L; W.BiasWZ = Dz / L; }
+	}
 	for (int32 a = 0; a < 2; ++a)
 	{
 		for (int32 f = 0; f < 2; ++f)
@@ -724,35 +734,80 @@ void USlapController::Score(int32 (&Out)[3][2])
 	}
 }
 
-// Eye contact: walk the defender's neck GOAL toward staring at the striker's eyes (pure maths, mirrors
-// match.py gaze_bias/gaze_apply: chest-relative ZYX yaw/pitch anchored on the two head centres - the eye line).
-// The brain owns every other joint and regains the neck the instant the slap lands (he braces for it).
+// Eye contact + post-slap poise: pure maths, mirrors match.py gaze_desire/gaze_walk/gaze_apply/strike_hold.
+// PRE-touch: the defender's neck goals walk to meet the striker's eyes (world-space bias converted to the
+// chest frame's ZYX yaw/pitch - world space because the chest WHIPS during a follow-through); he regains
+// the neck the instant the slap lands (he braces).
+// POST-touch: the striker PLANTS - goals melt back to his balanced stand pose - and his eyes track the
+// defender to see whether he goes down; this continues through the inter-turn hold (display-only).
 void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 {
-	if (!(bEyeContact && bInTurn && Athletes.Num() == 2 && Turn.TouchStep < 0)) return;
-	FAthlete& D = Athletes[1 - Turn.Striker];
-	const FAthlete& S = Athletes[Turn.Striker];
-	if (D.YawIdx < 0 || D.PitchIdx < 0) return;
-	const double* Own = d->geom_xpos + 3 * D.Head;
-	const double* Op = d->geom_xpos + 3 * S.Head;
-	const double* Xm = d->xmat + 9 * D.Chest;	// the CHEST frame: the neck hinges are its Z/Y/X (match.py uses it too)
-	double U[3] = { Op[0] - Own[0], Op[1] - Own[1], Op[2] - Own[2] };
-	const double Rx[3] = { Xm[0] * U[0] + Xm[3] * U[1] + Xm[6] * U[2],	   // U in chest coords (R^T U)
-						   Xm[1] * U[0] + Xm[4] * U[1] + Xm[7] * U[2],
-						   Xm[2] * U[0] + Xm[5] * U[1] + Xm[8] * U[2] };
-	const double Len = FMath::Sqrt(Rx[0] * Rx[0] + Rx[1] * Rx[1] + Rx[2] * Rx[2]);
-	if (Len < 1e-9) return;
+	if (!(bEyeContact && Athletes.Num() == 2)) return;
+	// in-turn after the touch, OR through the inter-turn hold: the striker keeps planting and watching the
+	// verdict (the hold is display-only - the next turn resets everybody - so event parity is untouched)
+	const bool bHold = !bInTurn && HoldLeft > 0 && MatchNo > 0 && Turn.TouchStep >= 0;
+	if (!(bInTurn || bHold)) return;
+	const bool bPlanted = Turn.TouchStep >= 0;
+	FAthlete& Watcher = Athletes[bPlanted ? Turn.Striker : 1 - Turn.Striker];	// defender pre-touch, striker after
+	const FAthlete& Focus = Athletes[bPlanted ? 1 - Turn.Striker : Turn.Striker];
+	if (Watcher.YawIdx < 0 || Watcher.PitchIdx < 0) return;
+	if (bPlanted)	// the striker plants and awaits the verdict (goals melt back to the balanced stand pose)
+	{
+		for (int32 j = 0; j < Watcher.Goal.Num(); ++j)
+		{
+			if (j == Watcher.YawIdx || j == Watcher.PitchIdx) continue;
+			const double Cand = Watcher.Stand[j] + PlantKeep * (Watcher.Goal[j] - Watcher.Stand[j]);
+			const double Next = Watcher.Plant[j] + FMath::Clamp(Cand - Watcher.Plant[j], -StabMaxStep, StabMaxStep);
+			Watcher.Plant[j] = Watcher.Goal[j] = FMath::Clamp(Next, Watcher.Lo[j], Watcher.Hi[j]);
+		}
+	}
+	const double* Own = d->geom_xpos + 3 * Watcher.Head;
+	const double* Op = d->geom_xpos + 3 * Focus.Head;
+	// desire: unit world direction from the watcher's eyes to the focus's eyes
+	double Des[3] = { Op[0] - Own[0], Op[1] - Own[1], Op[2] - Own[2] };
+	const double DL = FMath::Sqrt(Des[0] * Des[0] + Des[1] * Des[1] + Des[2] * Des[2]);
+	if (DL < 1e-9) return;
+	Des[0] /= DL; Des[1] /= DL; Des[2] /= DL;
+	// walk the WORLD-space bias toward the desire by at most Walk radians (great-circle, never a teleport)
+	const double Walk = bPlanted ? WatchMaxStep : GazeMaxStep;	// snappier while watching a falling opponent
+	double WB[3] = { Watcher.BiasWX, Watcher.BiasWY, Watcher.BiasWZ };
+	const double CosT = FMath::Clamp(WB[0] * Des[0] + WB[1] * Des[1] + WB[2] * Des[2], -1.0, 1.0);
+	const double Theta = FMath::Acos(CosT);
+	if (Theta <= Walk)
+	{
+		WB[0] = Des[0]; WB[1] = Des[1]; WB[2] = Des[2];
+	}
+	else
+	{
+		const double Px = Des[0] - CosT * WB[0], Py = Des[1] - CosT * WB[1], Pz = Des[2] - CosT * WB[2];
+		const double PN = FMath::Sqrt(Px * Px + Py * Py + Pz * Pz);
+		if (PN < 1e-9)	// antipodal: snap (unreachable for two facing athletes)
+		{
+			WB[0] = Des[0]; WB[1] = Des[1]; WB[2] = Des[2];
+		}
+		else
+		{
+			const double Cs = FMath::Cos(Walk), Sn = FMath::Sin(Walk);
+			double V[3] = { WB[0] * Cs + Px / PN * Sn, WB[1] * Cs + Py / PN * Sn, WB[2] * Cs + Pz / PN * Sn };
+			const double VL = FMath::Sqrt(V[0] * V[0] + V[1] * V[1] + V[2] * V[2]);
+			WB[0] = V[0] / VL; WB[1] = V[1] / VL; WB[2] = V[2] / VL;
+		}
+	}
+	Watcher.BiasWX = WB[0]; Watcher.BiasWY = WB[1]; Watcher.BiasWZ = WB[2];
+	// project the world bias into the chest frame (the neck hinges ARE its Z/Y/X) and clamp to the joint range
+	const double* Xm = d->xmat + 9 * Watcher.Chest;
+	const double Rx[3] = { Xm[0] * WB[0] + Xm[3] * WB[1] + Xm[6] * WB[2],	// R^T * bias
+						   Xm[1] * WB[0] + Xm[4] * WB[1] + Xm[7] * WB[2],
+						   Xm[2] * WB[0] + Xm[5] * WB[1] + Xm[8] * WB[2] };
 	const double Want[2] = { FMath::Atan2(Rx[1], Rx[0]),
-							 -FMath::Asin(FMath::Clamp(Rx[2] / Len, -1.0, 1.0)) };
-	const int32 Idx[2] = { D.YawIdx, D.PitchIdx };
-	double* Bias[2] = { &D.BiasYaw, &D.BiasPitch };
+							 -FMath::Asin(FMath::Clamp(Rx[2], -1.0, 1.0)) };
+	const int32 Idx[2] = { Watcher.YawIdx, Watcher.PitchIdx };
 	for (int32 s = 0; s < 2; ++s)
 	{
 		const int32 j = Idx[s];
-		const double Clamped = FMath::Clamp(Want[s], D.Lo[j], D.Hi[j]);
-		*Bias[s] += FMath::Clamp(Clamped - *Bias[s], -GazeMaxStep, GazeMaxStep);	// walk, never teleport
-		const double Blend = (1.0 - GazeGain) * D.Goal[j] + GazeGain * *Bias[s];
-		D.Goal[j] = FMath::Clamp(Blend, D.Lo[j], D.Hi[j]);
+		const double Clamped = FMath::Clamp(Want[s], Watcher.Lo[j], Watcher.Hi[j]);
+		const double Blend = (1.0 - GazeGain) * Watcher.Goal[j] + GazeGain * Clamped;
+		Watcher.Goal[j] = FMath::Clamp(Blend, Watcher.Lo[j], Watcher.Hi[j]);
 	}
 }
 

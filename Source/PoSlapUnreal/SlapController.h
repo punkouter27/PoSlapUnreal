@@ -128,13 +128,17 @@ private:
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
-		double BiasYaw = 0.0, BiasPitch = 0.0;	// where the gaze servo is walking the neck goal this turn
+		double BiasWX = 0.0, BiasWY = 0.0, BiasWZ = 1.0;	// WORLD-space gaze bias (unit); seeded at each turn start
+		TArray<double> Plant;				// post-slap poise: the melted-back-to-stand goal trail (starts at Stand)
 	};
 
-	// Eye contact (match.py GAZE_*): the defender squares up and holds the striker's eyes until the slap lands.
-	// Identical maths both sides - the match log still compares event for event.
+	// Eye contact + post-slap poise (match.py GAZE_/WATCH_/PLANT_/STAB_ constants): identical maths both sides -
+	// the match log still compares event for event.
 	static constexpr double GazeGain = 1.0;		// the bias OWNS the neck goal pre-touch
 	static constexpr double GazeMaxStep = 0.08;	// rad per decision the bias may walk (deliberate head turn)
+	static constexpr double WatchMaxStep = 0.25;// rad per decision while PLANTED (re-acquiring a snapping head)
+	static constexpr double PlantKeep = 0.15;	// the striker's retained fraction of the brain's urge after the slap
+	static constexpr double StabMaxStep = 0.12;	// rad per decision the post-slap poise servo may move a joint
 	bool bEyeContact = true;					// -SlapEyeContact=0 disables (debug / A-B checks)
 	void ApplyGaze(const mjModel* m, mjData* d);
 
