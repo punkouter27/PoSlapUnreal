@@ -151,15 +151,17 @@ def main():
     sess_rows = sorted(all_rows, key=lambda r: r["sess_steps"])
     sess_stage_rows = ""
     for role, (rk, what, ok) in ROLES.items():
-        if not sess_rows or rk not in sess_rows[-1]:
+        rows_r = [r for r in sess_rows if rk in r]
+        if not rows_r:
             continue
-        total = sess_rows[-1]["sess_steps"]
+        t0_r = rows_r[0]["sess_steps"]
+        span_r = max(1.0, rows_r[-1]["sess_steps"] - t0_r)
         cells = ""
         first = None
         for sname, lo, hi in STAGES:
-            sel = [r for r in sess_rows if lo * total <= r["sess_steps"] <= hi * total and rk in r]
+            sel = [r for r in rows_r if lo * span_r <= (r["sess_steps"] - t0_r) <= hi * span_r]
             if not sel:
-                sel = [sess_rows[-1]]
+                sel = [rows_r[-1]]
             rew = sum(r[rk] for r in sel) / len(sel)
             suc = sum(ok(r) for r in sel) / len(sel)
             if first is None:

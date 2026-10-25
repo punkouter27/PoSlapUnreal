@@ -12,5 +12,6 @@
 - [Training Metrics Guide](DOCS/20261025/training_metrics_guide.md): TensorBoard metrics, PPO policy/value losses, entropy decay, and curriculum ladder.
 - [Agent Abilities Grid](DOCS/20261025/agent_abilities_grid.md): Biomechanical abilities matrix, grades, and behavioral gaze/poise servos.
 - [AI Realism & Pre-Flight Configs](DOCS/20261025/ai_realism_pre_flight.md): Top 10 AI realism options, joint/strength/sensory/training configs, and pre-flight checklist.
+- [30-Minute AI Realism Training Report](DOCS/20261025/ai_realism_30m_report.md): 3-stage progress report (Beginner, Intermediate, Advanced) across S1-S3 locomotion and L4 arena stages.
 - [Training Telemetry Visual Report](DOCS/20261025/training_telemetry_report.html): Annotated charts of the top 3 training metrics and stabilization checkpoints.
 - [Project Readme](README.md): Quick-start instructions, required plugins, and engine setup.
