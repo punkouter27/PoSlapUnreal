@@ -10,9 +10,9 @@ A turn starts with both athletes reset to the stand pose in their foot boxes. Th
 touch of the striker's body on the defender's head is the strike; the turn ends 5 s after it (recovery window).
 Knockdown (Blueprint 9) = any non-sole part on floor or podium (the defender's palms may brace on the podium): the
 defender down after the strike = KO, match over.
-Fouls (-1 point on every card, that round): striker's first touch not with the palm (clubbing), no strike in 30 s,
+Fouls (-1 point on every card, that round): no strike in 30 s,
 striker knocked down, defender knocked down before the strike, either athlete's feet out of the foot box.
-Judges: 3 cards, 10-point must. A strike's effect = palm speed (m/s) + 5 x peak defender head speed (m/s) + 10 if
+Judges: 3 cards, 10-point must. A strike's effect = hand speed (m/s) + 5 x peak defender head speed (m/s) + 10 if
 the defender staggered (COM more than 5 cm off its pre-strike spot at the end of the window). The defender scores for
 absorbing a clean strike he survived: 10 if he did not stagger + (10 - 5 x head speed, at least 0). Each judge weighs
 (speed, head, stagger, defence) differently: (2,1,1,1), (1,2,1,1), (1,1,2,2). Per round: the bigger total gets 10, the
@@ -284,8 +284,6 @@ class Match:
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2))
                             self.emit(type="strike", t=rec["touch"], striker=S.name, part=rec["part"], palm=palm, speed=rec["speed"])
-                            if not palm:
-                                rec["fouls"].append((S.name, "clubbing (not the palm)"))
                             break
 
     def finish(self, rec, S, D, com0):
@@ -321,7 +319,7 @@ class Match:
                 eff = [0.0, 0.0]
                 stag = [False, False]
                 for s, r in recs:   # in turn order (Unreal adds in the same order)
-                    if r["touch"] is not None and r["palm"]:
+                    if r["touch"] is not None:
                         eff[s] += w[0] * r["speed"] + w[1] * 5 * r["head_peak"] + w[2] * 10 * r["stagger"]
                         stag[s] = r["stagger"]
                         if not r["ko"]:   # the defender absorbed it: stayed put, small head snap
@@ -384,8 +382,8 @@ def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None):
     strikes = [t for _, ts, _ in out for t in ts]
     landed = [t for t in strikes if t["touch"] is not None]
     print(f"{matches} matches: {blowups} blow-ups, {kos} KOs, {len(strikes)} turns, {len(landed)} strikes landed "
-          f"({sum(t['palm'] for t in landed)} palm), mean palm speed "
-          f"{np.mean([t['speed'] for t in landed if t['palm']] or [0]):.1f} m/s, decisions: "
+          f"({sum(t['palm'] for t in landed)} palm-led), mean hand speed "
+          f"{np.mean([t['speed'] for t in landed] or [0]):.1f} m/s, decisions: "
           f"{ {h: sum(r['how'] == h for r, _, _ in out) for h in sorted({r['how'] for r, _, _ in out})} }")
     ok = blowups == 0
     print("L5 exam:", "PASS" if ok else "FAIL")

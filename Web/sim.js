@@ -197,7 +197,6 @@ export class Match {
         this.touchK = this.k; this.com0 = [d.subtree_com[3 * D.pelvis], d.subtree_com[3 * D.pelvis + 1]];
         Object.assign(this.rec, { touch: this.k * dt, part, palm, speed: Math.round(speed * 100) / 100 });
         this.emit({ type: "strike", t: this.k * dt, striker: S.name, part, palm, speed, pos });
-        if (!palm) this.rec.fouls.push([S.name, "clubbing (not the palm)"]);
         // the body behind the palm (card strike_mass): an impulse on the head over KICK_STEPS physics steps
         const k = S.card.strike_mass / (KICK_STEPS * dt), f = vel.map(v => v * k), C = v3(d.xipos, D.headBody);
         const r = [pos[0] - C[0], pos[1] - C[1], pos[2] - C[2]];
@@ -244,7 +243,7 @@ export class Match {
     WEIGHTS.forEach((w, j) => {
       const eff = [0, 0], stag = [false, false];
       for (const [s, r] of recs) {
-        if (r.touch !== null && r.palm) {
+        if (r.touch !== null) {
           eff[s] += w[0] * r.speed + w[1] * 5 * r.head_peak + w[2] * 10 * r.stagger;
           stag[s] = r.stagger;
           if (!r.ko) eff[1 - s] += w[3] * (10 * !r.stagger + Math.max(0, 10 - 5 * r.head_peak));

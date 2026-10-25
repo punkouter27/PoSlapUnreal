@@ -637,13 +637,12 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		K[5] = R[0] * K[1] - R[1] * K[0];
 		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s}"),
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2)));
-		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm: foul)"));
-		if (!Turn.bPalm) Turn.Fouls.Emplace(Turn.Striker, TEXT("clubbing (not the palm)"));
+		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm)"));
 		const FVector Pos = MjUtils::MjToUEPosition(C.pos);
 		const FVector Dir = MjUtils::MjToUEPosition(Travel).GetSafeNormal();
 		SetHud([&](FSlapHud& H)
 		{
-			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.bPalm ? TEXT("Clean palm") : TEXT("Foul: not the palm");
+			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.bPalm ? TEXT("Clean palm") : TEXT("Hit");
 			++H.StrikeSeq; H.StrikePos = Pos; H.StrikeDir = Dir; H.StrikeDefender = 1 - Turn.Striker;
 		});
 		break;
@@ -739,7 +738,7 @@ void USlapController::Score(int32 (&Out)[3][2])
 		bool Stag[2] = { false, false };
 		for (const FTurn& R : RoundTurns)
 		{
-			if (R.TouchStep < 0 || !R.bPalm) continue;
+			if (R.TouchStep < 0) continue;
 			Eff[R.Striker] += Weights[j][0] * R.Speed + (Weights[j][1] * 5) * R.HeadPeak + (double)(Weights[j][2] * 10 * (R.bStagger ? 1 : 0));
 			Stag[R.Striker] = R.bStagger;
 			if (!R.bKO)	// the defender absorbed it: stayed put, small head snap

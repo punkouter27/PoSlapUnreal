@@ -267,32 +267,25 @@ class ArenaEnv:
         g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
         w = self.con_world.long().clamp(0, self.W - 1)                # slots past nacon hold stale ids
         dhead = self.head_g[1 - self.striker[w]]                        # the defender's head in that contact's world
-        shand = self.hand_g[self.striker[w]]
         on = (idx < n) & ((g0 == dhead) | (g1 == dhead))
         other = torch.where(g0 == dhead, g1, g0)
         on &= self.owner[other] == self.striker[w]                     # touched by the striker's body
         if not bool(on.any()):
             return
-        w, other, dhead, shand = w[on], other[on], dhead[on], shand[on]
-        sign = torch.where(g0[on] == dhead, -1.0, 1.0)[:, None]
-        normal = self.con_frame[on][:, 0, :] * sign
-        palm_dir = -self.geom_xmat[w, shand][:, :, 2]
-        palm = (other == shand) & ((normal * palm_dir).sum(-1) > 0.5)
+        w = w[on]
         hit = torch.zeros(self.W, dtype=torch.bool, device=self.device)
         hit[w] = True
-        good = torch.zeros_like(hit)
-        good[w[palm]] = True
         early = self.t < WAIT                                # the 4 s stand (envs/slap.py WAIT): an early touch is a foul
         self.bonus[hit & early & ~self.struck] -= 0.5
         self.bonus[hit & self.struck & (self.t > self.t_hit + 15)] -= 1.0   # one slap per turn: a second touch costs
         new = hit & ~self.struck & ~early
         if bool(new.any()):
             v = speed[new]
-            clean = good[new] & (v >= self.hit_v)
+            clean = v >= self.hit_v                          # any hit counts (user 2026-10-25): the palm is technique, not validity
             self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, torch.where(good[new], 3.0 * v + v * v, torch.full_like(v, -2.0)))
+            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
             dh = self._sd(self.geom_xpos[:, self.head_g])[1][new] - self._sd(self.head0)[1][new]   # feint: he had flinched
-            self.bonus[new] += torch.where(good[new], 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15), torch.zeros_like(v))
+            self.bonus[new] += 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15)
             f = vel[new] * (self.strike_mass[self.striker[new]] / (KICK_STEPS * 0.005))[:, None]
             r = hand[new] - self.xipos[new.nonzero().squeeze(-1), self.head_b[1 - self.striker[new]]]
             self.kick[new], self.kick_left[new] = torch.cat([f, torch.cross(r, f, dim=-1)], -1), KICK_STEPS

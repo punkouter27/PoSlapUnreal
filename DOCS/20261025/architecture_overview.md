@@ -147,12 +147,11 @@ Matches follow the official Power Slap competitive ruleset implemented identical
   * **KO Victory:** Defender knockdown resulting from a legal strike immediately ends the match by Knockout.
   * **Striker Self-Knockdown:** A striker losing balance and touching the podium or floor commits a severe foul (-1 point).
 * **Fouls (-1 Point Penalty per card):**
-  * Striking with wrist or arm rather than open palm (clubbing).
   * Stepping outside the designated foot box ($20 \times 25$ cm) during windup or strike.
   * Striker knockdown during execution.
   * Exceeding the 30-second turn clock without striking.
 * **10-Point-Must Scoring System:**
-  * Three independent judges score each completed round based on palm velocity, head snap ($g$), stagger distance ($>5$ cm COM displacement), and defensive survival.
+  * Three independent judges score each completed round based on hand velocity, head snap ($g$), stagger distance ($>5$ cm COM displacement), and defensive survival.
   * Round winner receives 10 points; opponent receives 9 points (or 8 points for heavy staggers with double composite impact score).
 
 ---

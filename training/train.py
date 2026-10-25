@@ -141,7 +141,7 @@ def exam(ppo, character, level):
         r = {f"{tag}_no_fall": 1.0 - fell.float().mean().item()}
         if "min_in_box" in chk:
             r[f"{tag}_in_box"] = 1.0 - left_box.float().mean().item()
-        if "min_hit" in chk:        # clean palm strike >= 8 m/s and still up 1.5 s later
+        if "min_hit" in chk:        # strike >= 8 m/s and still up 1.5 s later
             r[f"{tag}_hit"] = hit.float().mean().item()
         if "min_absorbed" in chk:   # up 5 s after a median slap, COM back within 5 cm
             r[f"{tag}_absorbed"] = absorbed.float().mean().item()

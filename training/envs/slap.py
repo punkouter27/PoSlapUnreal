@@ -4,7 +4,8 @@ Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController bu
 One brain, every role (Blueprint 7): each world plays one role per episode, drawn from the level's `roles` mix, so a
 level keeps the earlier ones' skills (2026-10-22: L2 trained on strikes alone had forgotten how to guard).
     0  guard   (L0, L1): stand in the foot box under random pushes, 30 s
-    +1 strike  (L2):     open-palm hit on the `target` mocap sphere where the opponent's head is; ends 1.5 s after
+    +1 strike  (L2):     hit on the `target` mocap sphere where the opponent's head is (any part of the hand counts,
+                         the palm is technique not validity — user 2026-10-25); ends 1.5 s after
     -1 absorb  (L3):     one scripted slap to the face (an impulse on the head, the opponent's hand seen coming);
                          ends 5 s after it: still up, centre of mass back within 5 cm
 Randomised every episode (Blueprint 6): floor friction, +-5 % mass per part, +-10 % strength, 0-20 ms action
@@ -354,20 +355,15 @@ class SlapEnv:
         # a head/chest/arm bump used to end the attempt for ~-3, cheaper than the clock (-95): he learned to head-butt it
         # every contact slot at once, scattered to its world: no host sync per physics step
         w = self.con_world.long().clamp(0, self.N - 1)                     # slots past nacon hold stale ids (masked by on)
-        sign = torch.where(g0 == self.tgeom, -1.0, 1.0)[:, None]
-        normal = self.con_frame[:, 0, :] * sign                            # from the hand towards the target
-        palm_dir = -self.geom_xmat[w, self.hand][:, :, 2]                   # hand box -z = palm
-        palm = on & ((normal * palm_dir).sum(-1) > 0.5)
         hit = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()
-        good = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, palm.float(), "amax").bool()
         early = self.t < WAIT                                # before the 4 s stand is over: a foul, not the strike
         self.bonus -= 0.5 * (hit & early & ~self.struck).float()
         new = hit & ~self.struck & ~early
         v = speed
-        clean = good & (v >= self.hit_v)
+        clean = hit & (v >= self.hit_v)                      # any hit counts (user 2026-10-25): the palm is technique, not validity
         self.hit_ok = torch.where(new, clean, self.hit_ok)
         self.hit_speed = torch.where(new, v, self.hit_speed)
-        pay = torch.where(clean, 50.0 + 8.0 * v, torch.where(good, 3.0 * v + v * v, torch.full_like(v, -2.0)))
+        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
         self.bonus += torch.where(new, pay, torch.zeros_like(v))
         # one slap per turn (user): touching the target again 0.3 s or more after the strike costs 1 per physics step
         self.bonus -= 1.0 * (hit & self.struck & (self.settle < SETTLE - 15)).float()

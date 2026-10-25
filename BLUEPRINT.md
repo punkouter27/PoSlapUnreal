@@ -37,13 +37,13 @@ Simple shapes fitted *inside* the mesh skin so contacts look right.
 | Neck | Capsule | Short; carries the head's wobble |
 | Chest, Belly, Pelvis | 3 capsules | Pelvis is the root (free-floating body) |
 | Upper arm, Forearm | Capsules | |
-| Hand | Flat box, standard hand length (10.8 % of height) | **Palm side** = the scoring surface; back of hand/wrist does not score. The scan's left hand is a fist, so its look ≠ the physics hand |
+| Hand | Flat box, standard hand length (10.8 % of height) | The palm is the technique, not the rule: any part of the striker's body that lands on the face is a valid hit (2026-10-25, user: "if it's an open palm hit or not, it does not matter. all hits are valid"). The scan's left hand is a fist, so its look ≠ the physics hand |
 | Thigh, Shin | Capsules | |
 | Foot | One box = the **sole** | The foot box is the only part allowed to touch the floor (a rolled shoe edge is not a knockdown) |
 
 **Self-collision:** every pair of parts collides *except* a part and its direct parent (e.g. forearm–upper arm).
 Checked automatically: zero overlap in the reference pose, the rest stance, and through a full slap swing arc.
-Athlete-vs-athlete contact is on: palm vs face, plus any accidental body bumps.
+Athlete-vs-athlete contact is on: any part of the striker vs face, plus any accidental body bumps.
 
 ### 2.2 Weight distribution (standard human proportions, scaled to card mass)
 
@@ -139,7 +139,7 @@ Training starts in plain MuJoCo (fast, on the GPU). A brain is only brought into
 |---|---|---|
 | **L0** | **Stand** | Upright 30 s, feet planted, under random pushes. **Pass:** ≥ 95 % of 100 episodes with zero non-sole contact. |
 | **L1** | **Guard hold** | Stand in the foot box facing the opponent, head in target zone, 30 s, under pushes **capped at 90–180 N** (decided 2026-10-21: full 300 N head shoves with planted feet are beyond a 0.5-strength Grandpa; slap impacts are L3's test). **Pass:** feet never leave the box in ≥ 95 %. |
-| **L2** | **Strike** (fixed target) | Open-palm lateral swing hits a fixed head target. **Pass:** palm touches first (not wrist), hand ≥ 8 m/s, striker stays up, ≥ 90 % of attempts, inside the 30 s clock. |
+| **L2** | **Strike** (fixed target) | Lateral swing hits a fixed head target. **Pass:** the target is hit, hand ≥ 8 m/s, striker stays up, ≥ 90 % of attempts, inside the 30 s clock. |
 | **L3** | **Absorb** (scripted hits) | Defender takes scripted strikes of rising strength. **Pass:** survives a median strike ≥ 90 %, centre of mass back within 5 cm in ≤ 5 s. |
 | **L4** | **Duel** (self-play) | Trained striker vs trained defender. **Pass:** KO rate 10–40 % per strike, striker self-falls ≤ 5 %. Feints pay: a touch on a defender who already flinched earns the striker a bonus (2026-10-22). |
 | **L5** | **Full match** | 3 rounds, turn clock, recovery window, judges. **Pass:** 100 matches end-to-end with no sim blow-ups, Unreal replay matches MuJoCo. |

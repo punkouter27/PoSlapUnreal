@@ -43,7 +43,7 @@ graph LR
 
 * **1. Cumulative Reward (Per-Role Return):**
   * **Guard Return:** Evaluates upright balance and foot placement inside the $20 \times 25$ cm box. A complete 30-second round corresponds to 1,500 decisions (50 Hz). A return of $2,400$–$2,500$ indicates the athlete stood perfectly planted without stepping out or falling.
-  * **Strike Return:** Evaluates kinetic energy transfer, open palm orientation, and post-strike balance. A clean hit ($\ge 8.0$ m/s) that leaves the striker standing pays $100$–$114$ points.
+  * **Strike Return:** Evaluates kinetic energy transfer, palm orientation, and post-strike balance. A hit ($\ge 8.0$ m/s) that leaves the striker standing pays $100$–$114$ points.
   * **Absorb Return:** Measures recovery after a 3–15 N·s head impact. An un-staggered athlete returning their Center of Mass (COM) to within 5 cm of origin achieves $\sim 800$ reward.
 * **2. Episode Length & Survival Steps:**
   * Tracks how many steps the athlete survives before a knockdown or out-of-bounds foul.

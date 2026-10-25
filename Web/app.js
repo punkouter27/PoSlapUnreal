@@ -30,8 +30,8 @@ function onEvent(e) {
       $("turn").innerHTML = `${corner(e.striker)} strikes`;
       $("strike").textContent = ""; $("call").textContent = ""; break;
     case "strike":
-      $("strike").textContent = `${e.speed.toFixed(1)} m/s · ${e.part.replace("_r", "")}${e.palm ? "" : " (foul)"}`;
-      banner(e.palm ? "Clean palm" : "Foul: not the palm", `${e.speed.toFixed(1)} m/s`, 1.4, e.palm ? "var(--gold)" : "var(--red)");
+      $("strike").textContent = `${e.speed.toFixed(1)} m/s · ${e.part.replace("_r", "")}`;
+      banner(e.palm ? "Clean palm" : "Hit", `${e.speed.toFixed(1)} m/s${e.palm ? "" : " · not the palm"}`, 1.4, e.palm ? "var(--gold)" : "");
       flash(e.pos); break;
     case "knockdown": $("call").textContent = `${e.athlete} down (${e.part})`; break;
     case "foul": $("call").textContent = `Foul: ${e.athlete} ${e.why}`; break;
