@@ -56,7 +56,7 @@ namespace
 	const FColor TeamColor[2] = { FColor(235, 70, 60), FColor(70, 130, 240) };
 	const FColor Gold(255, 220, 120), Grey(200, 200, 200);
 	constexpr float TopBar = 56.f, BottomBar = 40.f;	// Slate units: the corner anchors' rows (BuildUi)
-	const TCHAR* ShotName[] = { TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO") };
+	const TCHAR* ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO") };
 	int32 Team(const FString& Name) { return Name == TEXT("blue") ? 1 : 0; }
 	template <typename T> T* Load(const TCHAR* Path) { return LoadObject<T>(nullptr, Path, nullptr, LOAD_Quiet | LOAD_NoWarn); }
 }
@@ -688,14 +688,14 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	}
 	if (!Box.IsValid) return;
 
-	EShot Want = EShot::Wide;
+	EShot Want = H.bWalkIn ? EShot::WalkIn : EShot::Wide;
 	if (Now - KOAt < KOShot) Want = EShot::KO;
 	else if (Now - StrikeAt < 1.6) Want = EShot::Strike;
-	else if (H.Match > 0 && !H.bStruck && H.HandDist < 0.55 && H.HandSpeed > 1.5) Want = EShot::Tension;
+	else if (!H.bWalkIn && H.Match > 0 && !H.bStruck && H.HandDist < 0.55 && H.HandSpeed > 1.5) Want = EShot::Tension;
 	bool bCut = false;
-	if (Want != Shot && (Want > Shot || Now - ShotStart > 1.0))
+	if (Want != Shot && (Want > Shot || Want == EShot::WalkIn || Now - ShotStart > 1.0))
 	{
-		bCut = Want == EShot::Tension || Want == EShot::KO;
+		bCut = Want == EShot::WalkIn || Want == EShot::Tension || Want == EShot::KO;
 		Shot = Want;
 		ShotStart = Now;
 	}
@@ -709,6 +709,15 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	float Speed = 3.f;
 	switch (Shot)
 	{
+	case EShot::WalkIn:		// ring entrance dolly: angled low-hero sweep following both athletes walking to the podium
+	{
+		const float Wp = FMath::Clamp((float)H.WalkInProgress, 0.f, 1.f);
+		const float YawSweep = 28.f * (1.f - Wp);
+		Look = 0.5f * (Pelvis[0] + Pelvis[1]) + Up * 25.f;
+		Pos = Look - Fwd.RotateAngleAxis(YawSweep, Up) * FMath::Lerp(340.f, 260.f, Wp) + Up * FMath::Lerp(-15.f, 20.f, Wp);
+		Speed = 4.5f;
+		break;
+	}
 	case EShot::Tension:	// the defender's face, close
 		Look = Head[Def];
 		Pos = Look - Fwd.RotateAngleAxis(Def == 1 ? 18.f : -18.f, Up) * 120.f + Up * 6.f;
@@ -775,8 +784,10 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 	};
 	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Top, 300.f * S, 250.f * S);	// legible over the truss
 	const FColor Tc = TeamColor[Team(H.Striker)];
-	Line(Big, FString::Printf(TEXT("ROUND %d / 3"), H.Round), FColor::White, 1.2f);
-	Line(Small, FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Tc, 1.3f);
+	Line(Big, H.bWalkIn ? TEXT("RING WALK-IN") : *FString::Printf(TEXT("ROUND %d / 3"), H.Round), FColor::White, 1.2f);
+	Line(Small, H.bWalkIn
+		? *FString::Printf(TEXT("Approaching podium  (%d%%)"), FMath::RoundToInt(100.0 * H.WalkInProgress))
+		: *FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Tc, 1.3f);
 	if (H.bStruck || H.Speed > 0)
 	{
 		Line(Small, FString::Printf(TEXT("Hand speed %.1f m/s  (%s)"), H.Speed, *H.Part), Gold, 1.2f);

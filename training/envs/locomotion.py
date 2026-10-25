@@ -309,6 +309,13 @@ class LocomotionEnv:
         delta_stam = torch.where(effort > 0.15, -self.fatigue_drain * effort, self.fatigue_recov * (1.0 - effort))
         self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
 
+        # Option 9: Antagonist co-contraction impedance modulation (0.90 relaxed stride -> 1.25 braced shove/turn)
+        base_cc = 0.90 if self.level in ("S2", "S3") else 1.00
+        shove_on = (self.push_left > 0) if (self.randomize and self.push_scale > 0 and self.cfg.get("pushes")) else torch.zeros_like(effort, dtype=torch.bool)
+        self.co_contract = torch.where(shove_on, torch.full_like(effort, 1.25), base_cc + 0.30 * effort).clamp(0.85, 1.30)
+        self.gain[..., 0] = self.gain0[:, 0] * self.co_contract[:, None]
+        self.bias[..., 1] = self.bias0[:, 1] * self.co_contract[:, None]
+
         # Option 6: Smooth motor control with asymmetric range mapping, stamina rate-limit, and EMA filter
         tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
         ms = self.max_step * self.stamina[:, None]

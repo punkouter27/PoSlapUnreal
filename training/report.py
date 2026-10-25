@@ -31,14 +31,15 @@ def _chart(rows, key, title):
 
 def stages(rows):
     """{role: [(stage, mean reward, success rate), ...]} over the rows inside each stage's share of the run's steps."""
-    total = rows[-1]["steps"]
+    s0 = rows[0]["steps"]
+    span = max(1, rows[-1]["steps"] - s0)
     out = {}
     for role, (rk, _, ok) in ROLES.items():
         if rk not in rows[-1]:
             continue
         out[role] = []
         for name, lo, hi in STAGES:
-            sel = [r for r in rows if lo * total <= r["steps"] <= hi * total and rk in r] or [rows[-1]]
+            sel = [r for r in rows if lo * span <= (r["steps"] - s0) <= hi * span and rk in r] or [rows[-1]]
             out[role].append((name, sum(r[rk] for r in sel) / len(sel), sum(ok(r) for r in sel) / len(sel)))
     return out
 

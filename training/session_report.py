@@ -26,6 +26,7 @@ ROLES = {
     "strike": ("strike_return", "clean hits", lambda r: r.get("strike_hit", 0.0)),
     "absorb": ("absorb_return", "slaps absorbed", lambda r: r.get("absorb_ok", 0.0)),
     "guard": ("guard_return", "kept his feet", lambda r: 1 - r.get("guard_fall", 0.0)),
+    "locomotion": ("episode_return", "kept his feet", lambda r: 1 - r.get("fall_rate", 0.0)),
 }
 
 
@@ -64,14 +65,15 @@ def stage_stats(rows):
     """{role: [(stage, mean reward, success rate)]} inside each stage's share of steps."""
     if not rows:
         return {}
-    total = rows[-1]["steps"]
+    s0 = rows[0]["steps"]
+    span = max(1, rows[-1]["steps"] - s0)
     out = {}
     for role, (rk, _, ok) in ROLES.items():
         if rk not in rows[-1]:
             continue
         out[role] = []
         for name, lo, hi in STAGES:
-            sel = [r for r in rows if lo * total <= r["steps"] <= hi * total and rk in r]
+            sel = [r for r in rows if lo * span <= (r["steps"] - s0) <= hi * span and rk in r]
             if not sel:
                 sel = [rows[-1]]
             out[role].append((name, sum(r[rk] for r in sel) / len(sel),
@@ -111,10 +113,10 @@ def main():
             rk, what, _ = ROLES[role]
             cells = "".join("<td>%.1f</td><td>%.0f %%</td>" % (rew, 100 * s)
                             for _, rew, s in vals)
-            stage_table += ("<tr><th>%s<br><small>%s</small></th>%s"
-                            "<td>%.1f</td><td>%.0f %%</td></tr>"
-                            % (role, what, cells, vals[0][1], 100 * vals[0][2]))
-            stage_table += ""
+            gain = vals[-1][1] - vals[0][1]
+            stage_table += ("<tr><th>%s &middot; %s<br><small>%s</small></th>%s"
+                            "<td>%+.1f</td></tr>"
+                            % (run, role, what, cells, gain))
         body.append(
             "<tr><td>%s</td><td>%s</td><td>%s</td><td>%.1f M</td><td>%s</td><td>%s</td></tr>"
             % (run, stage.get("char", "?"), stage.get("level", "?"),
@@ -164,7 +166,7 @@ def main():
                 first = rew
             cells += "<td>%.1f</td><td>%.0f %%</td>" % (rew, 100 * suc)
         sess_stage_rows += ("<tr><th>%s<br><small>%s</small></th>%s"
-                            "<td>%+.1f</td></tr>" % (role, what, cells, first))
+                            "<td>%+.1f</td></tr>" % (role, what, cells, rew - first))
 
     milestones = "".join(
         "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
@@ -189,8 +191,11 @@ in the mixed arena: each stage trains one athlete against the other's latest fro
 <h2>Session skill stages (Beginner = first 10 %, Intermediate = 45-55 %, Advanced = final 10 % of session steps)</h2>
 <table><tr><th>role</th>{''.join('<th>%s<br>reward</th><th>%s<br>success</th>' % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
 {sess_stage_rows}</table>
+<h2>Per-run skill stages (Beginner = first 10 %, Intermediate = 45-55 %, Advanced = final 10 %)</h2>
+<table><tr><th>run / role</th>{''.join('<th>%s<br>reward</th><th>%s<br>success</th>' % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
+{stage_table}</table>
 <h2>Loss curves and reward curves</h2>
-{''.join('<img src="data:image/png;base64,{c}">' for c in charts)}
+{''.join(f'<img src="data:image/png;base64,{c}">' for c in charts)}
 <h2>Milestones</h2>
 <table><tr><th>time</th><th>event</th><th>run</th><th>level</th><th>best exam</th></tr>
 {milestones}</table>

@@ -23,6 +23,8 @@ struct FSlapHud
 	int32 RoundCards[3][2] = {};		// the last scored round's points per judge (the slide-in card)
 	int32 ScoredRound = 0;				// which round RoundCards holds (0 = none yet this match)
 	FString Result;						// last match's result
+	bool bWalkIn = false;				// pre-match ring walk-in sequence active before Round 1 Turn 1
+	double WalkInProgress = 1.0;		// 0.0 (aisle start) -> 1.0 (planted at podium footboxes)
 
 	// live telemetry (50 Hz)
 	double HandSpeed = 0.0, HandDist = 0.0;	// striker's palm speed (m/s), palm to the defender's head (m)
@@ -93,6 +95,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	double TurnHold = 2.0;
 
+	/** Seconds both athletes walk from the aisle to the podium before Round 1 begins (display only: match.py parity holds). */
+	UPROPERTY(EditAnywhere, Category = "PoSlap")
+	double WalkInHold = 3.0;
+
 	virtual void Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*>& ActuatorIdMap) override;
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
 	virtual FString GetKindName() const override { return TEXT("poslap"); }
@@ -103,7 +109,7 @@ public:
 	int32 DefenderRole = -1;
 
 	/** Thread-safe copy of the match state for the HUD. */
-	FSlapHud GetHud() const { FScopeLock L(&HudLock); return Hud; }
+	FSlapHud GetHud() const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); return Hud; }
 
 	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
 	 *  physics step; the match in progress is abandoned, unscored. */
@@ -128,6 +134,7 @@ private:
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
+		int32 HipL = -1, HipR = -1, KneeL = -1, KneeR = -1, AnkleL = -1, AnkleR = -1, ShSwingL = -1, ShSwingR = -1;
 		double BiasWX = 0.0, BiasWY = 0.0, BiasWZ = 1.0;	// WORLD-space gaze bias (unit); seeded at each turn start
 	};
 
@@ -157,7 +164,11 @@ private:
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0;
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
+	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
+	mutable std::atomic<bool> bHudReady = false;	// set once ASlapHUD::DrawHUD begins rendering so walk-in isn't consumed during level load
+	bool bWalkIn = true;	// -SlapWalkIn=0 disables pre-match walk-in
 	static int64 HoldSteps(double Seconds);
+	void StepWalkIn(const mjModel* m, mjData* d);
 	bool bInTurn = false;
 	FTurn Turn;
 	int32 Cards[3][2] = {};

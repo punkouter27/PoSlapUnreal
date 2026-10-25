@@ -21,7 +21,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSlap, Log, All);
 namespace
 {
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
-	constexpr int32 NumObs = 136;		// DOCS/BRAIN_IO.md (brains from before memory read the first 108, before the own palm 130)
+	constexpr int32 NumObs = 148;		// DOCS/BRAIN_IO.md (136 base + 12 extended proprioceptive foot-ground/phase floats)
 	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 	constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors (brain_cpu.py)
 
@@ -88,6 +88,8 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	FParse::Value(FCommandLine::Get(), TEXT("SlapRecord="), RecordFile);	// policy mode: record 5 s for the live check
 	FString EyeFlag;	// eye contact on by default; -SlapEyeContact=0 off (mirror of match.py's SLAP_EYE_CONTACT)
 	if (FParse::Value(FCommandLine::Get(), TEXT("SlapEyeContact="), EyeFlag)) bEyeContact = EyeFlag != TEXT("0");
+	FString WalkFlag;	// pre-match walk-in on by default; -SlapWalkIn=0 off
+	if (FParse::Value(FCommandLine::Get(), TEXT("SlapWalkIn="), WalkFlag)) bWalkIn = WalkFlag != TEXT("0");
 
 	// URLab attaches our MJCF as a child spec, whose <option> is dropped (root spec defaults: 0.002 s, Euler),
 	// and its own override is single-precision. Set the training options exactly, from the fingerprint.
@@ -251,6 +253,14 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 				if (J == TEXT("neck_turn")) A.YawIdx = j;
 				if (J == TEXT("neck_nod")) A.PitchIdx = j;
 			}
+			if (J == TEXT("hip_flex_l")) A.HipL = j;
+			else if (J == TEXT("hip_flex_r")) A.HipR = j;
+			else if (J == TEXT("knee_l")) A.KneeL = j;
+			else if (J == TEXT("knee_r")) A.KneeR = j;
+			else if (J == TEXT("ankle_flex_l")) A.AnkleL = j;
+			else if (J == TEXT("ankle_flex_r")) A.AnkleR = j;
+			else if (J == TEXT("shoulder_swing_l")) A.ShSwingL = j;
+			else if (J == TEXT("shoulder_swing_r")) A.ShSwingR = j;
 		}
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
@@ -447,6 +457,7 @@ void USlapController::ApplyPending()
 	if (MatchNo > 0 && Round <= Rounds) Emit(TEXT("{\"type\": \"abandoned\"}"));	// the menu stopped it: no result, no series point
 	bInTurn = false;
 	HoldLeft = 0;
+	WalkInLeft = 0;
 	Round = Rounds + 1;	// StepPolicy starts a new match at once
 }
 
@@ -472,11 +483,78 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}}"), *Str(Athletes[First].Name), Rounds));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
 	const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
+	if (bWalkIn && WalkInHold > 0.0 && Athletes.Num() == 2)
+	{
+		WalkInTotal = WalkInLeft = HoldSteps(WalkInHold);
+		bInTurn = false;
+		StepWalkIn(m, d);
+		SetHud([&](FSlapHud& H)
+		{
+			H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
+			H.Round = 1; H.Striker = Athletes[First].Name; H.Defender = Athletes[1 - First].Name;
+			H.bWalkIn = true; H.WalkInProgress = 0.0;
+			FMemory::Memzero(H.Cards); H.Event = Toss;
+		});
+		return;
+	}
 	StartTurn(m, d);	// first: a turn clears the last turn's call, the toss is this one's
 	SetHud([&](FSlapHud& H)
 	{
 		H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
+		H.bWalkIn = false; H.WalkInProgress = 1.0;
 		FMemory::Memzero(H.Cards); H.Event = Toss;
+	});
+}
+
+void USlapController::StepWalkIn(const mjModel* m, mjData* d)
+{
+	// Display-only pre-match walk-in: both athletes walk from 1.6 m down the aisle into their podium footboxes
+	// using their locomotion/balance brain blended with an alternating heel-to-toe stride cycle and eye contact.
+	// When WalkInLeft reaches 0, StartTurn() resets mjData to the exact stand pose for 0.000 cm match.py parity.
+	const double Prog = 1.0 - (double)WalkInLeft / (double)FMath::Max<int64>(1, WalkInTotal);
+	const double S = FMath::Clamp(Prog / 0.85, 0.0, 1.0);
+	const double U = S * S * (3.0 - 2.0 * S);
+	const double Offset = 1.60 * (1.0 - U);
+	const double Env = Prog < 0.85 ? FMath::Sin(PI * S) : 0.0;
+	const double Phase = 2.0 * PI * 1.8 * Prog * WalkInHold;
+	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+	{
+		FAthlete& A = Athletes[a];
+		const double Sign = a == 0 ? -1.0 : 1.0;
+		d->qpos[A.RootQ] = m->qpos0[A.RootQ] + Sign * Offset;
+		d->qpos[A.RootQ + 1] = m->qpos0[A.RootQ + 1];
+		d->qpos[A.RootQ + 2] = m->qpos0[A.RootQ + 2] + 0.015 * Env * FMath::Abs(FMath::Sin(Phase));
+		for (int32 k = 3; k < 7; ++k) d->qpos[A.RootQ + k] = m->qpos0[A.RootQ + k];
+		for (int32 k = 0; k < 6; ++k) d->qvel[A.RootV + k] = 0.0;
+		const double SinP = FMath::Sin(Phase + (a == 1 ? PI * 0.5 : 0.0));
+		const double CosP = FMath::Cos(Phase + (a == 1 ? PI * 0.5 : 0.0));
+		auto SetJ = [&](int32 Idx, double Delta)
+		{
+			if (Idx < 0) return;
+			const double Val = FMath::Clamp(A.Stand[Idx] + Env * Delta, A.Lo[Idx], A.Hi[Idx]);
+			d->qpos[A.Qadr[Idx]] = Val;
+			A.Goal[Idx] = Val;
+		};
+		SetJ(A.HipL, 0.38 * SinP);
+		SetJ(A.HipR, -0.38 * SinP);
+		SetJ(A.KneeL, 0.55 * FMath::Max(0.0, SinP));
+		SetJ(A.KneeR, 0.55 * FMath::Max(0.0, -SinP));
+		SetJ(A.AnkleL, 0.18 * CosP);
+		SetJ(A.AnkleR, -0.18 * CosP);
+		SetJ(A.ShSwingL, -0.30 * SinP);
+		SetJ(A.ShSwingR, 0.30 * SinP);
+	}
+	mj_forward(m, d);
+	SetHud([&](FSlapHud& H)
+	{
+		H.bWalkIn = true;
+		H.WalkInProgress = Prog;
+		for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+		{
+			const FAthlete& X = Athletes[a];
+			H.Com[a] = MjUtils::MjToUEPosition(d->subtree_com + 3 * X.Pelvis);
+			H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
+		}
 	});
 }
 
@@ -941,18 +1019,31 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	else if (Athletes.Num() == 2)	// the match (training/match.py)
 	{
 		if (bPendingMatch.exchange(false)) ApplyPending();	// the menu: new brains, a fresh match
-		if (bInTurn) PostStep(m, d);
-		for (;;)	// a turn that ends here starts the next at once (match.py's loop), checks included
+		if (WalkInLeft > 0)
 		{
-			if (!bInTurn)
+			StepWalkIn(m, d);
+			if (bHudReady.load(std::memory_order_relaxed) && --WalkInLeft == 0)
 			{
-				if (MatchNo > 0 && HoldLeft > 0) break;	// a turn or match just ended: let the crowd see it (StartTurn resets after)
-				if (MatchNo == 0 || Round > Rounds) StartMatch(m, d);
-				else StartTurn(m, d);
+				const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
+				StartTurn(m, d);
+				SetHud([&](FSlapHud& H) { H.bWalkIn = false; H.WalkInProgress = 1.0; H.Event = Toss; });
 			}
-			if (PreStep(m, d)) break;
 		}
-		if (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0) Decide(m, d);	// the hold: both stand (role 0)
+		else
+		{
+			if (bInTurn) PostStep(m, d);
+			for (;;)	// a turn that ends here starts the next at once (match.py's loop), checks included
+			{
+				if (!bInTurn)
+				{
+					if (MatchNo > 0 && HoldLeft > 0) break;	// a turn or match just ended: let the crowd see it (StartTurn resets after)
+					if (MatchNo == 0 || Round > Rounds) { StartMatch(m, d); if (WalkInLeft > 0) break; }
+					else StartTurn(m, d);
+				}
+				if (PreStep(m, d)) break;
+			}
+			if (WalkInLeft == 0 && (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0)) Decide(m, d);	// the hold: both stand (role 0)
+		}
 	}
 	else if (StepCount % ControlEvery == 0) Decide(m, d);
 	for (const FAthlete& A : Athletes)
@@ -1035,4 +1126,20 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 	const double Palm[3] = { -X[2], -X[5], -X[8] };
 	Heading(Rp, O + 40 + N);
 	Heading(Palm, O + 43 + N);
+
+	// extended proprioceptive foot-ground & phase awareness (136-147): sole_l/r rel pos, contact flags, load, gait phase clock
+	if (A.NumIn >= 148 && A.Feet.Num() >= 2)
+	{
+		for (int32 f = 0; f < 2; ++f)
+		{
+			const double* Fp = d->geom_xpos + 3 * A.Feet[f];
+			const double Rf[3] = { Fp[0] - Pelvis[0], Fp[1] - Pelvis[1], Fp[2] - Pelvis[2] };
+			Heading(Rf, O + 46 + N + 3 * f);
+			O[52 + N + f] = Fp[2] < 0.045 ? 1.f : 0.f;
+			O[54 + N + f] = (float)FMath::Clamp((0.045 - Fp[2]) / 0.025, 0.0, 1.0);
+		}
+		const double GaitAngle = 2.0 * PI * 1.8 * d->time;
+		O[56 + N] = (float)std::sin(GaitAngle);
+		O[57 + N] = (float)std::cos(GaitAngle);
+	}
 }

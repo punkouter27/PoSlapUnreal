@@ -39,7 +39,7 @@ public:
 	virtual void DrawHUD() override;
 
 private:
-	enum class EShot : uint8 { Wide, Tension, Strike, KO };
+	enum class EShot : uint8 { WalkIn, Wide, Tension, Strike, KO };
 
 	void DrawMatch(const FSlapHud& H);
 	void DrawTelemetry(const FSlapHud& H);

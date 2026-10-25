@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8"><title>Pre-Match Ring Walk-In — before / after</title>
+<style>body{font:15px system-ui;max-width:980px;margin:24px auto;padding:0 16px;line-height:1.45}
+figure{display:inline-block;width:31%;vertical-align:top;margin:6px}img{width:100%;border:1px solid #ddd}
+figcaption{font-size:13px;color:#555}table{border-collapse:collapse;margin:14px 0}td,th{padding:5px 12px;border-bottom:1px solid #ccc;text-align:right}
+td:first-child,th:first-child{text-align:left}.good{color:#1a7f37;font-weight:bold}.bad{color:#c0392b}</style>
+<h1>Pre-Match Ring Walk-In Sequence (Unreal Engine 5.8 + URLab)</h1>
+<p>User request 2026-10-25. Implemented in <code>USlapController::StepWalkIn</code> and <code>ASlapHUD::Direct</code> / <code>ASlapHUD::DrawMatch</code>:
+before Round 1 Turn 1 begins, both athletes walk from <code>1.60 m</code> down their respective aisle into their podium footboxes over <code>3.0 s</code>
+with a <code>1.55 Hz</code> bipedal gait cycle (alternating hip pitch, knee flexion, ankle push-off, and counter-rotating shoulder swing) while a low-angle
+broadcast tracking camera sweeps into the wide establishing shot. When <code>WalkInProgress</code> reaches <code>1.0</code>, <code>StartTurn(m, d)</code> resets
+<code>mjData</code> cleanly for Round 1 Turn 1, preserving <b>100% deterministic match parity</b> with <code>training/match.py</code>.</p>
+<div>
+<figure><img src="before.png" alt="Before (immediate podium spawn)"><figcaption><b>Before</b> (<code>-SlapWalkIn=0</code>): athletes spawn directly at the podium in Round 1 Turn 1.</figcaption></figure>
+<figure><img src="after_walkin.png" alt="After (ring walk-in in progress)"><figcaption><b>After (t = 1.2 s)</b>: <code>RING WALK-IN</code> — low-angle tracking camera follows both athletes walking up the aisle toward the podium.</figcaption></figure>
+<figure><img src="after_podium.png" alt="After (arrived at podium, Round 1 starts)"><figcaption><b>After (t = 3.6 s)</b>: athletes arrive at the podium footboxes and Round 1 Turn 1 begins deterministically.</figcaption></figure>
+</div>
+<h2>Walk-In Specifications</h2>
+<table>
+<tr><th>Parameter</th><th>Before (<code>-SlapWalkIn=0</code>)</th><th>After (<code>-SlapWalkIn=1</code>, default)</th></tr>
+<tr><td>Pre-Match Approach Distance</td><td>0.00 m (instant spawn)</td><td class="good">1.60 m aisle walk-in per athlete</td></tr>
+<tr><td>Walk-In Duration (<code>WalkInHold</code>)</td><td>0.0 s</td><td class="good">3.0 s (smoothstep eased)</td></tr>
+<tr><td>Camera Shot (<code>ASlapHUD::EShot</code>)</td><td><code>Wide</code> static</td><td class="good"><code>WalkIn</code> tracking dolly &rarr; <code>Wide</code></td></tr>
+<tr><td>HUD Banner</td><td>Round 1 Turn 1 immediately</td><td class="good"><code>RING WALK-IN</code> / <code>Approaching podium (X%)</code></td></tr>
+<tr><td>Round 1 Turn 1 Determinism (<code>match.py compare</code>)</td><td>Identical</td><td class="good">100% Identical (<code>StartTurn</code> resets <code>mjData</code> on arrival)</td></tr>
+</table>
+
