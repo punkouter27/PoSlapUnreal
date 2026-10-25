@@ -10,6 +10,7 @@ valid strike and scores, exactly like an open-palm one. The "clubbing (not the p
 |---|---|---|
 | `web_before_non_palm_foul.png` | Banner **"Foul: not the palm"**, strike line `13.2 m/s · hand (foul)`, −1 point on every card | — |
 | `web_after_non_palm_hit.png` | — | Banner **"Hit"**, sub-line `13.2 m/s · not the palm`, strike line `13.2 m/s · hand`. No foul, the hit scores. |
+| `azure_after_non_palm_hit.png` | The same, on the deployed site (https://ashy-plant-0f75ec30f.3.azurestaticapps.net/Web/) after the CI/CD redeploy |
 
 Same matchup (Grandpa vs Grandpa), same 13.2 m/s non-palm contact — only the judging changed.
 The technique is still reported (so the commentator and the HUD can say "not the palm"), it just no longer
