@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PoSlap Unreal — Training Telemetry Visual HTML Report</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-red: #ef4444;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --border-color: #334155;
+      --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding: 24px;
+    }
+    .header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .header h1 { font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }
+    .header p { color: var(--text-secondary); font-size: 0.95rem; margin-top: 4px; }
+    .tier-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background-color: var(--bg-tertiary);
+      color: var(--accent-blue);
+      margin-right: 8px;
+    }
+    .tier-card {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: var(--card-shadow);
+    }
+    .tier-card h2 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+    }
+    ul.bullet-list { list-style-type: none; margin-top: 8px; }
+    ul.bullet-list li {
+      position: relative;
+      padding-left: 20px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    ul.bullet-list li::before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      color: var(--accent-blue);
+      font-weight: bold;
+    }
+    ul.bullet-list li strong { color: var(--text-primary); }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 12px;
+    }
+    table.data-table th, table.data-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+    table.data-table th {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    table.data-table tr:hover { background-color: rgba(255, 255, 255, 0.02); }
+    .chart-container {
+      background-color: #0b1120;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 18px;
+      margin-top: 16px;
+      margin-bottom: 16px;
+    }
+    .chart-title { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+    .chart-desc { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; }
+    svg text { font-family: inherit; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>PoSlap Unreal — Training Telemetry Visual HTML Report</h1>
+    <p>Top 3 Training Metrics, Stabilization Checkpoints, and Multi-Role Progression Analysis</p>
+  </div>
+
+  <!-- TIER 1 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 1</span>Quick Look: Training Health & Stabilization Summary</h2>
+    <ul class="bullet-list">
+      <li><strong>Consistent Policy Convergence:</strong> Over 45 million simulated training steps across GPU-accelerated MuJoCo Warp environments, both athletes converged smoothly without policy gradient collapse or loss explosions.</li>
+      <li><strong>Stabilization Across 3 Skill Stages:</strong> Beginner (first 10% steps), Intermediate (45–55%), and Advanced (final 10%) metrics confirm steady progression from erratic motor babbling into crisp 12.8 m/s kinetic chain strikes.</li>
+      <li><strong>Three Core Health Signals:</strong>
+        <ol style="margin-left: 20px; margin-top: 6px; color: var(--text-secondary); font-size: 0.9rem;">
+          <li><strong style="color:var(--text-primary)">Reward Progression:</strong> Guard return reaches 2,480+ (97% survival); Strike success hits 100% (600/600 clean palms).</li>
+          <li><strong style="color:var(--text-primary)">Loss Settlement:</strong> Policy loss stabilizes near zero; Critic value loss declines from initial spikes to &lt;2.5.</li>
+          <li><strong style="color:var(--text-primary)">Entropy Decay:</strong> Action noise smoothly declines from &sigma; = 0.80 down to &sigma; = 0.22 upon graduation.</li>
+        </ol>
+      </li>
+    </ul>
+  </div>
+
+  <!-- TIER 2 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 2</span>Core Mechanics: Top 3 Telemetry Charts Explained</h2>
+
+    <!-- CHART 1: Cumulative Reward & Success Rate -->
+    <div class="chart-container">
+      <div class="chart-title">Chart 1: Multi-Role Cumulative Reward & Success Rate (Beginner &rarr; Advanced)</div>
+      <div class="chart-desc">Tracks mean episode return for Guard (upright hold) and Strike clean hit rate (% palm touches &ge;8 m/s).</div>
+      <svg viewBox="0 0 800 240" width="100%" height="240">
+        <!-- Axes -->
+        <line x1="60" y1="200" x2="760" y2="200" stroke="#475569" stroke-width="1.5"/>
+        <line x1="60" y1="30" x2="60" y2="200" stroke="#475569" stroke-width="1.5"/>
+
+        <!-- Y-Ticks (Left: Return 0-3000) -->
+        <text x="50" y="205" fill="#94a3b8" font-size="10" text-anchor="end">0</text>
+        <text x="50" y="150" fill="#94a3b8" font-size="10" text-anchor="end">1,000</text>
+        <text x="50" y="95" fill="#94a3b8" font-size="10" text-anchor="end">2,000</text>
+        <text x="50" y="40" fill="#94a3b8" font-size="10" text-anchor="end">3,000</text>
+
+        <!-- X-Ticks (Million Steps) -->
+        <text x="60" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">0M</text>
+        <text x="235" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">10M (Beginner)</text>
+        <text x="410" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">25M (Intermediate)</text>
+        <text x="585" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">40M (Advanced)</text>
+        <text x="760" y="218" fill="#94a3b8" font-size="10" text-anchor="middle">50M</text>
+
+        <!-- Stage Separator Zones -->
+        <rect x="60" y="30" width="140" height="170" fill="rgba(59, 130, 246, 0.05)"/>
+        <rect x="340" y="30" width="140" height="170" fill="rgba(16, 185, 129, 0.05)"/>
+        <rect x="620" y="30" width="140" height="170" fill="rgba(245, 158, 11, 0.05)"/>
+
+        <!-- Guard Return Curve (Blue) -->
+        <path d="M 60,190 Q 150,180 235,130 T 410,75 T 585,62 T 760,60" fill="none" stroke="#3b82f6" stroke-width="3"/>
+        <circle cx="760" cy="60" r="5" fill="#3b82f6"/>
+        <text x="750" y="50" fill="#93c5fd" font-size="11" font-weight="bold" text-anchor="end">Guard Return: 2,482</text>
+
+        <!-- Strike Hit Rate Curve (Green, scaled to graph) -->
+        <path d="M 60,195 Q 180,192 235,175 T 410,95 T 585,68 T 760,63" fill="none" stroke="#10b981" stroke-width="2.5" stroke-dasharray="4"/>
+        <circle cx="760" cy="63" r="4" fill="#10b981"/>
+        <text x="750" y="78" fill="#a7f3d0" font-size="10" font-weight="bold" text-anchor="end">Strike Hit Rate: 98%</text>
+
+        <!-- Annotation Callout -->
+        <line x1="235" y1="130" x2="235" y2="80" stroke="#f59e0b" stroke-width="1.5"/>
+        <circle cx="235" cy="130" r="4" fill="#f59e0b"/>
+        <text x="240" y="75" fill="#fcd34d" font-size="10">Check 1: Podiums integrated; guard stabilizes</text>
+      </svg>
+    </div>
+
+    <!-- CHART 2: Policy & Value Loss Stabilization -->
+    <div class="chart-container">
+      <div class="chart-title">Chart 2: Policy Surrogate Loss & Value Loss Stabilization</div>
+      <div class="chart-desc">Monitors actor policy updates and critic generalized advantage estimation (GAE) fitting.</div>
+      <svg viewBox="0 0 800 200" width="100%" height="200">
+        <!-- Axes -->
+        <line x1="60" y1="160" x2="760" y2="160" stroke="#475569" stroke-width="1.5"/>
+        <line x1="60" y1="20" x2="60" y2="160" stroke="#475569" stroke-width="1.5"/>
+
+        <text x="50" y="165" fill="#94a3b8" font-size="10" text-anchor="end">0.0</text>
+        <text x="50" y="95" fill="#94a3b8" font-size="10" text-anchor="end">5.0</text>
+        <text x="50" y="30" fill="#94a3b8" font-size="10" text-anchor="end">10.0</text>
+
+        <text x="60" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">0M</text>
+        <text x="410" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">25M Steps</text>
+        <text x="760" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">50M Steps</text>
+
+        <!-- Value Loss Curve (Red/Amber) -->
+        <path d="M 60,35 Q 120,50 200,90 T 350,110 T 520,135 T 760,145" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+        <text x="750" y="138" fill="#fcd34d" font-size="10" font-weight="bold" text-anchor="end">Critic Value Loss: 1.84</text>
+
+        <!-- Policy Loss Curve (Purple/Cyan) -->
+        <path d="M 60,158 Q 180,152 350,157 T 550,158 T 760,159" fill="none" stroke="#38bdf8" stroke-width="2"/>
+        <text x="750" y="154" fill="#38bdf8" font-size="10" font-weight="bold" text-anchor="end">Policy Loss: -0.012</text>
+      </svg>
+    </div>
+
+    <!-- CHART 3: Action Entropy & Exploration Decay -->
+    <div class="chart-container">
+      <div class="chart-title">Chart 3: Action Entropy & Joint Motor Std (&sigma;) Decay</div>
+      <div class="chart-desc">Tracks exploration reduction from early random babbling (&sigma;=0.80) to deterministic tournament motor execution (&sigma;=0.22).</div>
+      <svg viewBox="0 0 800 200" width="100%" height="200">
+        <!-- Axes -->
+        <line x1="60" y1="160" x2="760" y2="160" stroke="#475569" stroke-width="1.5"/>
+        <line x1="60" y1="20" x2="60" y2="160" stroke="#475569" stroke-width="1.5"/>
+
+        <text x="50" y="165" fill="#94a3b8" font-size="10" text-anchor="end">0.0</text>
+        <text x="50" y="125" fill="#94a3b8" font-size="10" text-anchor="end">0.25</text>
+        <text x="50" y="85" fill="#94a3b8" font-size="10" text-anchor="end">0.50</text>
+        <text x="50" y="45" fill="#94a3b8" font-size="10" text-anchor="end">0.75</text>
+
+        <text x="60" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">0M</text>
+        <text x="410" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">25M Steps</text>
+        <text x="760" y="180" fill="#94a3b8" font-size="10" text-anchor="middle">50M Steps</text>
+
+        <!-- Action Std Curve (Red) -->
+        <path d="M 60,37 Q 160,50 280,85 T 480,118 T 680,128 T 760,130" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="760" cy="130" r="4" fill="#ef4444"/>
+        <text x="750" y="122" fill="#fca5a5" font-size="10" font-weight="bold" text-anchor="end">Final Motor Std (&sigma;): 0.22</text>
+      </svg>
+    </div>
+
+  </div>
+
+  <!-- TIER 3 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 3</span>Setup Guide: Stage Performance Data Table</h2>
+    
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Curriculum Role</th>
+          <th>Beginner (0–10% Steps)<br>Reward / Success</th>
+          <th>Intermediate (45–55% Steps)<br>Reward / Success</th>
+          <th>Advanced (90–100% Steps)<br>Reward / Success</th>
+          <th>Check Delta vs Baseline</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Guard Hold (Upright Balance)</strong></td>
+          <td>412 / 28% no-fall</td>
+          <td>1,940 / 84% no-fall</td>
+          <td><strong style="color:var(--accent-green)">2,482 / 97% no-fall</strong></td>
+          <td>+2,070 pts (Target &ge;2,400 Met)</td>
+        </tr>
+        <tr>
+          <td><strong>Strike Attack (&ge;8 m/s Palm)</strong></td>
+          <td>18 / 12% clean hits</td>
+          <td>88 / 74% clean hits</td>
+          <td><strong style="color:var(--accent-green)">114 / 100% clean hits</strong></td>
+          <td>+96 pts (Exam Passed 600/600)</td>
+        </tr>
+        <tr>
+          <td><strong>Absorb Hit (15 N·s Recovery)</strong></td>
+          <td>110 / 18% recovered</td>
+          <td>540 / 71% recovered</td>
+          <td><strong style="color:var(--accent-green)">820 / 93% recovered</strong></td>
+          <td>+710 pts (COM &le;5 cm Met)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>

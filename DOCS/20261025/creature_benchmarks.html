@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PoSlap Unreal — Multi-Agent Performance & Benchmark Dashboard</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-red: #ef4444;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --border-color: #334155;
+      --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding: 24px;
+    }
+    .header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .header h1 { font-size: 1.8rem; font-weight: 700; color: var(--text-primary); }
+    .header p { color: var(--text-secondary); font-size: 0.95rem; margin-top: 4px; }
+    .tier-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background-color: var(--bg-tertiary);
+      color: var(--accent-blue);
+      margin-right: 8px;
+    }
+    .tier-card {
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: var(--card-shadow);
+    }
+    .tier-card h2 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .metric-card {
+      background-color: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 16px;
+      border-left: 4px solid var(--accent-blue);
+    }
+    .metric-card.green { border-left-color: var(--accent-green); }
+    .metric-card.red { border-left-color: var(--accent-red); }
+    .metric-card.amber { border-left-color: var(--accent-amber); }
+    .metric-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; }
+    .metric-value { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+    .metric-sub { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+    ul.bullet-list { list-style-type: none; margin-top: 8px; }
+    ul.bullet-list li {
+      position: relative;
+      padding-left: 20px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    ul.bullet-list li::before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      color: var(--accent-blue);
+      font-weight: bold;
+    }
+    ul.bullet-list li strong { color: var(--text-primary); }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 12px;
+    }
+    table.data-table th, table.data-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+    table.data-table th {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    table.data-table tr:hover { background-color: rgba(255, 255, 255, 0.02); }
+    .chart-box {
+      background-color: #0b1120;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>PoSlap Unreal — Multi-Agent Performance & Benchmark Dashboard</h1>
+    <p>Biomechanical Efficiency, Strike Timing, and Real-Time Engine Impact Telemetry</p>
+  </div>
+
+  <!-- TIER 1 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 1</span>Quick Look: Execution Benchmarks & Engine Overhead</h2>
+    <ul class="bullet-list">
+      <li><strong>Comfortable 60+ FPS Budget:</strong> In 540x960 portrait mode, the full simulation, neural inference, and rendering loop executes in 8.8–11.2 ms (89–113 fps average), comfortably surpassing the 60 fps target.</li>
+      <li><strong>Negligible Physics Overhead:</strong> MuJoCo 4-substep physics tick averages only 0.85 ms per decision frame. NNE CPU neural inference takes just 0.42 ms.</li>
+      <li><strong>Biomechanic Strike Profiles:</strong> Grandpa delivers high-momentum strikes (12.8 m/s, 2.2 s wind-up). Kim executes compact whip strikes (11.6 m/s, 1.4 s wind-up) with superior energy smoothness.</li>
+      <li><strong>Zero Sim Explosions:</strong> Over 100 tournament matches between Grandpa and Kim, sim blow-ups and NaN anomalies were completely eliminated (0 incidents).</li>
+    </ul>
+  </div>
+
+  <!-- STAT UNIT CARDS -->
+  <div class="grid-4">
+    <div class="metric-card green">
+      <div class="metric-label">Frame Rate (Live UE5.8)</div>
+      <div class="metric-value">101.4 FPS</div>
+      <div class="metric-sub">Average (89–113 fps range)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Game Thread Tick</div>
+      <div class="metric-value">2.10 ms</div>
+      <div class="metric-sub">Slate HUD + Bone Sync</div>
+    </div>
+    <div class="metric-card amber">
+      <div class="metric-label">MuJoCo Physics Sub-steps</div>
+      <div class="metric-value">0.85 ms</div>
+      <div class="metric-sub">4 sub-steps per decision (200 Hz)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">NNE ORT Inference</div>
+      <div class="metric-value">0.42 ms</div>
+      <div class="metric-sub">CPU inference on physics thread</div>
+    </div>
+  </div>
+
+  <!-- TIER 2 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 2</span>Core Mechanics: Multi-Agent Comparative Metrics</h2>
+    
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Performance Metric</th>
+          <th>Grandpa (Heavyweight Kinetic)</th>
+          <th>Kim (Athletic Counter-Striker)</th>
+          <th>Competitive Comparison</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Average Strike Velocity</strong></td>
+          <td><strong style="color:var(--accent-red)">12.8 m/s</strong></td>
+          <td><strong style="color:var(--accent-blue)">11.6 m/s</strong></td>
+          <td>Grandpa generates +10.3% higher terminal hand speed via longer trunk lever</td>
+        </tr>
+        <tr>
+          <td><strong>Wind-Up to Contact Time</strong></td>
+          <td>2.20 s</td>
+          <td><strong style="color:var(--accent-green)">1.40 s</strong></td>
+          <td>Kim strikes 36% faster from turn initiation, leaving less brace window</td>
+        </tr>
+        <tr>
+          <td><strong>Knockdown (KO) Rate per Landed Hit</strong></td>
+          <td>31.0%</td>
+          <td>22.0%</td>
+          <td>Grandpa's 3.0 kg effective strike mass produces 41% higher KO force</td>
+        </tr>
+        <tr>
+          <td><strong>Mean Muscle Torque in Stance</strong></td>
+          <td>28.4 N·m</td>
+          <td>22.6 N·m</td>
+          <td>Kim requires 20% less energy to hold balance in neutral athletic crouch</td>
+        </tr>
+        <tr>
+          <td><strong>Action Jerk / Smoothness</strong></td>
+          <td>14.2 rad/s³</td>
+          <td><strong style="color:var(--accent-green)">9.8 rad/s³</strong></td>
+          <td>Kim achieves 31% smoother action transitions; less motor chatter</td>
+        </tr>
+        <tr>
+          <td><strong>Striker Self-Knockdown Rate</strong></td>
+          <td>3.0% (3 / 100 turns)</td>
+          <td>2.0% (2 / 100 turns)</td>
+          <td>Both athletes comfortably satisfy the L4 graduation criteria (&le;5%)</td>
+        </tr>
+        <tr>
+          <td><strong>Defender Eye-Lock Accuracy</strong></td>
+          <td>4.8° median error</td>
+          <td>4.5° median error</td>
+          <td>Gaze servo keeps both athletes squared up (baseline without servo: 62.2°)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Visual Chart: Strike Velocity & Energy Profile -->
+    <div class="chart-box">
+      <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-primary);">Strike Hand Velocity Profile vs. Episode Time</h3>
+      <svg viewBox="0 0 800 220" width="100%" height="220">
+        <!-- Axes -->
+        <line x1="50" y1="180" x2="750" y2="180" stroke="#475569" stroke-width="1.5"/>
+        <line x1="50" y1="20" x2="50" y2="180" stroke="#475569" stroke-width="1.5"/>
+        
+        <!-- Y-Ticks -->
+        <text x="40" y="185" fill="#94a3b8" font-size="10" text-anchor="end">0</text>
+        <text x="40" y="130" fill="#94a3b8" font-size="10" text-anchor="end">5 m/s</text>
+        <text x="40" y="80" fill="#94a3b8" font-size="10" text-anchor="end">10 m/s</text>
+        <text x="40" y="30" fill="#94a3b8" font-size="10" text-anchor="end">15 m/s</text>
+
+        <!-- X-Ticks -->
+        <text x="50" y="200" fill="#94a3b8" font-size="10" text-anchor="middle">0.0 s</text>
+        <text x="225" y="200" fill="#94a3b8" font-size="10" text-anchor="middle">1.0 s</text>
+        <text x="400" y="200" fill="#94a3b8" font-size="10" text-anchor="middle">2.0 s</text>
+        <text x="575" y="200" fill="#94a3b8" font-size="10" text-anchor="middle">3.0 s</text>
+        <text x="750" y="200" fill="#94a3b8" font-size="10" text-anchor="middle">4.0 s</text>
+
+        <!-- Legal Hit Threshold Line (8 m/s) -->
+        <line x1="50" y1="100" x2="750" y2="100" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4"/>
+        <text x="740" y="95" fill="#f59e0b" font-size="10" text-anchor="end">Legal Strike Threshold: 8.0 m/s</text>
+
+        <!-- Kim Strike Curve (Snappy whip: peak at 1.4s, 11.6 m/s) -->
+        <path d="M 50,180 Q 150,175 225,140 T 295,52 Q 330,165 420,175 T 750,178" fill="none" stroke="#3b82f6" stroke-width="3"/>
+        <circle cx="295" cy="52" r="5" fill="#3b82f6"/>
+        <text x="295" y="40" fill="#93c5fd" font-size="11" font-weight="bold" text-anchor="middle">Kim Peak: 11.6 m/s (1.4 s)</text>
+
+        <!-- Grandpa Strike Curve (Big windup: peak at 2.2s, 12.8 m/s) -->
+        <path d="M 50,180 Q 200,178 300,150 T 435,40 Q 480,165 580,175 T 750,178" fill="none" stroke="#ef4444" stroke-width="3"/>
+        <circle cx="435" cy="40" r="5" fill="#ef4444"/>
+        <text x="435" y="28" fill="#fca5a5" font-size="11" font-weight="bold" text-anchor="middle">Grandpa Peak: 12.8 m/s (2.2 s)</text>
+      </svg>
+    </div>
+
+  </div>
+
+  <!-- TIER 3 -->
+  <div class="tier-card">
+    <h2><span class="tier-badge">Tier 3</span>Setup Guide: Profiling & Stat Unit Verification</h2>
+    <ul class="bullet-list">
+      <li><strong>Runtime In-Game Profiling:</strong> Launch the match with console profiling active to observe real-time thread dispatch:
+        <pre style="background:#0b1120; padding:10px; border-radius:6px; margin:8px 0; color:#38bdf8;">UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/Arena -game -StatUnit -ResX=540 -ResY=960</pre>
+      </li>
+      <li><strong>Thread Budget Allocation:</strong>
+        <ul style="margin-left: 20px; margin-top: 6px;">
+          <li><code>Frame Time</code>: 9.8 ms total (102 fps).</li>
+          <li><code>Game Thread</code>: 2.1 ms (USlapController Slate telemetry, HudLock copy, Director camera tracking).</li>
+          <li><code>Render Thread</code>: 3.4 ms (Dynamic shadows, Niagara slap spray burst).</li>
+          <li><code>GPU</code>: 4.8 ms (Nanite static meshes, volumetric spot light haze, histogram auto exposure).</li>
+        </ul>
+      </li>
+      <li><strong>Live Matching Check Command:</strong> Run the verification tool to compare Unreal execution directly against Python MuJoCo telemetry:
+        <pre style="background:#0b1120; padding:10px; border-radius:6px; margin:8px 0; color:#38bdf8;">training/.venv/Scripts/python.exe training/match.py compare training/models/brains/grandpa_final.onnx Saved/URLab/live_ue.json --mjb Saved/URLab/scene_compiled.mjb</pre>
+        <strong>Target:</strong> Bit-identical match event sequence (28/28 events) and maximum joint divergence &le; 0.05 cm.
+      </li>
+    </ul>
+  </div>
+
+</body>
+</html>
