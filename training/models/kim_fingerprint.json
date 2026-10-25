@@ -1,12 +1,12 @@
 {
  "mujoco": "3.10.0",
  "model": "kim_solo.xml",
- "sha256": "1456f8ddb794cb3649d7ff59b2828786d815da04370da1ca7308984a45476219",
+ "sha256": "99be08f41b1eefa41cc36e642718665ead164b1185c13ff28038f7aeec7aa48d",
  "option": {
   "timestep": 0.005,
   "integrator": 3,
   "solver": 2,
-  "iterations": 100,
+  "iterations": 20,
   "gravity": [
    0.0,
    0.0,
@@ -229,7 +229,38 @@
   108.0,
   36.0
  ],
- "max_joint_speed_rad_s": 11.399999999999999,
+ "max_joint_speed_rad_s": [
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  19.0,
+  19.0,
+  19.0,
+  23.75,
+  23.75,
+  23.75,
+  19.0,
+  19.0,
+  19.0,
+  23.75,
+  23.75,
+  23.75,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999
+ ],
  "stand_pose_deg": {
   "shoulder_raise_l": -22,
   "elbow_l": 96,
@@ -285,6 +316,7 @@
  "card": {
   "name": "kim",
   "display": "KIM",
+  "slot": 2,
   "mesh": "Content/Art/Exports/Kim_rigged.fbx",
   "skeleton": "characters/kim_skeleton.json",
   "height_m": 1.63,
@@ -295,7 +327,8 @@
   "toughness": 0.85,
   "stamina_per_strike": 0.035,
   "neck_damage_per_snap": 0.05,
-  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength.",
+  "strike_mass": 2.31,
+  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength. Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23 against the L2 brain graduated at 11:08, clean slaps ~11.5 m/s: 3.0 kg for a 78 kg athlete knocks a braced guard off balance 31 % of clean slaps; scaled to body mass).",
   "style": {
    "summary": "Balance: a low, bouncy athletic stance - knees bent 25 deg, feet a little wider, weight on the balls of the feet, a high guard (lead hand by the chin, slapping hand cocked at the chest). Slap: short and snappy - little wind-up, high elbow, a late elbow and wrist whip.",
    "stance_deg": {
@@ -431,6 +464,16 @@
     },
     "search_sigma_deg": 12.0
    }
+  },
+  "sparring": {
+   "head": [
+    0.78,
+    0.0,
+    0.825
+   ],
+   "shorter_max": 0.0,
+   "lean": 0.0,
+   "note": "Practice opponent: Grandpa, 7 cm taller; his braced face sat 0.78 m ahead, 0.825 m above her start pelvis in Unreal (2026-10-23); she had trained 9-25 cm below it and landed with the back of the hand"
   }
  }
 }

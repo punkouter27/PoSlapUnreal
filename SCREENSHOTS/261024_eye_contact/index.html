@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8"><title>Eye contact — before / after</title>
+<style>body{font:15px system-ui;max-width:980px;margin:24px auto;padding:0 16px;line-height:1.45}
+figure{display:inline-block;width:31%;vertical-align:top;margin:6px}img{width:100%;border:1px solid #ddd}
+figcaption{font-size:13px;color:#555}table{border-collapse:collapse;margin:14px 0}td,th{padding:5px 12px;border-bottom:1px solid #ccc;text-align:right}
+td:first-child,th:first-child{text-align:left}.good{color:#1a7f37;font-weight:bold}.bad{color:#c0392b}</style>
+<h1>The defender looks his opponent in the eye before the slap</h1>
+<p>User request 2026-10-24. Implemented as a <b>gaze servo</b> in BOTH engines with identical maths
+(<code>training/match.py</code> GAZE constants ↔ <code>USlapController::ApplyGaze</code>): through the whole turn the
+defender's neck yaw/pitch goals are walked to meet the striker's eyes; the brain keeps every other joint and regains
+the neck the instant the slap lands (he braces for it). Observations untouched ⇒ no retraining, and the L5
+event-for-event check still passes.</p>
+<div>
+<figure><img src="before_off_1.png" alt=""><figcaption><b>Before</b> (<code>-SlapEyeContact=0</code>): heads wherever the brain puts them.</figcaption></figure>
+<figure><img src="during_2.png" alt=""><figcaption><b>After</b>: defender squared up, eyes on the striker through the wind-up.</figcaption></figure>
+<figure><img src="during_3.png" alt=""><figcaption><b>After</b>: held to the strike, then released to brace.</figcaption></figure>
+</div>
+<h2>Measured (same pairing, same brains)</h2>
+<table><tr><th>Condition</th><th>n</th><th>mean</th><th>median</th><th>p90</th></tr>
+<tr><td>No servo (baseline)</td><td>2594</td><td class="bad">62.2°</td><td class="bad">80.1°</td><td>90.2°</td></tr>
+<tr><td>Eye contact ON</td><td>1302</td><td class="good">4.8°</td><td class="good">4.5°</td><td>6.4°</td></tr>
+<tr><td>Ideally-converged bench</td><td>—</td><td class="good">0.00°</td><td colspan="2">(motors at the commanded goal)</td></tr></table>
+<ul>
+<li><b>Parity proof:</b> <code>match.py compare</code> vs a live Unreal match — <b>PASS, 28/28 events identical</b>.</li>
+<li><b>Behaviour sanity:</b> strikes still land at 12–14 m/s, matches end in decisions/KOs as before; ~100 fps.</li>
+<li><b>Traps handled:</b> aim anchored on the head centres (the eye line — the chest pivot adds ≈11° at 0.85&nbsp;m),
+computed in the chest frame (waist ball rotates separately from the pelvis), <code>neck_nod</code> clipping at its
+range end when heights differ.</li>
+<li><b>Kills:</b> <code>SLAP_EYE_CONTACT=0</code> (Python) / <code>-SlapEyeContact=0</code> (Unreal).</li>
+</ul>

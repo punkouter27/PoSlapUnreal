@@ -5,7 +5,8 @@
 An entry is a fighter: a character card and his own brain. Each pairing plays `matches` matches, alternating corners and
 the coin toss. Standings: 3 points a win, 1 a draw; then KOs. Writes Logs/Tournament/<YYMMDD_HHMM>/standings.html and
 results.jsonl (every match's log stays in Logs/Gameplay/), and prints the Unreal command to watch any pairing.
-v1: one arena model per card pair; until a second mesh exists every entry must use the same card (grandpa).
+Mixed cards work: match.py takes per-corner fingerprints and the <red>_vs_<blue> arena (build_body.py --blue); a pairing
+whose arena xml is missing is skipped with a warning (build it first: build_body.py <red_card> --blue <blue_card>).
 """
 import argparse, itertools, json, time
 from multiprocessing import Pool
@@ -18,7 +19,7 @@ HERE = Path(__file__).parent
 
 def one(job):
     red, blue, first = job
-    res, turns, path = match.play(red["brain"], first, blue=blue["brain"])
+    res, turns, path = match.play(red["brain"], first, blue=blue["brain"], character=red["card"], blue_character=blue["card"])
     return dict(red=red["name"], blue=blue["name"], first=first, how=res["how"], winner=res["winner"], log=path,
                 strikes={c: sum(t["touch"] is not None and t["palm"] for t in turns if t["striker"] == c) for c in ("red", "blue")})
 
@@ -29,15 +30,19 @@ def main():
     ap.add_argument("--matches", type=int, default=4, help="per pairing (even: both corners, both tosses)")
     a = ap.parse_args()
     roster = json.loads(Path(a.roster).read_text())
-    cards = {e["card"] for e in roster}
-    if len(cards) > 1:
-        raise SystemExit(f"cards {sorted(cards)}: a mixed pairing needs its own <red>_vs_<blue> arena (build_body.py) and "
-                         "per-corner fingerprints in match.py; add both with the second mesh")
-    jobs = []
+    jobs, skipped = [], []
     for x, y in itertools.combinations(roster, 2):
+        if not (HERE / "models" / f'{x["card"]}_vs_{y["card"]}_arena.xml').exists():   # mixed pairing, arena not built yet
+            skipped.append(f'{x["card"]} vs {y["card"]}')
+            continue
         for i in range(a.matches):
             red, blue = (x, y) if i % 2 == 0 else (y, x)   # swap corners every match
             jobs.append((red, blue, (i // 2) % 2))         # and the toss every two
+    if skipped:
+        print(f"skipped {len(skipped)} pairing(s) with no arena xml: {', '.join(sorted(set(skipped)))} "
+              f'(build: build_body.py <red_card> --blue <blue_card>)')
+    if not jobs:
+        raise SystemExit("no playable pairings")
     with Pool(min(20, len(jobs))) as p:
         out = p.map(one, jobs)
 

@@ -24,13 +24,13 @@ Both reset each match; a "condition" event after every turn logs them.
 Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, turn/round summaries, and every 5th
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
-import argparse, json, math, re, sys, time
+import argparse, json, math, os, re, sys, time
 from pathlib import Path
 
 import mujoco
 import numpy as np
 
-from brain_cpu import MIN_NECK, MIN_STAMINA, Athlete, card, onnx_policy, stand
+from brain_cpu import MIN_NECK, MIN_STAMINA, Athlete, card, onnx_policy
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -39,29 +39,52 @@ WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, d
 KICK_STEPS = 2      # the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
 
+# Eye contact (user 2026-10-24): the defender squares up and holds the striker's eyes through the whole turn.
+# The neck's yaw/pitch motors are walked to a gaze bias (smooth PD, no teleporting); the brain owns every other
+# joint and regains the neck the instant the slap lands (he braces for it). Pure maths - Unreal's Decide() runs
+# the identical formulas, so the match log still compares event for event.
+GAZE_GAIN = 1.0        # the bias OWNS the neck goal pre-touch (the mandate is stronger than the brain's habit)
+GAZE_MAX_STEP = 0.08    # rad per decision the bias may walk: the deliberate head turn of a man squaring up
+GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
+
 
 def dist(a, b):   # spelled out so Unreal's C++ rounds identically (np.linalg.norm may sum in another order)
     return math.sqrt(sum((float(x) - float(y)) * (float(x) - float(y)) for x, y in zip(a, b)))
 
 
-def load(mjb=None, character="grandpa"):
-    fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
+def load(mjb=None, character="grandpa", blue_character=None):
+    """The arena model plus both corners' fingerprints: (model, (red_fp, blue_fp), prefixes)."""
+    bc = blue_character or character
+    fps = {ch: json.loads((HERE / "models" / f"{ch}_fingerprint.json").read_text()) for ch in {character, bc}}
+    fp = fps[character]
     if mjb:   # the model Unreal runs (URLab's compiled .mjb), with our options (URLab drops a child model's <option>)
         m = mujoco.MjModel.from_binary_path(str(mjb))
         o = fp["option"]
         m.opt.timestep, m.opt.integrator, m.opt.solver, m.opt.iterations = o["timestep"], o["integrator"], o["solver"], o["iterations"]
         m.opt.gravity[:] = o["gravity"]
     else:
-        m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_vs_{character}_arena.xml"))
+        m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_vs_{bc}_arena.xml"))
     pre = next(re.sub(r"red_pelvis$", "", m.body(i).name) for i in range(m.nbody) if m.body(i).name.endswith("red_pelvis"))
-    return m, fp, (pre + "red_", pre + "blue_")
+    return m, (fp, fps[bc]), (pre + "red_", pre + "blue_")
+
+
+def stand_both(m, d, sides):
+    """Both athletes to their own stand pose (their own fingerprint): reset once, then set each corner's joints by
+    its full prefixed name - a suffix match would give the second corner's pose to both in a mixed pairing."""
+    mujoco.mj_resetData(m, d)
+    for s in sides:
+        for j, rad in s.fp["stand_pose_rad"].items():
+            i = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, s.prefix + j)
+            if i >= 0:
+                d.qpos[m.jnt_qposadr[i]] = rad
+    mujoco.mj_forward(m, d)
 
 
 class Side:
     """One athlete in the arena: brain I/O (brain_cpu.Athlete) plus the geoms the referee watches."""
 
     def __init__(self, m, fp, prefix, policy):
-        self.a, self.policy, self.card = Athlete(m, fp, prefix), policy, card(fp)
+        self.a, self.policy, self.card, self.fp, self.prefix = Athlete(m, fp, prefix), policy, card(fp), fp, prefix
         self.fr0 = m.actuator_forcerange[self.a.neck].copy()
         self.name = prefix.split("_")[-2] if prefix.count("_") >= 1 else prefix
         g = lambda n: m.geom(prefix + n).id
@@ -72,10 +95,20 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fp, prefixes, policies, first, log=None):
-        self.m, self.fp, self.first, self.log = m, fp, first, log
+    def __init__(self, m, fps, prefixes, policies, first, log=None):
+        """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice)."""
+        self.m, self.first, self.log = m, first, log
         self.d = mujoco.MjData(m)
-        self.sides = [Side(m, fp, p, pol) for p, pol in zip(prefixes, policies)]
+        self.sides = [Side(m, fp, p, pol) for fp, p, pol in zip(fps, prefixes, policies)]
+        # eye-contact state: each athlete stares at the OTHER'S head (indices into its own joint_order)
+        for i, sd in enumerate(self.sides):
+            opp = self.sides[1 - i]
+            sd.chest = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, sd.prefix + "chest")
+            sd.own_head = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, sd.prefix + "head")
+            sd.op_head = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, opp.prefix + "head")
+            sd.i_yaw = sd.a.order.index("neck_turn")
+            sd.i_pitch = sd.a.order.index("neck_nod")
+            sd.bias = [sd.a.goal[sd.i_yaw], sd.a.goal[sd.i_pitch]]
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
         self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
         self.blowup = False
@@ -97,13 +130,41 @@ class Match:
                     return self.m.geom(x).name
         return None
 
+    def gaze_bias(self, side, m, d):
+        """Eye contact: where THIS athlete's neck should steer to stare at the opponent's head - the desired
+        chest-relative yaw/pitch (ZYX Euler; the head hangs rigid off the neck body, whose hinge axes are the
+        chest frame's Z/Y/X, so yaw = atan2(dy, dx), pitch = -asin(dz)).
+        Anchored on the two HEAD CENTRES (the eye line): aiming from the chest pivot misaligns by
+        atan(height diff / standoff) ~= 11 deg at 0.85 m."""
+        Rc = d.xmat[side.chest].reshape(3, 3)
+        u = Rc.T @ (d.geom_xpos[side.op_head] - d.geom_xpos[side.own_head])
+        n = math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) or 1.0
+        u = u / n
+        yc = math.atan2(u[1], u[0])
+        pc = -math.asin(max(-1.0, min(1.0, u[2])))
+        return yc, pc
+
+    def gaze_apply(self, side, m, d):
+        """Walk the neck goal toward the bias (bounded step, clamped to the joint range), blended with the
+        brain's own neck goal by GAZE_GAIN. Called right after each decision, as Unreal does."""
+        yc, pc = self.gaze_bias(side, m, d)
+        for idx, targ, span in ((side.i_yaw, yc, 0), (side.i_pitch, pc, 1)):
+            lo, hi = side.a.lo[idx], side.a.hi[idx]
+            want = max(lo, min(hi, targ))
+            prev = side.bias[span]
+            nb = prev + max(-GAZE_MAX_STEP, min(GAZE_MAX_STEP, want - prev))
+            side.bias[span] = nb
+            blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * nb
+            side.a.goal[idx] = max(lo, min(hi, blend))
+
     def turn(self, rnd, s):
         """One turn, striker index s. Returns the turn record (touch, fouls, KO, effect parts)."""
         m, d = self.m, self.d
         S, D = self.sides[s], self.sides[1 - s]
-        stand(m, d, self.fp)
+        stand_both(m, d, self.sides)   # each corner to its own stand pose (per-corner fingerprints)
         for x in self.sides:
             x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
+            x.bias = [x.a.goal[x.i_yaw], x.a.goal[x.i_pitch]]   # eye contact restarts square each turn
             m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength   # damage: a weaker neck
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}
@@ -151,6 +212,8 @@ class Match:
                     D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, d.geom_xpos[S.hand].copy())))
                 else:
                     D.a.decide(D.policy(D.a.obs(d)))
+                if GAZE_ON and touch_k is None:   # eye contact until the slap lands (then he braces for it)
+                    self.gaze_apply(D, m, d)
                 if k % 20 == 0:
                     self.emit(type="frame", t=round(t, 3), **{x.name: dict(
                         pelvis=np.round(d.xpos[x.a.pelvis], 3).tolist(), head=np.round(d.geom_xpos[x.head], 3).tolist(),
@@ -261,12 +324,12 @@ def log_path(first):
     return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa"):
-    m, fp, pre = load(mjb, character)
+def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None):
+    m, fps, pre = load(mjb, character, blue_character)
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
     try:
-        res, turns = Match(m, fp, pre, (red, onnx_policy(blue) if blue else red), first, f).play()
+        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f).play()
     finally:
         if f:
             f.close()
@@ -274,16 +337,16 @@ def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa"):
 
 
 def _exam_one(args):
-    onnx, i, mjb, character = args
-    res, turns, path = play(onnx, i % 2, mjb, character=character)
+    onnx, i, mjb, character, blue_character = args
+    res, turns, path = play(onnx, i % 2, mjb, character=character, blue_character=blue_character)
     return res, turns, path
 
 
-def exam(onnx, matches, mjb=None, character="grandpa"):
+def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None):
     """L5: `matches` full matches (coin toss alternating), all must end without a sim blow-up."""
     from multiprocessing import Pool
     with Pool(min(20, matches)) as p:
-        out = p.map(_exam_one, [(onnx, i, mjb, character) for i in range(matches)])
+        out = p.map(_exam_one, [(onnx, i, mjb, character, blue_character) for i in range(matches)])
     blowups = sum(r["how"] == "blow-up" for r, _, _ in out)
     kos = sum(r["how"] == "KO" for r, _, _ in out)
     strikes = [t for _, ts, _ in out for t in ts]
@@ -297,11 +360,11 @@ def exam(onnx, matches, mjb=None, character="grandpa"):
     return ok
 
 
-def compare(onnx, ue_log, mjb, blue=None, character="grandpa"):
+def compare(onnx, ue_log, mjb, blue=None, character="grandpa", blue_character=None):
     """Unreal's match log vs this simulator, same first striker, same model: every event must match."""
     ue = [json.loads(l) for l in Path(ue_log).read_text().splitlines() if l.strip()]
     first = next(e for e in ue if e["type"] == "match_start")["first"]
-    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue, character=character)
+    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue, character=character, blue_character=blue_character)
     py = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
     keys = ("strike", "knockdown", "foul", "turn_end", "condition", "round", "result")
     a = [e for e in py if e["type"] in keys]
@@ -321,16 +384,17 @@ if __name__ == "__main__":
     ap.add_argument("--matches", type=int, default=100)
     ap.add_argument("--mjb", default=None)
     ap.add_argument("--blue", default=None, help="blue's own brain (default: the same as red's)")
-    ap.add_argument("--char", default="grandpa", help="both corners' character (<char>_vs_<char>_arena.xml)")
+    ap.add_argument("--char", default="grandpa", help="red's character (<char>_vs_<char>_arena.xml)")
+    ap.add_argument("--blue-char", default=None, help="blue's own character for a mixed pairing (default: the same as red's)")
     ap.add_argument("--defender-role", type=float, default=DEFENDER_ROLE, help="-1 absorb (brains from L3), 0 guard (Unreal's DefenderRole)")
     x = ap.parse_args()
     DEFENDER_ROLE = x.defender_role
     if x.cmd == "play":
-        res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue, character=x.char)
+        res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue, character=x.char, blue_character=x.blue_char)
         for t in turns:
             print(t)
         print(res, "\nlog:", path)
     elif x.cmd == "exam":
-        sys.exit(0 if exam(x.onnx, x.matches, x.mjb, x.char) else 1)
+        sys.exit(0 if exam(x.onnx, x.matches, x.mjb, x.char, x.blue_char) else 1)
     else:
-        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue, x.char) else 1)
+        sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue, x.char, x.blue_char) else 1)

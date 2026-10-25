@@ -105,6 +105,20 @@ def brain_asset(spec):
 
 brain = brain_asset(os.environ.get("SLAP_BRAIN", "training/models/random_brain.onnx"))  # SLAP_BRAIN=training/models/brains/<char>_<level>.onnx
 blue_brain = brain_asset(os.environ["SLAP_BLUE_BRAIN"]) if os.environ.get("SLAP_BLUE_BRAIN") else None
+
+# ---- level FIRST: wipe and save it so the old arena Blueprint has no references left (URLab refuses to import
+# over a Blueprint the open level still instantiates, and delete_asset fails on a referenced asset)
+LEVEL = "/Game/Levels/Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/Arena_{PAIR}"
+les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+if ASSETS.does_asset_exist(LEVEL):
+    les.load_level(LEVEL)
+    for a in eas.get_all_level_actors():
+        eas.destroy_actor(a)
+    les.save_current_level()
+else:
+    les.new_level(LEVEL)
+
 if ASSETS.does_asset_exist(f"/Game/Arena/{PAIR}_arena"):   # URLab won't overwrite; the MJCF may have changed
     ASSETS.delete_asset(f"/Game/Arena/{PAIR}_arena")
 arena_bp = next(a for a in import_file(f"training/models/{PAIR}_arena.xml", "/Game/Arena")
@@ -165,16 +179,7 @@ for team, rgb in (("Red", (0.9, 0.08, 0.05)), ("Blue", (0.05, 0.2, 0.9))):
     ASSETS.save_loaded_asset(mi)
     overlay[team] = mi
 
-# ---- level
-LEVEL = "/Game/Levels/Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/Arena_{PAIR}"
-les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
-eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-if ASSETS.does_asset_exist(LEVEL):
-    les.load_level(LEVEL)
-    for a in eas.get_all_level_actors():
-        eas.destroy_actor(a)
-else:
-    les.new_level(LEVEL)
+# ---- level (built above, before the import: it had to lose the old arena BP's references)
 
 
 def spawn(cls, label, loc=(0, 0, 0), rot=(0, 0, 0)):

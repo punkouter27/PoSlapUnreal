@@ -113,7 +113,7 @@ private:
 	struct FAthlete
 	{
 		FString Prefix, Name;	// "Arena_red_", "red"
-		int32 Pelvis = -1, RootQ = -1, RootV = -1, Head = -1, Hand = -1, HeadBody = -1;
+		int32 Pelvis = -1, Chest = -1, RootQ = -1, RootV = -1, Head = -1, Hand = -1, HeadBody = -1;
 		TArray<int32> Act, Qadr, Vadr, Feet, NeckAct, Palms;	// Palms: hand_l, hand_r (the defender's brace)
 		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
@@ -127,7 +127,16 @@ private:
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
+		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
+		double BiasYaw = 0.0, BiasPitch = 0.0;	// where the gaze servo is walking the neck goal this turn
 	};
+
+	// Eye contact (match.py GAZE_*): the defender squares up and holds the striker's eyes until the slap lands.
+	// Identical maths both sides - the match log still compares event for event.
+	static constexpr double GazeGain = 1.0;		// the bias OWNS the neck goal pre-touch
+	static constexpr double GazeMaxStep = 0.08;	// rad per decision the bias may walk (deliberate head turn)
+	bool bEyeContact = true;					// -SlapEyeContact=0 disables (debug / A-B checks)
+	void ApplyGaze(const mjModel* m, mjData* d);
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
 	struct FTurn

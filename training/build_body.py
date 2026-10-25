@@ -485,8 +485,10 @@ def main():
     (out / name).write_text(arena)
     m = mujoco.MjModel.from_xml_string(arena)
     d = mujoco.MjData(m)
-    stand = json.loads((out / f"{rc['name']}_fingerprint.json").read_text())["stand_pose_deg"]
-    set_pose(m, d, stand, "red_"); set_pose(m, d, stand, "blue_")
+    # each corner in ITS OWN stand pose (a mixed pairing has two; posing both with red's hid blue's contacts)
+    for pref, card_i in (("red_", rc), ("blue_", bc)):
+        st = json.loads((out / f"{card_i['name']}_fingerprint.json").read_text())["stand_pose_deg"]
+        set_pose(m, d, st, pref)
     mujoco.mj_forward(m, d)
     touching = {tuple(sorted((m.geom(c.geom1).name, m.geom(c.geom2).name))) for c in d.contact[: d.ncon]
                 if not {m.geom(c.geom1).name, m.geom(c.geom2).name} & {"floor"}}

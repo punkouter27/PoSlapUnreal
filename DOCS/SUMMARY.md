@@ -37,6 +37,19 @@ Matching rules learned the hard way (keep them): URLab drops a child model's `<o
 fingerprint), applies `<default>` to free joints (write the root as an explicit `type="free"` joint), and stores floats
 (write MJCF numbers float32-exact, radians, explicit pos/quat/size). Exact math both sides: stand pose read in radians from the
 fingerprint, `std::atan2/cos/sin` (not FMath). Live check = Python on URLab's `.mjb` vs Unreal: bit-identical (0.000 cm / 5 s).
+More (2026-10-24): `build_scene.py` wipes+saves the LEVEL before deleting/importing the arena Blueprint — URLab refuses to
+import over a BP the open level still instantiates and `delete_asset` fails on a referenced asset. Every arena's
+`DefenderRole` must be **-1** for L3+ brains (a level built with 0 feeds the defender different inputs and he collapses in
+seconds; `Scripts/set_defender_role.py` fixes them all). All arena XMLs carry `iterations="20"` (the e73efa1 audit) —
+rebuild with `build_body.py` after builder changes, then reimport the levels.
+Eye contact (2026-10-24, user: "the person getting slapped should look his opponent in the eye before the slap"):
+`match.py` GAZE_GAIN/GAZE_MAX_STEP and `USlapController::ApplyGaze` run IDENTICAL maths — the defender's neck
+yaw/pitch GOALS are walked to stare at the striker's eyes for the whole turn, released the instant the slap lands
+(brace wins). Observations are untouched, so no retraining. Kill switches: `SLAP_EYE_CONTACT=0` (Python),
+`-SlapEyeContact=0` (Unreal). Three traps encoded in the code: aim from the HEAD CENTRES (the eye line — the
+chest pivot adds ~11° at 0.85 m), aim in the CHEST frame (waist ball ≠ pelvis during motion), and expect
+`neck_nod` to clip at its range end when the heights differ. Verified: bench converges to 0.00°, live error
+4–6°, L5 compare PASS 28/28.
 Adding an athlete (roster, 16 slots): rigged FBX -> `blender -b --python Scripts/rig_mixamo.py -- <fbx> <name> <height>` -> card `training/characters/<name>.json`
 (`"slot"`, stats, `style`: stance_deg + slap) -> `build_body.py` (+ `--blue` per pairing) -> `slap_demo.py search --char <name>` -> own ladder
 (`overnight.py --char <name> --queue <name>_queue.json`) -> pairing level (`build_scene.py` with SLAP_RED/SLAP_BLUE; from Git Bash set

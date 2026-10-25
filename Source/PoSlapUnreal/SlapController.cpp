@@ -66,6 +66,8 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 		Mode = CmdMode == TEXT("Replay") ? ESlapControlMode::Replay : ESlapControlMode::Policy;
 	}
 	FParse::Value(FCommandLine::Get(), TEXT("SlapRecord="), RecordFile);	// policy mode: record 5 s for the live check
+	FString EyeFlag;	// eye contact on by default; -SlapEyeContact=0 off (mirror of match.py's SLAP_EYE_CONTACT)
+	if (FParse::Value(FCommandLine::Get(), TEXT("SlapEyeContact="), EyeFlag)) bEyeContact = EyeFlag != TEXT("0");
 
 	// URLab attaches our MJCF as a child spec, whose <option> is dropped (root spec defaults: 0.002 s, Euler),
 	// and its own override is single-precision. Set the training options exactly, from the fingerprint.
@@ -205,6 +207,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		A.Name = A.Prefix.LeftChop(1);
 		A.Name = A.Name.Mid(A.Name.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);	// "Arena_red" -> "red"
 		A.Pelvis = b;
+		A.Chest = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*(A.Prefix + TEXT("chest"))));	// eye contact aims in the CHEST frame (the neck hinges hang off it; the waist ball separates it from the pelvis)
 		const int32 Root = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*(A.Prefix + TEXT("root"))));
 		A.RootQ = m->jnt_qposadr[Root];
 		A.RootV = m->jnt_dofadr[Root];
@@ -225,6 +228,8 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			{
 				A.NeckAct.Add(Act);
 				A.Fr0.Append({ m->actuator_forcerange[2 * Act], m->actuator_forcerange[2 * Act + 1] });
+				if (J == TEXT("neck_turn")) A.YawIdx = j;
+				if (J == TEXT("neck_nod")) A.PitchIdx = j;
 			}
 		}
 		A.Goal = A.Stand;
@@ -458,6 +463,8 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, A.Act.Num());
 		A.bFresh = true;
+		A.BiasYaw = A.YawIdx >= 0 ? A.Stand[A.YawIdx] : 0.0;	// eye contact restarts square each turn
+		A.BiasPitch = A.PitchIdx >= 0 ? A.Stand[A.PitchIdx] : 0.0;
 		for (int32 k = 0; k < A.NeckAct.Num(); ++k)	// damage: a weaker neck (match.py: forcerange = own x neck strength)
 		{
 			m->actuator_forcerange[2 * A.NeckAct[k]] = A.Fr0[2 * k] * A.NeckStrength;
@@ -717,6 +724,38 @@ void USlapController::Score(int32 (&Out)[3][2])
 	}
 }
 
+// Eye contact: walk the defender's neck GOAL toward staring at the striker's eyes (pure maths, mirrors
+// match.py gaze_bias/gaze_apply: chest-relative ZYX yaw/pitch anchored on the two head centres - the eye line).
+// The brain owns every other joint and regains the neck the instant the slap lands (he braces for it).
+void USlapController::ApplyGaze(const mjModel* m, mjData* d)
+{
+	if (!(bEyeContact && bInTurn && Athletes.Num() == 2 && Turn.TouchStep < 0)) return;
+	FAthlete& D = Athletes[1 - Turn.Striker];
+	const FAthlete& S = Athletes[Turn.Striker];
+	if (D.YawIdx < 0 || D.PitchIdx < 0) return;
+	const double* Own = d->geom_xpos + 3 * D.Head;
+	const double* Op = d->geom_xpos + 3 * S.Head;
+	const double* Xm = d->xmat + 9 * D.Chest;	// the CHEST frame: the neck hinges are its Z/Y/X (match.py uses it too)
+	double U[3] = { Op[0] - Own[0], Op[1] - Own[1], Op[2] - Own[2] };
+	const double Rx[3] = { Xm[0] * U[0] + Xm[3] * U[1] + Xm[6] * U[2],	   // U in chest coords (R^T U)
+						   Xm[1] * U[0] + Xm[4] * U[1] + Xm[7] * U[2],
+						   Xm[2] * U[0] + Xm[5] * U[1] + Xm[8] * U[2] };
+	const double Len = FMath::Sqrt(Rx[0] * Rx[0] + Rx[1] * Rx[1] + Rx[2] * Rx[2]);
+	if (Len < 1e-9) return;
+	const double Want[2] = { FMath::Atan2(Rx[1], Rx[0]),
+							 -FMath::Asin(FMath::Clamp(Rx[2] / Len, -1.0, 1.0)) };
+	const int32 Idx[2] = { D.YawIdx, D.PitchIdx };
+	double* Bias[2] = { &D.BiasYaw, &D.BiasPitch };
+	for (int32 s = 0; s < 2; ++s)
+	{
+		const int32 j = Idx[s];
+		const double Clamped = FMath::Clamp(Want[s], D.Lo[j], D.Hi[j]);
+		*Bias[s] += FMath::Clamp(Clamped - *Bias[s], -GazeMaxStep, GazeMaxStep);	// walk, never teleport
+		const double Blend = (1.0 - GazeGain) * D.Goal[j] + GazeGain * *Bias[s];
+		D.Goal[j] = FMath::Clamp(Blend, D.Lo[j], D.Hi[j]);
+	}
+}
+
 void USlapController::Decide(const mjModel* m, mjData* d)
 {
 	mj_kinematics(m, d);	// positions for the current qpos (mj_step leaves xpos one step behind)
@@ -751,6 +790,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		A.Value = A.NumOut > 1 ? Value : 0.f;
 		A.Role = (int32)Role;
 	}
+	ApplyGaze(m, d);	// eye contact: right after the decisions, as match.py does
 	if (Match)	// broadcast telemetry at 50 Hz: striker's palm, defender's head, both athletes' balance
 	{
 		const FAthlete& S = Athletes[Turn.Striker];
