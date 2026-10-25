@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, video
 from envs.arena import ArenaEnv, VsFrozen
+from envs.locomotion import LocomotionEnv
 from envs.slap import SlapEnv
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx, obs_dim_of
@@ -112,8 +113,9 @@ def exam(ppo, character, level):
     L = LEVELS[level]
     res, passed = {}, True
     env = _exam_envs.get((character, level))
+    loco = L.get("model") == "locomotion"
     if env is None:   # built once: a fresh env (and CUDA stream) per exam broke Warp's capture after ~30 exams
-        env = _exam_envs[(character, level)] = SlapEnv(character, level, num_envs=100, seed=12345)
+        env = _exam_envs[(character, level)] = (LocomotionEnv if loco else SlapEnv)(character, level, num_envs=100, seed=12345)
     torch.cuda.set_stream(env.stream)
     wp.set_stream(wp.stream_from_torch(env.stream))
     env.push_scale = L.get("max_push", 1.0)           # exams use the level's own bars
@@ -127,13 +129,13 @@ def exam(ppo, character, level):
         fell, left_box, hit, absorbed, seen = (torch.zeros(env.N, dtype=torch.bool, device="cuda") for _ in range(5))
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
-            lb = env.left_box.clone()
+            lb = getattr(env, "left_box", torch.zeros_like(fell)).clone()
             obs, _, done, timeout = env.step(a)
             live = ~seen
             fell |= live & env.fell_now
             left_box |= live & lb
-            hit |= live & env.done_hit
-            absorbed |= live & env.done_absorbed
+            hit |= live & getattr(env, "done_hit", torch.zeros_like(fell))
+            absorbed |= live & getattr(env, "done_absorbed", ~env.fell_now & (env.com_err <= 0.08))
             seen |= done
             if bool(seen.all()):
                 break
@@ -178,9 +180,11 @@ def main():
     tb, tele = SummaryWriter(str(run)), open(run / "telemetry.jsonl", "a")
 
     arena = LEVELS[a.level].get("model") == "arena"
+    loco = LEVELS[a.level].get("model") == "locomotion"
     opp = tuple(a.opponent.split(":", 1)) if a.opponent else None
     vs = f"_vs_{opp[0]}" if opp else ""   # brains from a mixed pairing never overwrite the self-play graduates
-    env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else (ArenaEnv if arena else SlapEnv)(a.char, a.level, num_envs=a.envs)
+    env_cls = ArenaEnv if arena else (LocomotionEnv if loco else SlapEnv)
+    env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs)
     global ppo_stream
     ppo_stream = env.stream
     ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
@@ -275,6 +279,7 @@ def main():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episodes": len(eps),
                                **m, **curr(), **stats, "pelvis_z_w0": env.qpos[0, 2].item()}) + "\n")
+        tele.flush()
         if it % 10 == 0:
             line = " | ".join(f"{k} {v:.2f}" for k, v in m.items() if not k.endswith("episode_s"))
             print(f"it {it:5d} {steps / 1e6:7.1f}M {(time.time() - t0) / 60:5.1f} min | {line} | push {env.push_scale:.2f} "

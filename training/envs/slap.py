@@ -155,7 +155,7 @@ class SlapEnv:
         self.roles = {int(r): float(p) for r, p in self.cfg["roles"].items()}
         self.force_role = None   # exams: every world plays this role
         self.role = zl()
-        self.goal, self.prev_action, self.t = self.stand.repeat(N, 1), z(N, A), zl()
+        self.goal, self.prev_action, self.prev2_action, self.t = self.stand.repeat(N, 1), z(N, A), z(N, A), zl()
         self.delay = zl()
         self.push_wait, self.push_left, self.push_f = z(N), z(N), z(N, 3)
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
@@ -212,6 +212,8 @@ class SlapEnv:
         self.qpos[mask], self.qvel[mask] = q, 0.0
         if self.randomize:
             self.friction[mask, self.floor, 0] = self._u(n, 0.6, 1.2)
+            self.friction[mask, self.feet[0], 0] = self._u(n, 0.6, 1.2)
+            self.friction[mask, self.feet[1], 0] = self._u(n, 0.6, 1.2)
             s = self._u((n, self.mass.shape[1]), 0.95, 1.05)
             self.mass[mask], self.inertia[mask] = self.mass0 * s, self.inertia0 * s[..., None]
             k = self._u((n, self.gain.shape[1]), 0.9, 1.1)
@@ -232,7 +234,7 @@ class SlapEnv:
         else:
             keys = torch.tensor(list(self.roles), device=self.device)
             self.role[mask] = keys[torch.multinomial(torch.tensor(list(self.roles.values()), device=self.device), n, replacement=True)]
-        self.goal[mask], self.prev_action[mask], self.t[mask], self.ret[mask] = self.stand, 0.0, 0, 0.0
+        self.goal[mask], self.prev_action[mask], self.prev2_action[mask], self.t[mask], self.ret[mask] = self.stand, 0.0, 0.0, 0, 0.0
         self.push_wait[mask], self.push_left[mask] = self._u(n, 1.0, 3.0), 0.0
         self.left_box[mask] = False
         wp.capture_launch(self.g_kin)
@@ -297,6 +299,10 @@ class SlapEnv:
 
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
+        if self.randomize and not self.exam:
+            effort = (a ** 2).mean(dim=-1)
+            delta_stam = torch.where(effort > 0.20, -0.00016 * effort, 0.0003 * (1.0 - effort))
+            self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
         tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
         ms = self.max_step * self.stamina[:, None]                 # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
@@ -315,6 +321,7 @@ class SlapEnv:
 
         fell = self.fell_now = self._fallen()
         rew, out = self._reward(a, fell)
+        self.prev2_action = self.prev_action
         self.prev_action = a
         self.t += 1
         self.ret += rew
@@ -405,7 +412,8 @@ class SlapEnv:
         height = torch.exp(-((self.qpos[:, 2] - self.h0) ** 2) / 0.01)
         posture = torch.exp(-((self.qpos[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
         smooth = ((a - self.prev_action) ** 2).sum(-1)
-        r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
+        jerk = ((a - 2.0 * self.prev_action + self.prev2_action) ** 2).sum(-1)
+        r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()

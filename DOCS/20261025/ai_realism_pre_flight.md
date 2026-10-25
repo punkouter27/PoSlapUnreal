@@ -1,7 +1,7 @@
 # AI Realism — Top 10 Options & Pre-Flight Configuration Guide
 
 > **Document Version:** `20261025`  
-> **Status:** **READY-TO-RUN SETUP (Active Simulation & Training Not Started)**  
+> **Status:** **IMPLEMENTED & VERIFIED (All 10 Options Active)**  
 > **Engine:** Unreal Engine 5.8 + URLab | **Physics:** MuJoCo 3.10.0 (200 Hz) | **Control:** NNE / PyTorch PPO (50 Hz)
 
 ---
@@ -53,5 +53,6 @@ All joint tunings, strength ceilings, proprioceptive profiles, and curriculum co
 - [x] **Build Date Watermark (`YYMMDD`):** Automatically stamped as `261025` in the bottom-right corner via `PoSlapUnreal.Build.cs` (`POSLAP_BUILD_VERSION`) and `ASlapHUD::BuildUi()`.
 - [x] **Unreal Background CPU Throttling Off:** `bThrottleCPUWhenNotForeground=False` active in `Config/DefaultEditorPerProjectUserSettings.ini`.
 - [x] **Chaos Physics & Visual Collision Disabled:** Runtime audit in `ASlapGameMode::StartPlay()` and `Scripts/build_scene.py` enforces `NoCollision` and `bSimulatePhysics=false` across all primitives; only simple capsules, spheres, and boxes collide in MuJoCo.
-- [x] **Self-Collision & COM Balance Verified:** Parent-child exclusions active; `A10` self-collision and `A11` COM mid-foot checks configured in `training/build_body.py`.
-- [x] **No Active Training Started:** All configs are saved and ready for inspection; no simulation or training processes have been launched.
+- [x] **Self-Collision & COM Balance Verified:** Parent-child exclusions active; `A9` anti-hyperextension, `A10` swing & stride self-collision, and `A11` COM mid-foot checks verified in `training/build_body.py`.
+- [x] **All 10 AI Realism Options Implemented & Verified (`verify_realism.py`):** Wired across `training/envs/locomotion.py` (`S1`–`S3`), `training/envs/slap.py` (`L0`–`L3`), `training/envs/arena.py` (`L4`), `training/levels.py`, and `training/train.py`, with gameplay telemetry logged to `Logs/Gameplay/261025/`.
+

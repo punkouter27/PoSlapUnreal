@@ -126,6 +126,12 @@ def validate(sk, card):
           f"{'OK' if not err else 'FAIL'}")
     if err:
         sys.exit("RIG FAIL:\n  " + "\n  ".join(err))
+    mass_total = MASS["pelvis"] + MASS["belly"] + MASS["chest"] + MASS["neck"] + MASS["head"] + 2 * (
+        MASS["upperarm"] + MASS["forearm"] + MASS["hand"] + MASS["thigh"] + MASS["shin"] + MASS["foot"])
+    assert abs(mass_total - 100.0) < 1e-6, f"anthropometric mass total {mass_total} != 100%"
+    for jn, _, (lo, hi), _ in JOINTS["shin"] + JOINTS["forearm"]:
+        assert lo >= 0 and hi <= 145, f"A9 FAIL: {jn} range ({lo}, {hi}) permits backward hyperextension"
+    print(f"A9 realism limits: knee/elbow anti-hyperextension OK, mass sum {mass_total:.1f}%, damping zeta={ZETA}")
 
 
 # ---------------------------------------------------------------- geometry from rig + mesh stats
@@ -326,6 +332,19 @@ def swing_poses(base):
             yield f"swing{s} {sw}", p
 
 
+def stride_poses(base):
+    """Walking and jogging stride poses: alternating hip flex/extension and knee bend must stay self-collision free."""
+    for phase in (-20, -10, 0, 15, 30):
+        p = dict(base)
+        p.update({
+            "hip_flex_l": phase, "knee_l": max(0, phase),
+            "hip_flex_r": -phase, "knee_r": max(0, -phase),
+            "ankle_flex_l": -10 if phase > 0 else 10,
+            "ankle_flex_r": -10 if phase < 0 else 10,
+        })
+        yield f"stride {phase}", p
+
+
 def fit(geo, card):
     """A10: shrink overlapping shapes until reference pose, stand and swing arcs are overlap-free."""
     scale = {}
@@ -347,7 +366,7 @@ def fit(geo, card):
                 mujoco.mj_resetData(m, d); set_pose(m, d, stand_pose(-70, card))
                 bad, where = self_overlaps(m, d), "stand"
         if not bad:
-            for label, p in swing_poses(stand_pose(stand, card)):
+            for label, p in list(swing_poses(stand_pose(stand, card))) + list(stride_poses(stand_pose(stand, card))):
                 mujoco.mj_resetData(m, d); set_pose(m, d, p)
                 bad = self_overlaps(m, d)
                 if bad:
@@ -355,7 +374,7 @@ def fit(geo, card):
                     break
         if not bad:
             shrunk = {k: round(v, 3) for k, v in scale.items()}
-            print(f"A10 self-collision: clean in reference, stand (arms {stand} deg), swing arcs; "
+            print(f"A10 self-collision: clean in reference, stand (arms {stand} deg), swing & stride arcs; "
                   f"shrunk {shrunk or 'nothing'}")
             return scale, stand
         for pair in bad:

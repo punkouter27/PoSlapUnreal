@@ -123,7 +123,7 @@ class ArenaEnv:
         W, N, A = num_envs, self.N, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
         self.striker = torch.zeros(W, dtype=torch.long, device=dev)
-        self.goal, self.prev_action = self.stand_n.clone(), z(N, A)
+        self.goal, self.prev_action, self.prev2_action = self.stand_n.clone(), z(N, A), z(N, A)
         self.t = torch.zeros(W, dtype=torch.long, device=dev)
         self.delay = torch.zeros(W, dtype=torch.long, device=dev)
         self.ret, self.left_box = z(N), torch.zeros(N, dtype=torch.bool, device=dev)
@@ -177,6 +177,8 @@ class ArenaEnv:
         self.kick_left[mask] = 0
         if self.randomize:
             self.friction[mask, self.floor, 0] = self._u(n, 0.6, 1.2)
+            for fk in self.feet.flatten():
+                self.friction[mask, int(fk), 0] = self._u(n, 0.6, 1.2)
             s = self._u((n, self.mass.shape[1]), 0.95, 1.05)
             self.mass[mask], self.inertia[mask] = self.mass0 * s, self.inertia0 * s[..., None]
             k = self._u((n, self.gain.shape[1]), 0.9, 1.1)
@@ -192,7 +194,7 @@ class ArenaEnv:
         self.fresh |= mask
         self.striker[mask] = torch.randint(0, 2, (n,), device=self.device) if self.force_striker is None else self.force_striker
         am = mask.repeat_interleave(2)
-        self.goal[am], self.prev_action[am], self.ret[am], self.left_box[am] = self.stand_n[am], 0.0, 0.0, False
+        self.goal[am], self.prev_action[am], self.prev2_action[am], self.ret[am], self.left_box[am] = self.stand_n[am], 0.0, 0.0, 0.0, False
         self.t[mask] = 0
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
@@ -206,6 +208,10 @@ class ArenaEnv:
     # ------------------------------------------------------------------ step
     def step(self, action):
         a = action.clamp(-1.0, 1.0)
+        if self.randomize:
+            effort = (a.view(self.W, 2, -1) ** 2).mean(dim=-1)
+            delta_stam = torch.where(effort > 0.20, -0.00016 * effort, 0.0003 * (1.0 - effort))
+            self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
         st, lo, hi = self.stand_n, self.lo_n, self.hi_n
         tgt = torch.clamp(st + torch.where(a > 0, a * (hi - st), a * (st - lo)), lo, hi)
         ms = self.ms_n * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
@@ -226,6 +232,7 @@ class ArenaEnv:
 
         fell = self._fallen()                                  # (W, 2)
         rew, out = self._reward(a, fell)                       # (2W,), (W, 2)
+        self.prev2_action = self.prev_action
         self.prev_action = a
         self.t += 1
         self.ret += rew
@@ -316,9 +323,10 @@ class ArenaEnv:
         height = torch.exp(-((z - self.h0) ** 2) / 0.01)
         jp = torch.stack([q[:, self.jq[k]] for k in range(2)], 1)
         posture = torch.exp(-((jp - self.stand) ** 2).sum(-1) / 1.0)
-        a2, p2 = a.view(W, 2, -1), self.prev_action.view(W, 2, -1)
+        a2, p2, p2_prev = a.view(W, 2, -1), self.prev_action.view(W, 2, -1), self.prev2_action.view(W, 2, -1)
         smooth = ((a2 - p2) ** 2).sum(-1)
-        r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth
+        jerk = ((a2 - 2.0 * p2 + p2_prev) ** 2).sum(-1)
+        r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
         bx, by = self.cfg["foot_box"]
         d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()                       # (W, 2, 2 feet, 2)
         out = (d[..., 0] > bx).any(-1) | (d[..., 1] > by).any(-1)
