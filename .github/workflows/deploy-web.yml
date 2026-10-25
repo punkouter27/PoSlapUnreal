@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pull LFS assets the bundle needs (brains + GLBs)
+        run: git lfs pull --include="training/models/brains/*.onnx,Web/assets/*.glb"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -43,4 +46,3 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: Web/dist
-          sku: Free

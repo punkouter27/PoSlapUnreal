@@ -32,5 +32,20 @@ for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
 (DIST / "staticwebapp.config.json").write_text(
     '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" } }\n')
+
+
+def _fail_lfs_pointers():
+    """Ship-blocker: an unpulled git-LFS pointer looks like a tiny valid file but breaks browsers."""
+    bad = []
+    for p in DIST.rglob("*"):
+        if p.is_file() and p.open("rb").read(64).startswith(b"version https://git-lfs"):
+            bad.append(str(p.relative_to(DIST)))
+    if bad:
+        raise SystemExit("LFS pointers in dist (run 'git lfs pull'): " + ", ".join(bad))
+
+
+
+_fail_lfs_pointers()
+
 size = sum(p.stat().st_size for p in DIST.rglob("*") if p.is_file())
 print(f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB (brains: {', '.join(brains)})")
