@@ -358,12 +358,19 @@ class ArenaEnv:
         self.phi_prev = phi
         self.hand_prev_ctrl = hand.clone()
         ko = self.struck & self._sd(fell)[1] & self.hit_ok
-        r_str = torch.where(self.struck, torch.zeros_like(before), before) + self.bonus + 40.0 * ko.float()
+        # stick the landing (user 2026-10-25: "focus on not falling down after slapping"): after the touch the
+        # striker earns for REMAINING UPRIGHT through the recovery window - flat zeros gave no signal to ride
+        # out the recoil HE triggers (0.5/step ~ the value of the hit itself over a calm 5 s recovery)
+        land = 0.5 * su.clamp(min=0)
+        r_str = torch.where(self.struck, land, before) + self.bonus + 40.0 * ko.float()
         r_str = r_str - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()
         self.bonus.zero_()
 
         rr = torch.where(role > 0, r_str[:, None].expand(-1, 2), r_def)
-        penalty = torch.where(role > 0, -30.0, -5.0)
+        # a striker's self-fall USED to cost -30 against a +146 clean hit: tumbling after the smack was
+        # profitable, and the champions duly learned to flail (5 self-downs + 1 box-crossing per 10 matches).
+        # -150 cancels a clean hit outright; -60 makes the box expensive too (defender terms unchanged)
+        penalty = torch.where(role > 0, torch.where(fell, -150.0, -60.0), -5.0)
         rr = torch.where(fell | out, penalty, rr)
         return self._pair(rr), out
 
