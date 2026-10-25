@@ -1,0 +1,479 @@
+{
+ "mujoco": "3.10.0",
+ "model": "kim_solo.xml",
+ "sha256": "99be08f41b1eefa41cc36e642718665ead164b1185c13ff28038f7aeec7aa48d",
+ "option": {
+  "timestep": 0.005,
+  "integrator": 3,
+  "solver": 2,
+  "iterations": 20,
+  "gravity": [
+   0.0,
+   0.0,
+   -9.81
+  ]
+ },
+ "sizes": {
+  "nq": 37,
+  "nv": 36,
+  "nu": 30,
+  "nbody": 19,
+  "ngeom": 20
+ },
+ "mass_kg": 60.0,
+ "body_mass": {
+  "target": 3.054,
+  "pelvis": 8.52,
+  "belly": 8.34,
+  "chest": 12.96,
+  "neck": 0.72,
+  "head": 4.14,
+  "upperarm_l": 1.68,
+  "forearm_l": 0.96,
+  "hand_l": 0.36,
+  "upperarm_r": 1.68,
+  "forearm_r": 0.96,
+  "hand_r": 0.36,
+  "thigh_l": 6.0,
+  "shin_l": 2.79,
+  "foot_l": 0.87,
+  "thigh_r": 6.0,
+  "shin_r": 2.79,
+  "foot_r": 0.87
+ },
+ "control_hz": 50,
+ "physics_hz": 200,
+ "joint_order": [
+  "waist_twist",
+  "waist_flex",
+  "waist_side",
+  "neck_turn",
+  "neck_nod",
+  "neck_tilt",
+  "shoulder_swing_l",
+  "shoulder_raise_l",
+  "shoulder_twist_l",
+  "elbow_l",
+  "wrist_flex_l",
+  "wrist_dev_l",
+  "shoulder_swing_r",
+  "shoulder_raise_r",
+  "shoulder_twist_r",
+  "elbow_r",
+  "wrist_flex_r",
+  "wrist_dev_r",
+  "hip_flex_l",
+  "hip_abd_l",
+  "hip_rot_l",
+  "knee_l",
+  "ankle_flex_l",
+  "ankle_roll_l",
+  "hip_flex_r",
+  "hip_abd_r",
+  "hip_rot_r",
+  "knee_r",
+  "ankle_flex_r",
+  "ankle_roll_r"
+ ],
+ "ctrl_range_rad": [
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -0.3490658402442932,
+   1.0471975803375244
+  ],
+  [
+   -0.5235987901687622,
+   0.5235987901687622
+  ],
+  [
+   -1.2217304706573486,
+   1.2217304706573486
+  ],
+  [
+   -0.6981316804885864,
+   0.8726646304130554
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ]
+ ],
+ "torque_limit_nm": [
+  72.0,
+  120.0,
+  96.0,
+  20.399999618530273,
+  20.399999618530273,
+  20.399999618530273,
+  54.0,
+  54.0,
+  36.0,
+  42.0,
+  12.0,
+  9.0,
+  54.0,
+  54.0,
+  36.0,
+  42.0,
+  12.0,
+  9.0,
+  132.0,
+  96.0,
+  60.0,
+  132.0,
+  108.0,
+  36.0,
+  132.0,
+  96.0,
+  60.0,
+  132.0,
+  108.0,
+  36.0
+ ],
+ "max_joint_speed_rad_s": [
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  19.0,
+  19.0,
+  19.0,
+  23.75,
+  23.75,
+  23.75,
+  19.0,
+  19.0,
+  19.0,
+  23.75,
+  23.75,
+  23.75,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999,
+  11.399999999999999
+ ],
+ "stand_pose_deg": {
+  "shoulder_raise_l": -22,
+  "elbow_l": 96,
+  "shoulder_raise_r": -64,
+  "elbow_r": 90,
+  "knee_l": 25,
+  "knee_r": 25,
+  "hip_flex_l": 6,
+  "hip_flex_r": 6,
+  "hip_abd_l": 5,
+  "hip_abd_r": 5,
+  "ankle_flex_l": 19,
+  "ankle_flex_r": 19,
+  "ankle_roll_l": -5,
+  "ankle_roll_r": -5,
+  "waist_flex": 8,
+  "shoulder_swing_l": -60,
+  "shoulder_twist_l": 0,
+  "shoulder_swing_r": -22,
+  "shoulder_twist_r": 26
+ },
+ "stand_pose_rad": {
+  "shoulder_raise_l": -0.3839724354387525,
+  "elbow_l": 1.6755160819145565,
+  "shoulder_raise_r": -1.117010721276371,
+  "elbow_r": 1.5707963267948966,
+  "knee_l": 0.4363323129985824,
+  "knee_r": 0.4363323129985824,
+  "hip_flex_l": 0.10471975511965978,
+  "hip_flex_r": 0.10471975511965978,
+  "hip_abd_l": 0.08726646259971647,
+  "hip_abd_r": 0.08726646259971647,
+  "ankle_flex_l": 0.33161255787892263,
+  "ankle_flex_r": 0.33161255787892263,
+  "ankle_roll_l": -0.08726646259971647,
+  "ankle_roll_r": -0.08726646259971647,
+  "waist_flex": 0.13962634015954636,
+  "shoulder_swing_l": -1.0471975511965976,
+  "shoulder_twist_l": 0.0,
+  "shoulder_swing_r": -0.3839724354387525,
+  "shoulder_twist_r": 0.4537856055185257
+ },
+ "root_height_m": 0.7889877207293582,
+ "geom_scale": {
+  "thigh_l": 0.9025,
+  "thigh_r": 0.9025
+ },
+ "balance_offset_m": [
+  0.01238701512703489,
+  -5.972016056396208e-05
+ ],
+ "drop_test_upright_s": 2.9999999999999583,
+ "card": {
+  "name": "kim",
+  "display": "KIM",
+  "slot": 2,
+  "mesh": "Content/Art/Exports/Kim_rigged.fbx",
+  "skeleton": "characters/kim_skeleton.json",
+  "height_m": 1.63,
+  "mass_kg": 60.0,
+  "strength": 0.6,
+  "speed": 0.95,
+  "flexibility": 1.0,
+  "toughness": 0.85,
+  "stamina_per_strike": 0.035,
+  "neck_damage_per_snap": 0.05,
+  "strike_mass": 2.31,
+  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength. Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23 against the L2 brain graduated at 11:08, clean slaps ~11.5 m/s: 3.0 kg for a 78 kg athlete knocks a braced guard off balance 31 % of clean slaps; scaled to body mass).",
+  "style": {
+   "summary": "Balance: a low, bouncy athletic stance - knees bent 25 deg, feet a little wider, weight on the balls of the feet, a high guard (lead hand by the chin, slapping hand cocked at the chest). Slap: short and snappy - little wind-up, high elbow, a late elbow and wrist whip.",
+   "stance_deg": {
+    "knee_l": 25,
+    "knee_r": 25,
+    "hip_flex_l": 6,
+    "hip_flex_r": 6,
+    "hip_abd_l": 5,
+    "hip_abd_r": 5,
+    "ankle_flex_l": 19,
+    "ankle_flex_r": 19,
+    "ankle_roll_l": -5,
+    "ankle_roll_r": -5,
+    "waist_flex": 8,
+    "shoulder_swing_l": -60,
+    "shoulder_raise_l": -22,
+    "shoulder_twist_l": 0,
+    "elbow_l": 96,
+    "shoulder_swing_r": -22,
+    "shoulder_raise_r": -64,
+    "shoulder_twist_r": 26,
+    "elbow_r": 90
+   },
+   "slap": {
+    "note": "(wind-up, strike, follow-through) degrees from slap_demo.py's conventions: + twist = right shoulder forward, + flex = lean forward, raise 0 = arm horizontal, - swing = arm forward across. Grandpa: big trunk wind-up, long arm swing. Kim: compact - small trunk turn, elbow high and folded, then the elbow and wrist whip late; lead hand stays in guard; knees stay bent.",
+    "guess_deg": {
+     "waist_twist": [
+      -15,
+      25,
+      30
+     ],
+     "waist_flex": [
+      8,
+      18,
+      14
+     ],
+     "waist_side": [
+      0,
+      5,
+      5
+     ],
+     "shoulder_swing_r": [
+      10,
+      -80,
+      -100
+     ],
+     "shoulder_raise_r": [
+      40,
+      30,
+      15
+     ],
+     "shoulder_twist_r": [
+      -30,
+      -50,
+      -45
+     ],
+     "elbow_r": [
+      110,
+      10,
+      30
+     ],
+     "wrist_flex_r": [
+      -35,
+      25,
+      10
+     ],
+     "wrist_dev_r": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_swing_l": [
+      -60,
+      -45,
+      -45
+     ],
+     "shoulder_raise_l": [
+      -22,
+      -30,
+      -30
+     ],
+     "elbow_l": [
+      96,
+      96,
+      96
+     ],
+     "hip_flex_l": [
+      6,
+      12,
+      12
+     ],
+     "hip_flex_r": [
+      6,
+      12,
+      12
+     ],
+     "knee_l": [
+      25,
+      28,
+      28
+     ],
+     "knee_r": [
+      25,
+      28,
+      28
+     ],
+     "hip_rot_l": [
+      0,
+      0,
+      0
+     ],
+     "hip_rot_r": [
+      0,
+      0,
+      0
+     ]
+    },
+    "times_s": [
+     0.28,
+     0.15,
+     0.18
+    ],
+    "delays_s": {
+     "hip_rot_l": 0.0,
+     "hip_rot_r": 0.0,
+     "waist_twist": 0.01,
+     "waist_flex": 0.01,
+     "shoulder_swing_r": 0.04,
+     "shoulder_raise_r": 0.04,
+     "shoulder_twist_r": 0.08,
+     "elbow_r": 0.11,
+     "wrist_flex_r": 0.15
+    },
+    "search_sigma_deg": 12.0
+   }
+  },
+  "sparring": {
+   "head": [
+    0.78,
+    0.0,
+    0.825
+   ],
+   "shorter_max": 0.0,
+   "lean": 0.0,
+   "note": "Practice opponent: Grandpa, 7 cm taller; his braced face sat 0.78 m ahead, 0.825 m above her start pelvis in Unreal (2026-10-23); she had trained 9-25 cm below it and landed with the back of the hand"
+  }
+ }
+}

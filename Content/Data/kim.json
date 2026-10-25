@@ -1,0 +1,163 @@
+{
+  "name": "kim",
+  "display": "KIM",
+  "slot": 2,
+  "mesh": "Content/Art/Exports/Kim_rigged.fbx",
+  "skeleton": "characters/kim_skeleton.json",
+  "height_m": 1.63,
+  "mass_kg": 60.0,
+  "strength": 0.6,
+  "speed": 0.95,
+  "flexibility": 1.0,
+  "toughness": 0.85,
+  "stamina_per_strike": 0.035,
+  "neck_damage_per_snap": 0.05,
+  "strike_mass": 2.31,
+  "notes": "Second roster athlete (user, 2026-10-22). Lighter, quicker and more supple than Grandpa, a little stronger for her weight; fitter (tires slower) but a lighter neck (less KO resistance, takes neck damage faster). Same rules as grandpa.json: strength/speed/flexibility are multiples of a trained adult; toughness multiplies the neck motors on top of strength. Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23 against the L2 brain graduated at 11:08, clean slaps ~11.5 m/s: 3.0 kg for a 78 kg athlete knocks a braced guard off balance 31 % of clean slaps; scaled to body mass).",
+  "style": {
+    "summary": "Balance: a low, bouncy athletic stance - knees bent 25 deg, feet a little wider, weight on the balls of the feet, a high guard (lead hand by the chin, slapping hand cocked at the chest). Slap: short and snappy - little wind-up, high elbow, a late elbow and wrist whip.",
+    "stance_deg": {
+      "knee_l": 25,
+      "knee_r": 25,
+      "hip_flex_l": 6,
+      "hip_flex_r": 6,
+      "hip_abd_l": 5,
+      "hip_abd_r": 5,
+      "ankle_flex_l": 19,
+      "ankle_flex_r": 19,
+      "ankle_roll_l": -5,
+      "ankle_roll_r": -5,
+      "waist_flex": 8,
+      "shoulder_swing_l": -60,
+      "shoulder_raise_l": -22,
+      "shoulder_twist_l": 0,
+      "elbow_l": 96,
+      "shoulder_swing_r": -22,
+      "shoulder_raise_r": -64,
+      "shoulder_twist_r": 26,
+      "elbow_r": 90
+    },
+    "slap": {
+      "note": "(wind-up, strike, follow-through) degrees from slap_demo.py's conventions: + twist = right shoulder forward, + flex = lean forward, raise 0 = arm horizontal, - swing = arm forward across. Grandpa: big trunk wind-up, long arm swing. Kim: compact - small trunk turn, elbow high and folded, then the elbow and wrist whip late; lead hand stays in guard; knees stay bent.",
+      "guess_deg": {
+        "waist_twist": [
+          -15,
+          25,
+          30
+        ],
+        "waist_flex": [
+          8,
+          18,
+          14
+        ],
+        "waist_side": [
+          0,
+          5,
+          5
+        ],
+        "shoulder_swing_r": [
+          10,
+          -80,
+          -100
+        ],
+        "shoulder_raise_r": [
+          40,
+          30,
+          15
+        ],
+        "shoulder_twist_r": [
+          -30,
+          -50,
+          -45
+        ],
+        "elbow_r": [
+          110,
+          10,
+          30
+        ],
+        "wrist_flex_r": [
+          -35,
+          25,
+          10
+        ],
+        "wrist_dev_r": [
+          0,
+          0,
+          0
+        ],
+        "shoulder_swing_l": [
+          -60,
+          -45,
+          -45
+        ],
+        "shoulder_raise_l": [
+          -22,
+          -30,
+          -30
+        ],
+        "elbow_l": [
+          96,
+          96,
+          96
+        ],
+        "hip_flex_l": [
+          6,
+          12,
+          12
+        ],
+        "hip_flex_r": [
+          6,
+          12,
+          12
+        ],
+        "knee_l": [
+          25,
+          28,
+          28
+        ],
+        "knee_r": [
+          25,
+          28,
+          28
+        ],
+        "hip_rot_l": [
+          0,
+          0,
+          0
+        ],
+        "hip_rot_r": [
+          0,
+          0,
+          0
+        ]
+      },
+      "times_s": [
+        0.28,
+        0.15,
+        0.18
+      ],
+      "delays_s": {
+        "hip_rot_l": 0.0,
+        "hip_rot_r": 0.0,
+        "waist_twist": 0.01,
+        "waist_flex": 0.01,
+        "shoulder_swing_r": 0.04,
+        "shoulder_raise_r": 0.04,
+        "shoulder_twist_r": 0.08,
+        "elbow_r": 0.11,
+        "wrist_flex_r": 0.15
+      },
+      "search_sigma_deg": 12.0
+    }
+  },
+  "sparring": {
+    "head": [
+      0.78,
+      0.0,
+      0.825
+    ],
+    "shorter_max": 0.0,
+    "lean": 0.0,
+    "note": "Practice opponent: Grandpa, 7 cm taller; his braced face sat 0.78 m ahead, 0.825 m above her start pelvis in Unreal (2026-10-23); she had trained 9-25 cm below it and landed with the back of the hand"
+  }
+}

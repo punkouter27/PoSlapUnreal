@@ -29,9 +29,29 @@ namespace
 	{
 		FString Text;
 		TSharedPtr<FJsonObject> Obj;
+		// 1. Try relative to ProjectDir() (source checkout / editor)
 		if (FFileHelper::LoadFileToString(Text, *FPaths::Combine(FPaths::ProjectDir(), RelPath)))
 		{
 			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
+		}
+		// 2. Try packaged Content/Data/ with clean filename (Android / packaged builds)
+		if (!Obj.IsValid())
+		{
+			const FString CleanName = FPaths::GetCleanFilename(RelPath);
+			const FString DataPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Data"), CleanName);
+			if (FFileHelper::LoadFileToString(Text, *DataPath))
+			{
+				FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
+			}
+		}
+		// 3. Try ProjectContentDir() / RelPath
+		if (!Obj.IsValid())
+		{
+			const FString ContentRel = FPaths::Combine(FPaths::ProjectContentDir(), RelPath);
+			if (FFileHelper::LoadFileToString(Text, *ContentRel))
+			{
+				FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
+			}
 		}
 		if (!Obj.IsValid())
 		{
@@ -305,8 +325,17 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 
 bool USlapController::MakeNet(UNNEModelData* Data, FNet& Out)
 {
+	if (!Data) return false;
+
+	// 1. Try NNERuntimeORTCpu (desktop ORT for bit-exact check)
 	TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
-	TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() && Data ? Runtime->CreateModelCPU(Data) : nullptr;
+	if (!Runtime.IsValid())
+	{
+		// 2. Fallback to platform-neutral NNERuntimeBasicCpu (Android / mobile CPU runtime)
+		Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeBasicCpu"));
+	}
+
+	TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() ? Runtime->CreateModelCPU(Data) : nullptr;
 	Out.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
 	if (!Out.Net) return false;
 	const TConstArrayView<int32> In = Out.Net->GetInputTensorDescs()[0].GetShape().GetData();
