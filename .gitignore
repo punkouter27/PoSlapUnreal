@@ -27,3 +27,6 @@ Logs/
 # Blender backups; FBX importers re-extract embedded textures
 *.blend1
 Content/Art/Exports/Kim_rigged.fbm/
+
+# MuJoCo warning log (written next to whatever script ran)
+MUJOCO_LOG.TXT

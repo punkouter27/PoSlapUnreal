@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>Pairing Picker</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:220px;margin:0}img{width:100%;border:1px solid #ccc}</style>
+<h1>MATCH tab picks the pairing (D7, 2026-10-25)</h1>
+<p>Before: each pairing was its own level, and switching meant launching that level by hand. After: a new row above the corners
+(<code>&lt; GRANDPA vs KIM &gt;</code>) cycles through every <code>/Game/Levels/Arena*</code> level. Choosing another pairing shows
+"(loads it)", the corners show "level default", and START NEW MATCH opens that level, which plays its own default brains (brain picks are made after it loads).
+For Android, <code>/Game/Levels</code> is now always cooked (DefaultGame.ini), so every pairing ships.</p>
+<div class="row"><figure><img src="before.png"><figcaption>Before (2026-10-22 MATCH tab)</figcaption></figure><figure><img src="after.png"><figcaption>After: pairing row</figcaption></figure></div>
+<p>Checks: <code>-SlapPairTest</code> started in Arena (grandpa vs grandpa), opened <code>Arena_grandpa_vs_kim</code> at 3 s, which loaded
+grandpa_final_vs_kim / kim_final_vs_grandpa: PASS. <code>-SlapUiTest</code> regression: PASS, 0 of 10 clicks wrong, a match ended and the next began.</p>

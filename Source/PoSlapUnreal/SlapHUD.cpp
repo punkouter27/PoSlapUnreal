@@ -99,6 +99,7 @@ void ASlapHUD::BeginPlay()
 	FParse::Value(FCommandLine::Get(), TEXT("SlapFxTest="), FxTestAt);
 	bMenu = FParse::Value(FCommandLine::Get(), TEXT("SlapMenu="), Tab);
 	bUiTest = FParse::Param(FCommandLine::Get(), TEXT("SlapUiTest"));
+	bPairTest = FParse::Param(FCommandLine::Get(), TEXT("SlapPairTest"));
 	Tab = FMath::Clamp(Tab, 0, 3);
 	BuildUi();
 	// broadcast assets (Scripts/broadcast_fx.py); a missing one is skipped
@@ -201,6 +202,16 @@ void ASlapHUD::DrawHUD()
 	}
 
 	if (bUiTest) UiTest(H);
+	if (bPairTest && H.Match > 0 && GetWorld()->GetTimeSeconds() >= 3.0 && Pairings.IsValidIndex(HerePairing))
+	{
+		bPairTest = false;
+		if (Pairings[HerePairing].AssetName == TEXT("Arena")) Travel((HerePairing + 1) % Pairings.Num());
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("SlapHUD: pair test: in %s, %s vs %s, brains %s / %s"), *Pairings[HerePairing].AssetName.ToString(), *H.Card[0], *H.Card[1], *H.Brain[0], *H.Brain[1]);
+			UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+		}
+	}
 	if (ShotAt >= 0.f && GetWorld()->GetTimeSeconds() >= ShotAt)
 	{
 		if (!bShotTaken)
@@ -239,6 +250,12 @@ void ASlapHUD::BuildUi()
 	AR.GetAssetsByPath(FName(TEXT("/Game/Brains")), Brains, true);
 	Brains.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UNNEModelData::StaticClass()->GetClassPathName(); });
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
+	AR.ScanPathsSynchronous({ TEXT("/Game/Levels") });
+	AR.GetAssetsByPath(FName(TEXT("/Game/Levels")), Pairings, false);
+	Pairings.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UWorld::StaticClass()->GetClassPathName() || !A.AssetName.ToString().StartsWith(TEXT("Arena")); });
+	Pairings.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
+	const FName Here(*UGameplayStatics::GetCurrentLevelName(this));	// PIE prefix stripped
+	Pairing = HerePairing = Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName == Here; });
 
 	LoadRoster();
 
@@ -296,7 +313,7 @@ void ASlapHUD::BuildUi()
 	auto Step = [Self, Fits](int32 a, int32 Dir)
 	{
 		const TArray<int32> F = Fits(a);
-		if (F.Num() == 0) return FReply::Handled();
+		if (F.Num() == 0 || Self->Pairing != Self->HerePairing) return FReply::Handled();	// another pairing: its own brains, picked there
 		int32& P = Self->Pick[a];
 		if (P == INDEX_NONE)	// from the brain the corner plays now
 		{
@@ -317,12 +334,30 @@ void ASlapHUD::BuildUi()
 			[Label(TAttribute<FText>::CreateLambda([Self, a]
 			{
 				if (!Self.IsValid()) return FText();
+				if (Self->Pairing != Self->HerePairing) return FText::FromString(TEXT("level default"));
 				const int32 P = Self->Pick[a];
 				return FText::FromString(P != INDEX_NONE ? Self->Brains[P].AssetName.ToString() : Self->Controller.IsValid() ? Self->Controller->GetHud().Brain[a] : FString());
 			}), 18, Hi)]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[SAssignNew(a == 0 ? Hit[HitRedNext] : Spare, SButton).OnClicked_Lambda([Step, a] { return Step(a, 1); })[Label(FText::FromString(TEXT(" > ")), 18, White)]];
 	};
+	auto PairStep = [Self](int32 Dir)
+	{
+		if (Self.IsValid() && Self->Pairings.Num() > 0) Self->Pairing = (FMath::Max(Self->Pairing, 0) + Dir + Self->Pairings.Num()) % Self->Pairings.Num();
+		return FReply::Handled();
+	};
+	TSharedRef<SWidget> PairRow = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth()[SNew(SButton).OnClicked_Lambda([PairStep] { return PairStep(-1); })[Label(FText::FromString(TEXT(" < ")), 18, White)]]
+		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).HAlign(HAlign_Center)
+		[Label(TAttribute<FText>::CreateLambda([Self]
+		{
+			if (!Self.IsValid() || !Self->Pairings.IsValidIndex(Self->Pairing)) return FText::FromString(TEXT("this level"));
+			// "Arena_kim_vs_grandpa" -> "KIM vs GRANDPA"; plain "Arena" is build_scene.py's default pairing
+			const FString N = Self->Pairings[Self->Pairing].AssetName.ToString();
+			const FString P = N == TEXT("Arena") ? TEXT("GRANDPA vs GRANDPA") : N.RightChop(6).ToUpper().Replace(TEXT("_VS_"), TEXT(" vs "));
+			return FText::FromString(Self->Pairing == Self->HerePairing ? P : P + TEXT("  (loads it)"));
+		}), 18, Hi)]
+		+ SHorizontalBox::Slot().AutoWidth()[SNew(SButton).OnClicked_Lambda([PairStep] { return PairStep(1); })[Label(FText::FromString(TEXT(" > ")), 18, White)]];
 	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f));	// the roster: 4 x 4 slots
 	for (int32 i = 0; i < RosterSize; ++i)
 	{
@@ -336,7 +371,9 @@ void ASlapHUD::BuildUi()
 	}
 	auto Start = [Self, Menu]
 	{
-		if (!Self.IsValid() || !Self->Controller.IsValid()) return FReply::Handled();
+		if (!Self.IsValid()) return FReply::Handled();
+		if (Self->Pairing != Self->HerePairing) { Self->Travel(Self->Pairing); return Menu(false); }
+		if (!Self->Controller.IsValid()) return FReply::Handled();
 		UNNEModelData* B[2] = {};
 		for (int32 a = 0; a < 2; ++a)
 		{
@@ -417,7 +454,8 @@ void ASlapHUD::BuildUi()
 							[
 								SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda(MatchText), 16, White, true)]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 14.f, 0.f, 4.f)[Corner(0)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 14.f, 0.f, 4.f)[PairRow]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f)[Corner(0)]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f)[Corner(1)]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
 								[SAssignNew(Hit[HitStart], SButton).HAlign(HAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START NEW MATCH")), 18, White)]]
@@ -449,6 +487,13 @@ void ASlapHUD::BuildUi()
 			]
 		];
 	VC->AddViewportWidgetContent(Ui.ToSharedRef(), 10);
+}
+
+void ASlapHUD::Travel(int32 P)
+{
+	if (!Pairings.IsValidIndex(P)) return;
+	UE_LOG(LogTemp, Log, TEXT("SlapHUD: opening pairing %s"), *Pairings[P].PackageName.ToString());
+	UGameplayStatics::OpenLevel(this, Pairings[P].PackageName);	// the match here is abandoned unscored, as START does
 }
 
 void ASlapHUD::LoadRoster()

@@ -25,7 +25,7 @@ struct FSlapHud;
  * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
  * Slate layer inside the safe zone: title, FPS, menu, debug line, build stamp at the corners; the menu is a tabbed bottom
- * sheet: MATCH (pick each corner's brain, start a new match), ROSTER (every character card), VIEW (toggles), ABOUT
+ * sheet: MATCH (pick the pairing and each corner's brain, start a new match), ROSTER (every character card), VIEW (toggles), ABOUT
  * (legend). `-SlapMenu=<0-3>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it.
  */
 UCLASS()
@@ -71,6 +71,10 @@ private:
 	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: VIEW tab
 	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
+	TArray<FAssetData> Pairings;	// /Game/Levels/Arena*: one level per pairing (build_scene.py SLAP_RED / SLAP_BLUE)
+	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
+	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
+	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/Arena open the next pairing at 3 s, then log what loaded
 	enum EHit { HitMenu, HitTabMatch, HitTabView, HitTelemetry, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
 	TSharedPtr<SWidget> Hit[HitCount];	// click targets for -SlapUiTest
 	bool bUiTest = false, bUiChecked = false, bUiDone = false;
