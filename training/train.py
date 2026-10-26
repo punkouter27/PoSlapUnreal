@@ -177,6 +177,8 @@ def main():
     ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
     ap.add_argument("--opponent", default=None, help="L4 against a frozen brain: <character>:<checkpoint .pt> (a mixed pairing)")
     ap.add_argument("--out", default=None, help="graduated brain's name in models/brains (default <char>_<level>[_vs_<opponent>]): a challenger keeps the champions")
+    ap.add_argument("--reach-start", type=float, default=None, help="strike target from easy (0) to the real head (1); overrides the level's start")
+    ap.add_argument("--imit-start", type=float, default=None, help="reference-slap imitation weight at the start; overrides the level's (0: no reference slap)")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
@@ -225,8 +227,8 @@ def main():
     carry = lambda key, role, start: float(extra[key]) if role in had and key in extra else start
     env.push_scale = min(carry("push_scale", 0, 0.0), L.get("max_push", 1.0)) if L.get("pushes") else 0.0
     env.hit_v = carry("hit_v", 1, float(L.get("hit_speed_start", L.get("hit_speed", 8.0))))
-    env.reach = carry("reach", 1, float(L.get("reach_start", 0.0 if "hit_speed_start" in L else 1.0)))
-    env.imit = carry("imit", 1, float(L.get("imit_start", 0.0)))
+    env.reach = carry("reach", 1, float(a.reach_start if a.reach_start is not None else L.get("reach_start", 0.0 if "hit_speed_start" in L else 1.0)))
+    env.imit = carry("imit", 1, float(a.imit_start if a.imit_start is not None else L.get("imit_start", 0.0)))
     env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
     curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit, "lr": ppo.cfg.lr}
     target = L["reward_target"]

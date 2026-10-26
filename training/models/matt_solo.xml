@@ -11,7 +11,7 @@
     <geom name="floor" type="plane" size="10 10 0.1" friction="0.8999999761581421 0.019999999552965164 0.009999999776482582" priority="1" rgba="0.25 0.25 0.28 1"/>
     <body name="target" mocap="true" pos="5 0 1.6"><geom type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>
     <geom name="podium" type="box" pos="0.41550999879837036 0.0 0.5619999766349792" size="0.10000000149011612 0.30000001192092896 0.5619999766349792" rgba="0.15 0.15 0.18 1"/>
-    <body name="pelvis" pos="-0.00949000008404255 0.0 0.9700242877006531" quat="1.0 0.0 0.0 0.0">
+    <body name="pelvis" pos="-0.00949000008404255 0.0 0.9615765810012817" quat="1.0 0.0 0.0 0.0">
       <joint name="root" type="free" damping="0" armature="0"/>
       <geom name="pelvis" type="capsule" pos="-0.00215999991632998 0.0 0.022409411147236824" quat="0.7071067690849304 -0.7071067690849304 0.0 0.0" size="0.14774970710277557 0.05956999957561493" mass="15.463800430297852" rgba="0.8 0.6 0.5 1"/>
       <body name="belly" pos="0.010870000347495079 0.0 0.13447000086307526">
@@ -114,16 +114,16 @@
     <position name="elbow_r" joint="elbow_r" kp="170.0" kv="6.937127590179443" ctrlrange="0.0 1.9547687768936157" forcerange="-59.5 59.5"/>
     <position name="wrist_flex_r" joint="wrist_flex_r" kp="48.57143020629883" kv="0.7689724564552307" ctrlrange="-0.8377580642700195 0.9773843884468079" forcerange="-17.0 17.0"/>
     <position name="wrist_dev_r" joint="wrist_dev_r" kp="36.42856979370117" kv="0.595095694065094" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-12.75 12.75"/>
-    <position name="hip_flex_l" joint="hip_flex_l" kp="534.2857055664062" kv="78.87646484375" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
-    <position name="hip_abd_l" joint="hip_abd_l" kp="388.5714416503906" kv="67.33255767822266" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
+    <position name="hip_flex_l" joint="hip_flex_l" kp="534.2857055664062" kv="78.16844940185547" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
+    <position name="hip_abd_l" joint="hip_abd_l" kp="388.5714416503906" kv="66.11071014404297" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
     <position name="hip_rot_l" joint="hip_rot_l" kp="242.85714721679688" kv="12.142857551574707" ctrlrange="-0.5585053563117981 0.5585053563117981" forcerange="-85.0 85.0"/>
-    <position name="knee_l" joint="knee_l" kp="534.2857055664062" kv="29.723831176757812" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
+    <position name="knee_l" joint="knee_l" kp="534.2857055664062" kv="29.60527229309082" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
     <position name="ankle_flex_l" joint="ankle_flex_l" kp="437.1428527832031" kv="21.85714340209961" ctrlrange="-0.6283185482025146 0.27925267815589905" forcerange="-153.0 153.0"/>
     <position name="ankle_roll_l" joint="ankle_roll_l" kp="145.7142791748047" kv="7.285714149475098" ctrlrange="-0.27925267815589905 0.27925267815589905" forcerange="-51.0 51.0"/>
-    <position name="hip_flex_r" joint="hip_flex_r" kp="534.2857055664062" kv="78.77770233154297" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
-    <position name="hip_abd_r" joint="hip_abd_r" kp="388.5714416503906" kv="67.24779510498047" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
+    <position name="hip_flex_r" joint="hip_flex_r" kp="534.2857055664062" kv="78.06880187988281" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
+    <position name="hip_abd_r" joint="hip_abd_r" kp="388.5714416503906" kv="66.0243911743164" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
     <position name="hip_rot_r" joint="hip_rot_r" kp="242.85714721679688" kv="12.142857551574707" ctrlrange="-0.5585053563117981 0.5585053563117981" forcerange="-85.0 85.0"/>
-    <position name="knee_r" joint="knee_r" kp="534.2857055664062" kv="29.723831176757812" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
+    <position name="knee_r" joint="knee_r" kp="534.2857055664062" kv="29.60527229309082" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
     <position name="ankle_flex_r" joint="ankle_flex_r" kp="437.1428527832031" kv="21.85714340209961" ctrlrange="-0.6283185482025146 0.27925267815589905" forcerange="-153.0 153.0"/>
     <position name="ankle_roll_r" joint="ankle_roll_r" kp="145.7142791748047" kv="7.285714149475098" ctrlrange="-0.27925267815589905 0.27925267815589905" forcerange="-51.0 51.0"/>
   </actuator>

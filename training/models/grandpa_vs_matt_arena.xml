@@ -95,7 +95,7 @@
         </body>
       </body>
     </body>
-    <body name="blue_pelvis" pos="0.42500001192092896 0.0 0.9700242877006531" quat="0.0 0.0 0.0 1.0">
+    <body name="blue_pelvis" pos="0.42500001192092896 0.0 0.9615765810012817" quat="0.0 0.0 0.0 1.0">
       <joint name="blue_root" type="free" damping="0" armature="0"/>
       <geom name="blue_pelvis" type="capsule" pos="-0.00215999991632998 0.0 0.022409411147236824" quat="0.7071067690849304 -0.7071067690849304 0.0 0.0" size="0.14774970710277557 0.05956999957561493" mass="15.463800430297852" rgba="0.3 0.4 0.85 1"/>
       <body name="blue_belly" pos="0.010870000347495079 0.0 0.13447000086307526">
@@ -228,16 +228,16 @@
     <position name="blue_elbow_r" joint="blue_elbow_r" kp="170.0" kv="6.937127590179443" ctrlrange="0.0 1.9547687768936157" forcerange="-59.5 59.5"/>
     <position name="blue_wrist_flex_r" joint="blue_wrist_flex_r" kp="48.57143020629883" kv="0.7689724564552307" ctrlrange="-0.8377580642700195 0.9773843884468079" forcerange="-17.0 17.0"/>
     <position name="blue_wrist_dev_r" joint="blue_wrist_dev_r" kp="36.42856979370117" kv="0.595095694065094" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-12.75 12.75"/>
-    <position name="blue_hip_flex_l" joint="blue_hip_flex_l" kp="534.2857055664062" kv="78.87646484375" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
-    <position name="blue_hip_abd_l" joint="blue_hip_abd_l" kp="388.5714416503906" kv="67.33255767822266" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
+    <position name="blue_hip_flex_l" joint="blue_hip_flex_l" kp="534.2857055664062" kv="78.16844940185547" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
+    <position name="blue_hip_abd_l" joint="blue_hip_abd_l" kp="388.5714416503906" kv="66.11071014404297" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
     <position name="blue_hip_rot_l" joint="blue_hip_rot_l" kp="242.85714721679688" kv="12.142857551574707" ctrlrange="-0.5585053563117981 0.5585053563117981" forcerange="-85.0 85.0"/>
-    <position name="blue_knee_l" joint="blue_knee_l" kp="534.2857055664062" kv="29.723831176757812" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
+    <position name="blue_knee_l" joint="blue_knee_l" kp="534.2857055664062" kv="29.60527229309082" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
     <position name="blue_ankle_flex_l" joint="blue_ankle_flex_l" kp="437.1428527832031" kv="21.85714340209961" ctrlrange="-0.6283185482025146 0.27925267815589905" forcerange="-153.0 153.0"/>
     <position name="blue_ankle_roll_l" joint="blue_ankle_roll_l" kp="145.7142791748047" kv="7.285714149475098" ctrlrange="-0.27925267815589905 0.27925267815589905" forcerange="-51.0 51.0"/>
-    <position name="blue_hip_flex_r" joint="blue_hip_flex_r" kp="534.2857055664062" kv="78.77770233154297" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
-    <position name="blue_hip_abd_r" joint="blue_hip_abd_r" kp="388.5714416503906" kv="67.24779510498047" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
+    <position name="blue_hip_flex_r" joint="blue_hip_flex_r" kp="534.2857055664062" kv="78.06880187988281" ctrlrange="-0.27925267815589905 1.535889744758606" forcerange="-187.0 187.0"/>
+    <position name="blue_hip_abd_r" joint="blue_hip_abd_r" kp="388.5714416503906" kv="66.0243911743164" ctrlrange="-0.3490658402442932 0.5585053563117981" forcerange="-136.0 136.0"/>
     <position name="blue_hip_rot_r" joint="blue_hip_rot_r" kp="242.85714721679688" kv="12.142857551574707" ctrlrange="-0.5585053563117981 0.5585053563117981" forcerange="-85.0 85.0"/>
-    <position name="blue_knee_r" joint="blue_knee_r" kp="534.2857055664062" kv="29.723831176757812" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
+    <position name="blue_knee_r" joint="blue_knee_r" kp="534.2857055664062" kv="29.60527229309082" ctrlrange="0.0 1.9547687768936157" forcerange="-187.0 187.0"/>
     <position name="blue_ankle_flex_r" joint="blue_ankle_flex_r" kp="437.1428527832031" kv="21.85714340209961" ctrlrange="-0.6283185482025146 0.27925267815589905" forcerange="-153.0 153.0"/>
     <position name="blue_ankle_roll_r" joint="blue_ankle_roll_r" kp="145.7142791748047" kv="7.285714149475098" ctrlrange="-0.27925267815589905 0.27925267815589905" forcerange="-51.0 51.0"/>
   </actuator>

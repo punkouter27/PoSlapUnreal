@@ -18,16 +18,16 @@
   "faint_strength": 0.05,
   "notes": "Third roster athlete (user, 2026-10-26: \"6 foot 3, 240 pounds, slow but strong, passes out randomly on rare occasion\"). 1.905 m, 108.9 kg. Strongest and slowest on the roster (strength 0.85 vs Grandpa 0.5 / Kim 0.6; speed 0.55 vs 0.75 / 0.95), a little stiff (flexibility 0.8), a thick neck (toughness 1.15, takes neck damage slower), tires faster for his size (0.06 per strike). Strike mass scaled to body mass as for the others (3.0 kg per 78 kg). Fainting (rules: match.py, USlapController, Web/sim.js): each turn he faints with chance faint_chance_per_turn at a seeded moment - every motor at faint_strength of its force for faint_seconds - and the referee calls what follows as usual. Same rules as grandpa.json otherwise.",
   "style": {
-    "summary": "Balance: wide, heavy and planted - knees soft, feet wide, hands low. Slap: a slow, heavy haymaker - a big hip and trunk wind-up, a long straight arm, late to land but heavy.",
+    "summary": "Balance: wide, low and planted - knees bent 22 deg, hips sat back, hands low. Slap: a heavy swing from the low base - a hip and trunk turn, a long arm, a short follow-through.",
     "stance_deg": {
-      "knee_l": 12,
-      "knee_r": 12,
-      "hip_flex_l": 4,
-      "hip_flex_r": 4,
+      "knee_l": 22,
+      "knee_r": 22,
+      "hip_flex_l": 12,
+      "hip_flex_r": 12,
       "hip_abd_l": 8,
       "hip_abd_r": 8,
-      "ankle_flex_l": 14,
-      "ankle_flex_r": 14,
+      "ankle_flex_l": 16,
+      "ankle_flex_r": 16,
       "ankle_roll_l": -6,
       "ankle_roll_r": -6,
       "waist_flex": 1,
@@ -44,29 +44,29 @@
       "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Matt: a big hip and trunk wind-up and a long, fairly straight arm; slow phases.",
       "guess_deg": {
         "waist_twist": [
-          -25,
-          20,
-          22
+          -20,
+          15,
+          15
         ],
         "waist_flex": [
-          1,
-          8,
-          6
+          0,
+          3,
+          2
         ],
         "waist_side": [
           0,
-          3,
-          3
+          0,
+          0
         ],
         "shoulder_swing_r": [
-          20,
-          -75,
-          -85
+          15,
+          -70,
+          -75
         ],
         "shoulder_raise_r": [
-          30,
-          20,
-          8
+          25,
+          22,
+          18
         ],
         "shoulder_twist_r": [
           -20,
@@ -104,24 +104,24 @@
           20
         ],
         "hip_flex_l": [
-          4,
-          8,
-          8
+          12,
+          12,
+          12
         ],
         "hip_flex_r": [
-          4,
-          8,
-          8
+          12,
+          12,
+          12
         ],
         "knee_l": [
-          14,
-          20,
-          20
+          22,
+          26,
+          26
         ],
         "knee_r": [
-          14,
-          20,
-          20
+          22,
+          26,
+          26
         ],
         "hip_rot_l": [
           -8,
@@ -135,9 +135,9 @@
         ]
       },
       "times_s": [
-        0.45,
-        0.22,
-        0.3
+        0.5,
+        0.35,
+        0.45
       ],
       "delays_s": {
         "hip_rot_l": 0.0,
