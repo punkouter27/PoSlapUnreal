@@ -8,8 +8,8 @@ export const MATCHUPS = {
         corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_L4" }, { prefix: "blue_", char: "grandpa", brain: "grandpa_L4" }] },
   kk: { name: "Kim vs Kim", xml: "kim_vs_kim_arena.xml", defenderRole: -1,
         corners: [{ prefix: "red_", char: "kim", brain: "kim_L4" }, { prefix: "blue_", char: "kim", brain: "kim_L4" }] },
-  gk: { name: "Grandpa vs Kim", xml: "grandpa_vs_kim_arena.xml", defenderRole: 0, untrained: true,
-        corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_L2_lean10_wip" }, { prefix: "blue_", char: "kim", brain: "kim_final_prel4" }] },
+  gk: { name: "Grandpa vs Kim", xml: "grandpa_vs_kim_arena.xml", defenderRole: -1,
+        corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_final_vs_kim" }, { prefix: "blue_", char: "kim", brain: "kim_final_vs_grandpa" }] },
 };
 
 export async function loadMatch(mj, ort, get, emit, key = "gg") {

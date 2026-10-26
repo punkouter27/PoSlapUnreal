@@ -5,7 +5,7 @@
 export const OBS = 136;                    // DOCS/BRAIN_IO.md
 const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
-export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2;
+export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
 const BOX = [0.20, 0.25], KICK_STEPS = 2;
 const WEIGHTS = [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]];      // judges: speed, head, stagger, defence
 
@@ -39,6 +39,10 @@ class Athlete {
     this.maxStep = this.order.map((_, i) => (Array.isArray(s) ? s[i] : s) * 0.02);
     this.neck = this.act.filter((_, i) => this.order[i].startsWith("neck"));
     this.fr0 = this.neck.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);
+    this.hipL = this.order.indexOf("hip_flex_l"); this.hipR = this.order.indexOf("hip_flex_r");
+    this.kneeL = this.order.indexOf("knee_l"); this.kneeR = this.order.indexOf("knee_r");
+    this.ankleL = this.order.indexOf("ankle_flex_l"); this.ankleR = this.order.indexOf("ankle_flex_r");
+    this.shL = this.order.indexOf("shoulder_swing_l"); this.shR = this.order.indexOf("shoulder_swing_r");
     this.fp = fp; this.mem = [0, 0]; this.stamina = 1; this.neckStrength = 1; this.reset();
   }
   reset() { this.goal = this.standPose.slice(); this.prev = new Float32Array(this.order.length); this.hist = []; }
@@ -93,9 +97,16 @@ export class Match {
 
   newMatch() {
     this.matchNo++; this.first = Math.random() < 0.5 ? 0 : 1; this.round = 1; this.turnInRound = 0;
-    this.cards = WEIGHTS.map(() => [0, 0]); this.recs = []; this.result = null;
+    this.cards = WEIGHTS.map(() => [0, 0]); this.recs = []; this.result = null; this.lastWinner = null;
     for (const x of this.sides) { x.mem = [0, 0]; x.stamina = 1; x.neckStrength = 1; }
     this.emit({ type: "match_start", match: this.matchNo, first: this.sides[this.first].name });
+    if (typeof window !== "undefined" && !new URLSearchParams(location.search).has("nowalkin")) {
+      this.stand();
+      this.walkInTotal = this.walkInLeft = Math.round(WALKIN / this.dt);
+      this.walkInProg = 0;
+      this.phase = "walkin";
+      return;
+    }
     this.startTurn();
   }
 
@@ -141,6 +152,7 @@ export class Match {
 
   // one physics step (200 Hz) of the current turn or hold; brains decide every 4th step
   async step() {
+    if (this.phase === "walkin") return this.walkinStep();
     if (this.phase === "hold" || this.phase === "after") return this.holdStep();
     if (this.phase !== "turn") return;
     const { mj, m, d, dt } = this, S = this.sides[this.s], D = this.sides[1 - this.s], rec = this.rec, t = this.k * dt;
@@ -228,11 +240,46 @@ export class Match {
     this.phase = "hold"; this.holdLeft = Math.round(HOLD / this.dt);
   }
 
+  async walkinStep() {
+    const { mj, m, d } = this;
+    const prog = 1 - this.walkInLeft / Math.max(1, this.walkInTotal);
+    this.walkInProg = prog;
+    const s = clamp(prog / 0.85, 0, 1), u = s * s * (3 - 2 * s);
+    const offset = 1.60 * (1 - u), env = prog < 0.85 ? Math.sin(Math.PI * s) : 0;
+    const phase = 2 * Math.PI * 1.8 * prog * WALKIN;
+    this.sides.forEach((x, a) => {
+      const sign = a === 0 ? -1 : 1;
+      d.qpos[x.rq] = m.qpos0[x.rq] + sign * offset;
+      d.qpos[x.rq + 1] = m.qpos0[x.rq + 1];
+      d.qpos[x.rq + 2] = m.qpos0[x.rq + 2] + 0.015 * env * Math.abs(Math.sin(phase));
+      for (let k = 3; k < 7; k++) d.qpos[x.rq + k] = m.qpos0[x.rq + k];
+      for (let k = 0; k < 6; k++) d.qvel[x.rv + k] = 0;
+      const sinP = Math.sin(phase + (a === 1 ? Math.PI * 0.5 : 0));
+      const cosP = Math.cos(phase + (a === 1 ? Math.PI * 0.5 : 0));
+      const setJ = (idx, delta) => {
+        if (idx < 0) return;
+        const val = clamp(x.standPose[idx] + env * delta, x.lo[idx], x.hi[idx]);
+        d.qpos[x.qa[idx]] = val; x.goal[idx] = val;
+      };
+      setJ(x.hipL, 0.38 * sinP); setJ(x.hipR, -0.38 * sinP);
+      setJ(x.kneeL, 0.55 * Math.max(0, sinP)); setJ(x.kneeR, 0.55 * Math.max(0, -sinP));
+      setJ(x.ankleL, 0.18 * cosP); setJ(x.ankleR, -0.18 * cosP);
+      setJ(x.shL, -0.30 * sinP); setJ(x.shR, 0.30 * sinP);
+    });
+    mj.mj_forward(m, d);
+    if (--this.walkInLeft <= 0) this.startTurn();
+  }
+
   async holdStep() {   // the crowd sees the result: both stand (guard role) before the next turn resets them
     const { mj, m, d } = this;
     if (this.holdLeft % 4 === 0) {
       mj.mj_kinematics(m, d);
       for (const x of this.sides) x.decide(await x.policy(x.obs(d, 0)));
+      if (this.phase === "after" && this.lastWinner !== null) {
+        const w = this.sides[this.lastWinner];
+        if (w.shL >= 0) w.goal[w.shL] = clamp(w.standPose[w.shL] + 0.85, w.lo[w.shL], w.hi[w.shL]);
+        if (w.shR >= 0) w.goal[w.shR] = clamp(w.standPose[w.shR] + 0.85, w.lo[w.shR], w.hi[w.shR]);
+      }
     }
     this.applyCtrl(); mj.mj_step(m, d);
     if (--this.holdLeft <= 0) { if (this.phase === "hold") this.startTurn(); else this.newMatch(); }
@@ -265,6 +312,7 @@ export class Match {
   }
 
   endMatch(how, winner) {
+    this.lastWinner = winner;
     if (winner !== null) this.series[winner]++;
     this.result = { how, winner: winner === null ? null : this.sides[winner].name, cards: this.cards };
     this.emit({ type: "result", ...this.result });

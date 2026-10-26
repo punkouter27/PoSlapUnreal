@@ -166,7 +166,13 @@ function loop(now) {
   const h = game.match.dt;
   if (!busy && debt >= h) { const n = Math.min(Math.floor(debt / h), 60); debt -= n * h; if (debt > 0.25) debt = 0; advance(n); }
   const M = game.match;
-  if (M.phase === "turn") $("clock").textContent = `${M.touchK === null ? "clock" : "recovery"} ${(M.touchK === null ? Math.max(0, 30 - M.k * h) : Math.max(0, 5 - (M.k - M.touchK) * h)).toFixed(1)} s`;
+  if (M.phase === "walkin") {
+    $("round").textContent = "RING WALK-IN";
+    $("turn").textContent = `Approaching podium (${Math.round((M.walkInProg || 0) * 100)}%)`;
+    $("clock").textContent = `walk-in ${Math.max(0, (M.walkInLeft || 0) * h).toFixed(1)} s`;
+  } else if (M.phase === "turn") {
+    $("clock").textContent = `${M.touchK === null ? "clock" : "recovery"} ${(M.touchK === null ? Math.max(0, 30 - M.k * h) : Math.max(0, 5 - (M.k - M.touchK) * h)).toFixed(1)} s`;
+  }
   draw(game.d); tickFx(dt * (paused ? 0 : 1)); controls.update(); renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
