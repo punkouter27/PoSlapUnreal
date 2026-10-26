@@ -21,6 +21,8 @@ namespace Slap
 struct FSlapHud
 {
 	int32 Match = 0, Round = 0;
+	int64 Steps = 0;					// MuJoCo steps since the level bound (the top-centre step counter)
+	double Timestep = 0.002;			// s per step
 	FString Striker, Defender;
 	double Clock = 0.0;					// strike clock left (s); recovery left once struck
 	bool bStruck = false;
@@ -130,7 +132,7 @@ public:
 	int32 DefenderRole = -1;
 
 	/** Thread-safe copy of the match state for the HUD (into a kept FSlapHud: its strings reuse their buffers). */
-	void GetHud(FSlapHud& Out) const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); Out = Hud; }
+	void GetHud(FSlapHud& Out) const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); Out = Hud; Out.Steps = StepCount.load(std::memory_order_relaxed); Out.Timestep = Timestep; }
 
 	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
 	 *  physics step; the match in progress is abandoned, unscored. */
@@ -281,7 +283,8 @@ private:
 	FString RecordFile;
 	int32 RecordSteps = 1000;
 
-	int64 StepCount = 0;
+	std::atomic<int64> StepCount = 0;	// physics thread writes; the HUD's step counter reads it (GetHud)
+	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
 	TArray<float> Action;	// brain output scratch, sized once
 	bool Infer(const FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into Action, its critic into Value

@@ -1,0 +1,99 @@
+<!doctype html><meta charset="utf-8"><title>Mobile portrait zero-scroll compaction and integrity</title>
+<style>body{font:15px system-ui;max-width:1060px;margin:24px auto;padding:0 16px;background:#14141a;color:#e8e8ee}
+h1{font-size:24px}h2{font-size:18px;margin-top:34px;border-bottom:1px solid #333;padding-bottom:6px}
+.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:300px;margin:0}
+img{width:100%;border:1px solid #3a3a44;display:block}
+figcaption{font-size:13px;color:#a8acb6;padding-top:6px}
+code{font-size:13px;background:#22222c;padding:1px 5px;border-radius:3px}
+table{border-collapse:collapse;font-size:14px;margin:10px 0}
+td,th{border:1px solid #33334a;padding:5px 11px;text-align:left}
+th{background:#22222c;color:#cfd2dc}
+.ok{color:#60dc78;font-weight:600}.warn{color:#ffb020}.bad{color:#ff5c5c}
+li{margin:6px 0}p{line-height:1.55}</style>
+
+<h1>Mobile portrait: zero-scroll compaction and integrity (2026-10-26)</h1>
+<p>The HUD is one canvas layer (legacy <code>AHUD::DrawHUD</code>, authored at 540 &times; 960) plus one Slate layer
+(<code>SSafeZone</code> overlay, 1080-wide reference). Both carry their own safe-area and DPI arithmetic, so the menu sheet
+could run off the bottom of the screen and cover the corner anchors without anything noticing. This pass makes the sheet's
+height a <b>measured budget</b>, compacts every tab to fit inside it, and adds a layout audit that proves it at four phone
+aspects. Nothing scrolls: the sheet's content is clipped inside its budget, never cut by accident.</p>
+
+<h2>What changed</h2>
+<ol>
+<li><b>Height budget.</b> The sheet's content box is capped to a budget measured from the layer
+(<code>SheetBudget</code>, 78 % of the layer, less the safe inset, the anchor row and the padding) and clips whatever does
+not fit. The tab row sits outside the cap, so it is always reachable.</li>
+<li><b>The sheet sits above the corner anchors.</b> It used to run to the screen edge and hide the build stamp
+(bottom-right) and the physics debug line (bottom-left) for as long as the menu was open. It now stops above that row, so
+all five anchors stay where the spec puts them.</li>
+<li><b>The judges table is one line</b> instead of four, and the hand speed and the head snap share a line. The canvas panel
+behind the round/clock block is now sized to the text that is on it: the arena shows through instead of a 300 &times; 250
+black box.</li>
+<li><b>The seven view badges share one row</b> (TEL SCI XRAY SLOW LIVE COM DBG), each a wide thumb target, instead of two
+rows of 4 + 3.</li>
+<li><b>The ABOUT legend is a two-column grid</b> and the roster card is cut to four lines. Before, both wrapped and the last
+line fell off the bottom of the screen.</li>
+<li><b>Touch targets.</b> The roster tiles get a 44 dp minimum width; the badges fill their cell. The audit checks every
+target is at least 44 dp.</li>
+<li><b>A failed level load no longer bricks the menu.</b> <code>Travel()</code> checks the package exists before opening it,
+and a level that does not open within 6 s gives the menu back &mdash; before, <code>bTravelling</code> stayed true forever
+and every control was dead.</li>
+</ol>
+
+<h2>The HUD canvas panel: before and after</h2>
+<div class="row">
+<figure><img src="before_hud_annotated.png" alt="Before"><figcaption>Before: a fixed 300 &times; 250 black box over the crowd, 9 lines of telemetry inside it</figcaption></figure>
+<figure><img src="after_hud_annotated.png" alt="After"><figcaption>After: the panel fits its 6 lines, the arena shows through</figcaption></figure>
+</div>
+
+<h2>MATCH sheet: before and after</h2>
+<div class="row">
+<figure><img src="before_menu0_annotated.png" alt="Before"><figcaption>Before: the judges table takes 4 rows, the badges 2 rows, and the build stamp is hidden behind the sheet</figcaption></figure>
+<figure><img src="after_menu0_annotated.png" alt="After"><figcaption>After: the judges are one line, the badges one row of 7, and the build stamp is back in the corner</figcaption></figure>
+</div>
+
+<h2>ROSTER and ABOUT: the two tabs that used to run off the screen</h2>
+<div class="row">
+<figure><img src="before_menu1_annotated.png" alt="Before: roster"><figcaption>Before: the card text wraps and the last line falls off the bottom</figcaption></figure>
+<figure><img src="after_menu1_annotated.png" alt="After: roster"><figcaption>After: the grid, then four fixed lines</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="before_menu2_annotated.png" alt="Before: about"><figcaption>Before: the legend wraps over eight rows and the build line is cut</figcaption></figure>
+<figure><img src="after_menu2_annotated.png" alt="After: about"><figcaption>After: two columns, no wrap, nothing cut</figcaption></figure>
+</div>
+
+<h2>The layout audit</h2>
+<p><code>-SlapLayoutTest</code> opens the sheet, walks the three tabs and measures the laid-out widgets: the sheet against
+the layer, the tab content against the box it was given, the tab row, the five corner anchors and every touch target. It logs
+one line per tab and a summary, then quits. Sizes are in Slate units (dp); the absolute rects are used for the overlap
+checks. Run: <code>UnrealEditor.exe PoSlapUnreal.uproject -windowed -ResX=540 -ResY=960 -nosound -SlapLayoutTest -game</code>.</p>
+<table>
+<tr><th>Viewport</th><th>Aspect</th><th>Layer (dp)</th><th>Budget</th><th>Sheet MATCH / ROSTER / ABOUT</th><th>Content wanted = got</th><th>Smallest target</th><th>Anchors covered</th><th>Fails</th></tr>
+<tr><td>540 &times; 960</td><td>9:16</td><td>1081 &times; 1922</td><td>1499</td><td>386 / 365 / 388</td><td>314 = 314</td><td>44 dp</td><td>0</td><td class="ok">0</td></tr>
+<tr><td>412 &times; 915</td><td>20:9</td><td>928 &times; 2061</td><td>1607</td><td>365 / 365 / 366</td><td>293 = 293</td><td>44 dp</td><td>0</td><td class="ok">0</td></tr>
+<tr><td>360 &times; 800</td><td>20:9</td><td>811 &times; 1802</td><td>1405</td><td>365 / 365 / 366</td><td>293 = 293</td><td>44 dp</td><td>0</td><td class="ok">0</td></tr>
+<tr><td>540 &times; 1350</td><td>21:9</td><td>1081 &times; 2703</td><td>2108</td><td>386 / 365 / 388</td><td>314 = 314</td><td>44 dp</td><td>0</td><td class="ok">0</td></tr>
+</table>
+<p>The budget is never reached (the tallest tab wants 388 dp of 1499), and the content asks for exactly the room it gets in
+every tab, so nothing is clipped and nothing scrolls. The 21:9 case is the same sheet on a taller screen:</p>
+<div class="row"><figure><img src="after_menu0_tall.png" alt="540 x 1350"><figcaption>540 &times; 1350 (21:9): the same sheet, the arena gets the extra height</figcaption></figure></div>
+
+<h2>Checks</h2>
+<ul>
+<li><code>-SlapUiTest</code> (the click test): <span class="ok">PASS</span> &mdash; 10 of 10 clicks right, a match ended
+(series 1-0) and the next began.</li>
+<li><code>-SlapLayoutTest</code>: <span class="ok">0 fails</span> at four aspects, three tabs each.</li>
+<li>The match, the brains and the physics are untouched: this is a display-only change.</li>
+</ul>
+
+<h2>Not done</h2>
+<ul>
+<li>The two renderers still keep separate safe-area arithmetic (the canvas uses <code>Top</code>/<code>Bot</code>, the Slate
+layer uses <code>SSafeZone</code>). They agree today because the canvas is written against the same numbers, but one
+authority for both would be better.</li>
+<li>The safe area is only as good as the platform's report. A notch or a gesture bar in landscape, or a split screen, is not
+covered by the four aspects above.</li>
+<li>The platform's safe inset is not faked in the test, so the desktop runs show a zero bottom inset. A phone run with a
+real nav bar is still to do (task E5).</li>
+<li>The roster card truncates a long summary or brain list with an ellipsis. The full text is still in the card JSON.</li>
+</ul>

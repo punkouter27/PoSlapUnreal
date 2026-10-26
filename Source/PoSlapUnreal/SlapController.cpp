@@ -153,6 +153,7 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 		m->opt.iterations = (int)Opt->GetNumberField(TEXT("iterations"));
 		const TArray<TSharedPtr<FJsonValue>>& G = Opt->GetArrayField(TEXT("gravity"));
 		for (int32 k = 0; k < 3; ++k) m->opt.gravity[k] = G[k]->AsNumber();
+		Timestep = m->opt.timestep;
 		UE_LOG(LogSlap, Log, TEXT("MuJoCo options from %s: timestep %.17g, integrator %d"), *Fingerprint, m->opt.timestep, m->opt.integrator);
 	}
 	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state

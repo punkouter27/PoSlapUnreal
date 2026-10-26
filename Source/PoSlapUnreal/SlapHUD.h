@@ -30,9 +30,13 @@ class SWidget;
  * spotlight on the striker, and a half-speed replay of a KO. All cosmetic: MuJoCo decides everything.
  * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
- * Slate layer inside the safe zone: title, FPS, menu, debug line, build stamp at the corners; the menu is a tabbed bottom
- * sheet: MATCH (pick the pairing and each corner's brain, start a new match), ROSTER (every character card), VIEW (toggles), ABOUT
- * (legend). `-SlapMenu=<0-3>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it.
+ * Slate layer inside the safe zone, one corner each: TL title, TC FPS + MuJoCo step counter, TR menu (icon), BL physics
+ * debug (opt-in), BR build stamp. The menu is a tabbed bottom sheet, tabs at its foot (thumb reach): MATCH (status, pairing,
+ * each corner's brain, START, instant replay, and the view badges TEL SCI XRAY SLOW LIVE COM DBG on one screen), ROSTER
+  * (every character card), ABOUT (legend). Nothing scrolls: the sheet's content is capped to a measured height budget and
+  * every tab is compacted to fit it. `-SlapMenu=<0-2>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it;
+  * `-SlapLayoutTest` measures the laid-out sheet against the budget, the safe zone, the corner anchors and the touch
+  * minimum, and logs what would overflow.
  */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
@@ -84,7 +88,16 @@ private:
 
 	// Slate layer and menu
 	TSharedPtr<SWidget> Ui;
-	int32 Tab = 0;
+		float SheetBudget = 0.f;	// the sheet's content height cap in Slate units: measured from the layer, so it follows the safe zone and any resize
+		TSharedPtr<SWidget> SheetRoot, SheetBody, SheetContent, SheetTabs;	// the sheet, its capped box, the tab content and the tab row: the audit measures them
+		TSharedPtr<SWidget> Anchor[5];	// TL, TC, TR, BL, BR: the audit checks the sheet never covers one
+		TArray<TSharedPtr<SWidget>> Targets;	// the 44-unit targets: the audit checks each is at least that big
+		void LayoutAudit();	// -SlapLayoutTest: the sheet against the budget, the safe zone, the corner anchors and the touch minimum
+		bool bLayoutTest = false;
+		int32 LayoutFails = 0, LayoutStep = 0, LayoutWait = 0;
+		float DpiScale = 1.f;	// the Slate scale the layer is laid out at: the audit reports it next to the measured sizes
+	float SafeBottomSlate = 0.f;	// the platform's bottom safe inset in Slate units: the sheet sits above it and the anchor row
+		int32 Tab = 0;
 	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
 	int32 RosterSel = 0;
@@ -96,7 +109,10 @@ private:
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
 	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
 	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/Arena open the next pairing at 3 s, then log what loaded
-	enum EHit { HitMenu, HitTabMatch, HitTabView, HitTelemetry, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
+	enum EHit { HitMenu, HitTabMatch, HitTabRoster, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
+	bool bTravelling = false;	// a pairing's level is opening: START, replay and the pickers stay inert until it has
+	double TravelledAt = -1.0;	// when the level was asked for: if it never opens, the menu comes back (a failed load would brick it)
+	void InstantReplay();	// the MATCH tab's replay button: the last 2.5 s at half speed (or back to live)
 	TSharedPtr<SWidget> Hit[HitCount];	// click targets for -SlapUiTest
 	bool bUiTest = false, bUiChecked = false, bUiDone = false;
 	int32 UiStep = 0, UiFails = 0, UiMatch0 = 0, UiSeq = 0;
