@@ -62,11 +62,11 @@ LEVELS = {
     "S2": dict(  # Stage 2: Take steady, natural alternating heel-to-toe steps and walk at 1.0-1.4 m/s
         model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(1.0, 1.4),
         reward_target={0: 1800.0},
-        check={0: dict(episodes=100, min_no_fall=0.95)},
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6)},   # pace: walked / commanded distance
     ),
     "S3": dict(  # Stage 3: Jog (2.0-3.2 m/s), turn smoothly, stop smoothly, and handle +/- 8 deg uneven slopes
         model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(2.0, 3.2), max_slope_deg=8.0,
         reward_target={0: 1600.0},
-        check={0: dict(episodes=100, min_no_fall=0.92)},
+        check={0: dict(episodes=100, min_no_fall=0.92, min_pace=0.6)},
     ),
 }

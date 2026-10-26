@@ -8,6 +8,8 @@
 #include "SlapHUD.generated.h"
 
 class ACameraActor;
+class IWebSocket;
+class UAudioComponent;
 class ULightComponent;
 class UPoseableMeshComponent;
 class UMaterialInstanceDynamic;
@@ -50,6 +52,12 @@ private:
 	void BuildUi();
 	void LoadRoster();	// training/characters/*.json into the 16 roster slots
 	void UiTest(const FSlapHud& H);
+	void DrawScience(const FSlapHud& H);	// KO danger on the floor, head impact, kinetic chain, the palm's trail
+	void DrawXRay(const FSlapHud& H);		// each brain's target pose (ghost) and a glow on what it reacts to
+	void Crowd(const FSlapHud& H, double Now);	// the crowd rises and roars with the tension; a gasp when a defender wobbles
+	void Live(const FSlapHud& H);			// second screen: poses and events over a WebSocket (Web/live.py or Azure Web PubSub)
+	void LiveSend(const FString& Msg);
+	void LoadLeague();						// training/models/league.json (training/scouting.py): one scouting line per brain
 
 	TWeakObjectPtr<USlapController> Controller;
 	FSlapHud Last;	// this frame's match state (DrawHUD); the Slate lambdas read it too
@@ -72,6 +80,7 @@ private:
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
 	int32 RosterSel = 0;
 	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: VIEW tab
+	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;	// slow motion is an effect, on by default
 	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
 	TArray<FAssetData> Pairings;	// /Game/Levels/Arena*: one level per pairing (build_scene.py SLAP_RED / SLAP_BLUE)
@@ -121,6 +130,28 @@ private:
 	FString SeenTurnStriker;
 	FDateTime CommentaryStamp;
 
+	// broadcast science and X-ray (game time)
+	TArray<TPair<double, FVector>> Trail;	// the striker's palm, last 0.35 s
+	int32 TrailOwner = -1;
+	float Dilation = 1.f;	// the world clock follows the physics pace (live slow motion)
+
+	// crowd
+	float Tension = 0.f;
+	bool bGasped = false;
+	TWeakObjectPtr<UAudioComponent> CrowdAudio;
+
+	// sidecars: chat hype (Scripts/chat.py), the league (training/scouting.py)
+	float Hype = 0.f;
+	FString ChatLine;
+	double ChatAt = -100.0;
+	TMap<FString, FString> Scout;	// brain name -> one scouting line
+
+	// second screen
+	TSharedPtr<IWebSocket> Socket;
+	FString LiveUrl = TEXT("ws://127.0.0.1:8765/ue");	// -SlapLive=<url>; an Azure Web PubSub client URL works too
+	bool bAzure = false;
+	double LiveSent = 0.0, LiveRetry = 0.0;
+
 	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> Spray;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> SlapSound;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdReact;
@@ -128,6 +159,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Bell;
 	UPROPERTY(Transient) TObjectPtr<USoundAttenuation> Ringside;	// the slap pans with where it lands on screen
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> Skin;	// red, blue: the cheek ripple, flush, fatigue
+	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> CrowdSkin;	// the crowd mesh's materials: Rise, Cheer (Scripts/broadcast_fx.py)
 };
 
 UCLASS()

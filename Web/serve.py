@@ -3,6 +3,7 @@
 Serves the repo root, so the page reads training/ (the arena XML, fingerprints, cards, ONNX brains) as the trainer
 and Unreal do; .mjs and .wasm get their browser MIME types.
 """
+import argparse
 import functools
 import http.server
 from pathlib import Path
@@ -16,6 +17,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+ap = argparse.ArgumentParser()
+ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 serves phones on the network (the second screen, Web/live.py)")
+host = ap.parse_args().host
 handler = functools.partial(Handler, directory=str(ROOT))
-print("PoSlap: http://localhost:8080/Web/", flush=True)
-http.server.ThreadingHTTPServer(("127.0.0.1", 8080), handler).serve_forever()
+print(f"PoSlap: http://{'localhost' if host == '127.0.0.1' else host}:8080/Web/", flush=True)
+http.server.ThreadingHTTPServer((host, 8080), handler).serve_forever()

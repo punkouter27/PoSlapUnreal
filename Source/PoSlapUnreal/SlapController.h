@@ -49,6 +49,19 @@ struct FSlapHud
 	// tale of the tape, series
 	FString Name[2], Brain[2], Tape[2], Card[2];	// Card: the character card's name ("grandpa"): which brains fit
 	int32 Wins[2] = {}, Draws = 0;
+
+	// broadcast science, 50 Hz (display only: nothing here feeds back into the match)
+	double Danger[2] = {};				// KO danger: the capture point outside the planted soles, 0 inside, 1 at 15 cm out
+	FVector Capture[2];					// capture point on the floor (Unreal cm): where he would have to step to stop
+	double Hic = 0.0, Bric = 0.0;		// the defender's head since the touch: HIC15, brain injury criterion (NHTSA)
+	double Chain[5] = {};				// kinetic chain: when each link peaked before the touch (s): pelvis, waist, shoulder, elbow, palm
+	int32 ChainOrder = -1;				// how many of the 4 hand-offs ran hips-to-hand; -1 = no touch this turn
+	float SlowMo = 1.f;					// physics pace (1 = real time); the HUD slows the world clock with it
+	float Focus[2][10] = {};			// brain X-ray: share of each input group in what each brain just reacted to (sums to 1)
+	TArray<FVector> Ghost[2];			// brain X-ray: each athlete's target pose, body origins (Unreal cm)
+	TArray<int32> GhostParent[2];		// per ghost body: its parent's index in Ghost[a], -1 = the pelvis
+	TArray<float> Pose;					// second screen: per athlete root (7) + joints in fingerprint order, red then blue
+	FString WalkNote;					// walk-in: which athletes walk on their own brain
 };
 
 UENUM(BlueprintType)
@@ -122,6 +135,14 @@ public:
 	 *  physics step; the match in progress is abandoned, unscored. */
 	void RequestMatch(UNNEModelData* Red, UNNEModelData* Blue);
 
+	/** HUD switches (game thread -> physics thread). */
+	std::atomic<bool> bXRay = false;	// brain X-ray: occlusion runs and the target-pose ghost (doubles inference while on)
+	std::atomic<bool> bSlowMo = true;	// live slow motion around the touch and a falling defender
+	std::atomic<bool> bLiveFeed = false;	// second screen: keep match events for TakeEvents
+
+	/** Second screen: the match events since the last call (JSONL lines, frames left out). */
+	void TakeEvents(TArray<FString>& Out) { FScopeLock L(&HudLock); Out = MoveTemp(Outbox); Outbox.Reset(); }
+
 private:
 	struct FAthlete
 	{
@@ -142,7 +163,16 @@ private:
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
 		int32 HipL = -1, HipR = -1, KneeL = -1, KneeR = -1, AnkleL = -1, AnkleR = -1, ShSwingL = -1, ShSwingR = -1;
+		int32 WaistTwist = -1, ElbowR = -1;	// kinetic chain links
 		double BiasWX = 0.0, BiasWY = 0.0, BiasWZ = 1.0;	// WORLD-space gaze bias (unit); seeded at each turn start
+		TArray<int32> Bodies, BodyParent;	// this athlete's bodies (id order) and each one's parent index in Bodies (-1 = root)
+		TArray<float> XPrev;				// brain X-ray: the observation at the last X-ray tick (empty = none yet)
+		// walk-in on the walking brain (training/envs/locomotion.py S2): command along the aisle, its gait clock
+		TSharedPtr<UE::NNE::IModelInstanceCPU> WalkNet;
+		int32 WalkIn = 0, WalkOut = 1;
+		double WalkPhase = 0.0;
+		int32 WalkT = 0;
+		bool bArrived = false, bFell = false;
 	};
 
 	// Eye contact + post-slap poise (match.py GAZE_/WATCH_/PLANT_/STAB_ constants): identical maths both sides -
@@ -164,6 +194,12 @@ private:
 		TArray<TPair<int32, FString>> Fouls;	// (athlete, why)
 		double Feet0[2][2][2] = {}, HandPrev[3] = {}, HeadPrev[3] = {};
 		double Kick[6] = {};	// the slap's impact on the defender's head (force, torque) for KickSteps steps after the touch
+		// broadcast science (display and the "impact" log line only)
+		double HeadVel[3] = {}, HeadAcc[3] = {}, Hic = 0.0, Spin[3] = {}, Bric = 0.0;	// HeadAcc: the last 3 steps' g, newest first
+		int32 HeadSamples = -1;	// -1: no head velocity yet; then the acceleration samples since the touch
+		double Chain[5] = {};
+		int32 ChainOrder = -1;
+		int64 SlowSteps = 0;	// steps of pre-touch slow motion spent (capped: a slap that never lands)
 	};
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0, LastWinner = -1;
@@ -173,6 +209,10 @@ private:
 	bool bWalkIn = true;	// -SlapWalkIn=0 disables pre-match walk-in
 	static int64 HoldSteps(double Seconds);
 	void StepWalkIn(const mjModel* m, mjData* d);
+	void PlaceWalkers(const mjModel* m, mjData* d);	// brain walkers back at the top of the aisle, standing
+	static constexpr double Aisle = 2.4;	// m behind the foot box where a brain walker starts
+	static constexpr double WalkSpeed = 1.1;	// m/s (S2 trained 1.0-1.4)
+	static constexpr double WalkTimeout = 8.0;	// s: whoever hasn't arrived is placed at the box by the first turn's reset
 	bool bInTurn = false;
 	FTurn Turn;
 	int32 Cards[3][2] = {};
@@ -200,19 +240,34 @@ private:
 
 	mutable FCriticalSection HudLock;
 	FSlapHud Hud;
+	TArray<FString> Outbox;	// second screen: events not yet taken (HudLock)
 	void SetHud(TFunctionRef<void(FSlapHud&)> Edit);
-	void HudBalance(const mjData* d, FSlapHud& H) const;	// both athletes' centre of mass and sole midpoint
+	void HudBalance(const mjModel* m, mjData* d, FSlapHud& H);	// balance, KO danger, the second screen's pose
+	double DangerNow[2] = {};	// the last KO danger HudBalance worked out (slow motion follows the defender's)
+	double Wobble(const mjModel* m, const mjData* d, const FAthlete& A, double (&Cp)[2]) const;	// capture point, its gap outside the soles (m)
 
 	// live telemetry, physics thread
 	double TelHeadPrev[3] = {}, TelHeadVel[3] = {}, TelHeadG = 0.0;
 	bool bTelReady = false;
+
+	// broadcast science, physics thread
+	void Impact(const mjModel* m, const mjData* d);	// HIC15 / BrIC of the defender's head, every step after the touch
+	float ChainBuf[120][5] = {};	// the striker's link speeds, last 0.6 s (ring): pelvis yaw, waist, shoulder, elbow, palm
+	int32 ChainAt = 0, ChainNum = 0;
+	void ChainSample(const mjData* d, double PalmSpeed);
+	void ChainAtTouch(double Dt);
+	double PrevHandDist = -1.0, Ttc = 99.0, Pace = 1.0;	// time to contact (s), the pace URLab runs at
+	void SetPace(const mjModel* m);
+	mjData* GhostD = nullptr;	// brain X-ray: scratch data for the target pose's kinematics
+	int32 XTick = 0;
+	void XRay(FAthlete& A, const float* Obs, float (&Out)[10]);	// what this decision reacted to, per input group
 
 	void BindReplay(mjModel* m);
 	void BindPolicy(mjModel* m, const FJsonObject* const (&Fp)[2]);	// red's, blue's
 	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
-	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs) const;
+	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs, const float* Cmd = nullptr) const;	// Cmd: inputs 102-107 (the walking brain's command)
 	void WriteQposDump(const mjModel* m, const FString& RelPath);
 
 	// live matching check (-SlapRecord=<file>): record qpos for RecordSteps physics steps from the stand pose
@@ -223,6 +278,7 @@ private:
 	TArray<FAthlete> Athletes;
 	TArray<float> Action;	// brain output scratch, sized once
 	bool Infer(const FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into Action, its critic into Value
+	bool RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value);
 
 	/** Runtime brains from -SlapRedBrain= / -SlapBlueBrain= (.onnx files), kept alive here. */
 	UPROPERTY(Transient)

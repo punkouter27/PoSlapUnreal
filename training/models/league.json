@@ -1,0 +1,44 @@
+{
+ "matches": 16,
+ "brains": {
+  "kim_final_vs_grandpa": {
+   "elo": 1516.1,
+   "matches": 8,
+   "wins": 5,
+   "losses": 3,
+   "draws": 0,
+   "ko_rate": 0.25,
+   "clean_rate": 0.75,
+   "speed": 13.24,
+   "self_fall": 0.1,
+   "absorbed": 1.0,
+   "hic": 0.0
+  },
+  "grandpa_final": {
+   "elo": 1494.6,
+   "matches": 12,
+   "wins": 5,
+   "losses": 7,
+   "draws": 0,
+   "ko_rate": 0.176,
+   "clean_rate": 0.882,
+   "speed": 12.731,
+   "self_fall": 0.483,
+   "absorbed": 0.75,
+   "hic": 0.0
+  },
+  "grandpa_final_vs_kim": {
+   "elo": 1489.3,
+   "matches": 12,
+   "wins": 6,
+   "losses": 6,
+   "draws": 0,
+   "ko_rate": 0.125,
+   "clean_rate": 1.0,
+   "speed": 12.384,
+   "self_fall": 0.091,
+   "absorbed": 0.615,
+   "hic": 0.0
+  }
+ }
+}

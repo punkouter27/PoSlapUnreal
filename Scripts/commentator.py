@@ -2,25 +2,31 @@
 the latest key event into one spoken line, shows it in the HUD (Saved/Commentary/latest.txt, ASlapHUD reads it) and says
 it with a Windows voice.
 
-    training/.venv/Scripts/python.exe Scripts/commentator.py [--voice "Microsoft David Desktop"] [--no-ai] [--mute]
+    training/.venv/Scripts/python.exe Scripts/commentator.py [--voice "Microsoft David Desktop"] [--no-ai] [--mute] [--azure]
 
 Lines come from Claude (claude-opus-5-5, low effort) when credentials are available (ANTHROPIC_API_KEY or an
 `ant auth login` profile), else from templates. One line at a time: while a line is spoken, events pile up and only the
-most important new one is called next (latest wins), so the voice never falls behind the match. Nothing leaves the
-machine except the match events sent to the API.
+most important new one is called next (latest wins), so the voice never falls behind the match. The context carries the
+last strike's head-impact numbers (Unreal's "impact" line) and, while Scripts/chat.py runs, the chat's mood.
+--azure speaks with an Azure neural voice in an excited style (AZURE_SPEECH_KEY, AZURE_SPEECH_REGION; free tier 0.5 M
+characters a month), falling back to the Windows voice on any error. Nothing leaves the machine except the match events
+sent to Claude and, with --azure, the spoken lines sent to Azure.
 """
-import argparse, json, os, random, subprocess, time
+import argparse, json, os, random, subprocess, time, urllib.request, winsound
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "Saved" / "Commentary" / "latest.txt"
+HYPE = ROOT / "Saved" / "Commentary" / "hype.json"   # Scripts/chat.py
 PRIORITY = {"result": 6, "knockdown": 5, "strike": 4, "round": 3, "match_start": 2, "foul": 2, "turn_start": 1}
 SYSTEM = ("You are the play-by-play voice of a Power Slap broadcast. The athletes are Red and Blue (e.g. Grandpa vs Kim), "
           "driven by trained AI brains in a physics simulator with a pre-match ring walk-in and post-match victory celebration. "
           "Call the event you are given in ONE punchy spoken "
           "sentence of at most 18 words: vivid, warm, a little funny, never cruel. Use the numbers when they add drama "
-          "(hand speed in m/s, head snap, stamina and neck from 0 to 1). No emojis, no stage directions, no quotes, and "
-          "never repeat a previous line.")
+          "(hand speed in m/s, head snap, stamina and neck from 0 to 1, HIC where 700 is the crash-test limit). If the "
+          "context has the live chat's mood, you may nod to it now and then. No emojis, no stage directions, no quotes, "
+          "and never repeat a previous line.")
 
 TEMPLATES = {
     "match_start": ["Ring walk-in underway! {first} wins the toss and marches up the aisle to strike first!",
@@ -71,6 +77,37 @@ class Voice:
         self.p.stdout.readline()
 
 
+class AzureVoice:
+    """Azure neural text-to-speech (REST), excited style; the Windows voice speaks if Azure fails."""
+
+    def __init__(self, name, fallback):
+        self.key, self.region, self.name, self.fallback = os.environ["AZURE_SPEECH_KEY"], os.environ["AZURE_SPEECH_REGION"], name, fallback
+
+    def say(self, line):
+        ssml = (f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='https://www.w3.org/2001/mstts' "
+                f"xml:lang='en-US'><voice name='{self.name}'><mstts:express-as style='excited'>{escape(line)}</mstts:express-as></voice></speak>")
+        req = urllib.request.Request(f"https://{self.region}.tts.speech.microsoft.com/cognitiveservices/v1", ssml.encode("utf-8"),
+                                     {"Ocp-Apim-Subscription-Key": self.key, "Content-Type": "application/ssml+xml",
+                                      "X-Microsoft-OutputFormat": "riff-24khz-16bit-mono-pcm", "User-Agent": "poslap-commentator"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                winsound.PlaySound(r.read(), winsound.SND_MEMORY)   # blocks until spoken, as the Windows voice does
+        except OSError as e:
+            print(f"Azure voice: {e}; the Windows voice this time")
+            self.fallback.say(line)
+
+
+def chat_mood():
+    """Scripts/chat.py's hype and latest line, if it wrote in the last 15 s."""
+    try:
+        if time.time() - HYPE.stat().st_mtime < 15:
+            h = json.loads(HYPE.read_text(encoding="utf-8"))
+            return {"hype_0_to_1": h["hype"], "latest_message": h["line"]}
+    except (OSError, ValueError, KeyError):
+        pass
+    return None
+
+
 class Claude:
     def __init__(self):
         import anthropic
@@ -95,6 +132,8 @@ def main():
     ap.add_argument("--no-ai", action="store_true", help="templates only")
     ap.add_argument("--mute", action="store_true", help="HUD line only, no voice")
     ap.add_argument("--once", action="store_true", help="replay the newest log from the start and exit")
+    ap.add_argument("--azure", action="store_true", help="Azure neural voice (AZURE_SPEECH_KEY, AZURE_SPEECH_REGION)")
+    ap.add_argument("--azure-voice", default="en-US-GuyNeural")
     a = ap.parse_args()
     ai = None
     if not a.no_ai:
@@ -103,6 +142,11 @@ def main():
         except Exception as e:   # no credentials: the SDK refuses to build a client
             print(f"Claude unavailable ({type(e).__name__}): template lines")
     voice = None if a.mute else Voice(a.voice)
+    if voice and a.azure:
+        if os.environ.get("AZURE_SPEECH_KEY") and os.environ.get("AZURE_SPEECH_REGION"):
+            voice = AzureVoice(a.azure_voice, voice)
+        else:
+            print("--azure: set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION; the Windows voice for now")
     OUT.parent.mkdir(parents=True, exist_ok=True)
     log, context, previous = newest_log(), {}, []
     pos = 0 if a.once else (log.stat().st_size if log else 0)   # join the match where it is now unless --once
@@ -128,12 +172,19 @@ def main():
                         context["cards"] = e.get("cards")
                     elif e["type"] == "turn_start":
                         context["round"] = e["round"]
+                    elif e["type"] == "impact":   # Unreal's head-impact numbers for the strike just scored
+                        context["last_impact"] = {k: e[k] for k in ("hic", "bric", "chain_order") if k in e}
                     if e["type"] in PRIORITY:
                         events.append(e)
         if not events:
             time.sleep(0.2)
             continue
         e = max(reversed(events), key=lambda x: PRIORITY[x["type"]])   # the most important, the latest of equals
+        mood = chat_mood()
+        if mood:
+            context["chat"] = mood
+        else:
+            context.pop("chat", None)
         line = None
         if ai:
             try:

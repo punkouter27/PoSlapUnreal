@@ -16,7 +16,10 @@ Power Slap spectator sim: two AI athletes take turns slapping at a podium; 3 rou
 Layout: `training/` (Python: rig → MJCF → envs → PPO), `Content/Art/Raw` (original .blend), `Content/Art/Exports` (GLB/FBX), `Plugins/UnrealRoboticsLab` (URLab, Phase B).
 
 Broadcast sidecars (run beside the game, `training/.venv/Scripts/python.exe`): `Scripts/commentator.py` (voice + HUD line; Claude when credentials exist),
-`Scripts/clipper.py` (KO clips to `Saved/Clips`), `Scripts/stream.ps1` (Pixel Streaming at http://localhost/). Brains per corner:
+`Scripts/clipper.py` (KO clips to `Saved/Clips`), `Scripts/stream.ps1` (Pixel Streaming at http://localhost/),
+`Scripts/chat.py <twitch channel>|--demo` (chat hype -> HUD + crowd), `Web/live.py` (second-screen relay: MENU › VIEW ›
+Second screen, viewers at `Web/index.html?live=ws://<host>:8765`; check `node Web/live_check.mjs`), `training/scouting.py`
+(Elo + scouting -> `training/models/league.json`). Brains per corner:
 `-SlapRedBrain=<.onnx> -SlapBlueBrain=<.onnx>`; tournaments: `training/tournament.py` (roster `training/roster.json`).
 
 ## Rebuilding from a fresh clone

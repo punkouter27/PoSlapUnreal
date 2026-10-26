@@ -127,11 +127,16 @@ def exam(ppo, character, level):
         env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
         obs = env.observe()
         fell, left_box, hit, absorbed, seen = (torch.zeros(env.N, dtype=torch.bool, device="cuda") for _ in range(5))
+        pace = torch.zeros(env.N, device="cuda")   # walking levels: distance walked over distance commanded
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
             lb = getattr(env, "left_box", torch.zeros_like(fell)).clone()
+            if loco:   # read before the step: a world that finishes is reset inside it
+                p0 = env.dist_walked / (env.v_cmd * (env.t + 1).float() * 0.02).clamp(min=1e-3)
             obs, _, done, timeout = env.step(a)
             live = ~seen
+            if loco:
+                pace = torch.where(live & done, p0.clamp(max=1.5), pace)
             fell |= live & env.fell_now
             left_box |= live & lb
             hit |= live & getattr(env, "done_hit", torch.zeros_like(fell))
@@ -147,6 +152,8 @@ def exam(ppo, character, level):
             r[f"{tag}_hit"] = hit.float().mean().item()
         if "min_absorbed" in chk:   # up 5 s after a median slap, COM back within 5 cm
             r[f"{tag}_absorbed"] = absorbed.float().mean().item()
+        if "min_pace" in chk:       # 2026-10-26: S2's "graduated" brains stood still (0.15 m in 20 s); no-fall alone can't tell
+            r[f"{tag}_pace"] = pace.mean().item()
         for k, v in r.items():
             passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0) - 1e-6   # float32 means: 90/100 reads 0.8999999762
         res.update(r)
@@ -169,6 +176,7 @@ def main():
     ap.add_argument("--critic-warmup", type=int, default=0, help="iterations the critic learns alone after --resume (a fine-tune on new conditions collapsed the slap within minutes)")
     ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
     ap.add_argument("--opponent", default=None, help="L4 against a frozen brain: <character>:<checkpoint .pt> (a mixed pairing)")
+    ap.add_argument("--out", default=None, help="graduated brain's name in models/brains (default <char>_<level>[_vs_<opponent>]): a challenger keeps the champions")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
@@ -183,6 +191,7 @@ def main():
     loco = LEVELS[a.level].get("model") == "locomotion"
     opp = tuple(a.opponent.split(":", 1)) if a.opponent else None
     vs = f"_vs_{opp[0]}" if opp else ""   # brains from a mixed pairing never overwrite the self-play graduates
+    out_name = a.out or f"{a.char}_{a.level}{vs}"
     env_cls = ArenaEnv if arena else (LocomotionEnv if loco else SlapEnv)
     env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs)
     global ppo_stream
@@ -309,7 +318,7 @@ def main():
                 ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, **curr(), "exam": res})
             if ok and not graduated:
                 graduated = res
-                out = HERE / "models" / "brains" / f"{a.char}_{a.level}{vs}.onnx"
+                out = HERE / "models" / "brains" / f"{out_name}.onnx"
                 export_onnx(ppo, str(out), OBS, fixed_batch=True)
                 print(f"GRADUATED -> {out}", flush=True)
                 if not a.keep_going:
@@ -320,7 +329,7 @@ def main():
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             **({k: v for k, v in m.items()} if it else {}), "graduated": graduated, "nan": nan, "exit_code": 0}
     if graduated and not nan:
-        meta["onnx"] = f"models/brains/{a.char}_{a.level}{vs}.onnx"
+        meta["onnx"] = f"models/brains/{out_name}.onnx"
     meta["best_exam"] = best_exam
     if (run / "crash.log").exists():   # crashed earlier, then resumed to the end: not a failed run
         (run / "crash.log").replace(run / "recovered.log")

@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>Ten broadcast features</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:240px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:4px 0}code{font-size:13px}</style>
+<h1>Ten broadcast and intelligence features (2026-10-26)</h1>
+<p>Grandpa vs Kim, 540 × 960, red strikes first (<code>-SlapFirst=0</code>). Before: the match panel and the existing
+telemetry. After: new overlays are opt-in under MENU › VIEW (live slow motion is on by default). Numbers on the
+annotated frames match the list. All of it is display only: an Unreal match with every feature on logs the same events
+and frame lines as a run from before the change (6 of 6 events, 64 of 64 frames identical).</p>
+<div class="row">
+<figure><img src="before_match.png" alt="Before: match panel, tale of the tape"><figcaption>Before</figcaption></figure>
+<figure><img src="after_turn_annotated.png" alt="After: head impact panel, kinetic chain, X-ray ghosts and rings, capture points"><figcaption>After, 0.2 s after the touch (science + X-ray + telemetry)</figcaption></figure>
+<figure><img src="after_chat_live_annotated.png" alt="After: chat hype box and kinetic chain over its span, during the KO crane"><figcaption>After: chat hype, the KO (streaming to the second screen)</figcaption></figure>
+</div>
+<ol>
+<li><b>Head impact and kinetic chain</b> (Science): HIC15 and BrIC of the defender's head from MuJoCo's head velocity, every 5 ms
+after the touch (lines at 700, the US crash-test limit, and BrIC 1.0); the five links' speed peaks (hips, trunk, shoulder,
+elbow, palm) on the span they actually took. This brain whips palm-first: 0 of 4 hand-offs in hips-to-hand order.</li>
+<li><b>Brain X-ray:</b> each brain's joint targets put through MuJoCo's kinematics (the stick figure: where it is steering the body).</li>
+<li><b>What each brain reacts to:</b> every 0.2 s each input group is put back to how it was 0.2 s earlier and the brain run
+again; the rings and the words are each group's share of how far the actions move.</li>
+<li><b>KO danger:</b> the capture point (centre of mass + velocity / ω₀) against the planted soles; the cross is where the
+athlete would have to step to stop. Red and a "KO DANGER" tag past 15 cm out; the crowd gasps; slow motion follows a falling defender.</li>
+<li><b>Chat hype:</b> <code>Scripts/chat.py &lt;twitch channel&gt;</code> (anonymous, read-only) or <code>--demo</code>; the crowd rises with it. No voting.</li>
+<li><b>VIEW switches:</b> Science, Brain X-ray, Live slow motion, Second screen.</li>
+</ol>
+<div class="row">
+<figure><img src="before_view.png" alt="Before: VIEW tab with three toggles"><figcaption>VIEW before</figcaption></figure>
+<figure><img src="after_view_annotated.png" alt="After: VIEW tab with the new toggles"><figcaption>VIEW after</figcaption></figure>
+<figure><img src="after_strike.png" alt="After: the KO crane with science on"><figcaption>After: KO crane, science on</figcaption></figure>
+</div>
+<p>Not visible in a still frame: live slow motion (quarter speed from ~0.15 s before the touch to 0.35 s after; only how
+fast URLab is fed steps changes), the crowd's seat bounce and phone-light flicker (<code>/Game/FX/M_CrowdLive</code>), the
+crowd audio swell, and the second screen (<code>Web/live.py</code> + <code>Web/index.html?live=ws://…</code>; 356 poses and
+all 8 events of a KO match reached a viewer). Frame rate with every overlay on: 40–47 fps while a GPU training run
+shared the card, about 80 fps with science alone.</p>

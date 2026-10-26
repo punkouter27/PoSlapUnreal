@@ -12,6 +12,10 @@ ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
 
 const $ = id => document.getElementById(id);
 const COLORS = { red: 0xd9473f, blue: 0x4f7fe0 };
+// ?live=ws://<host>:8765 (Web/live.py) or an Azure Web PubSub client URL: draw the match Unreal is playing instead of
+// running our own; the physics here only places the bodies where Unreal's MuJoCo put them
+const LIVE = new URLSearchParams(location.search).get("live");
+const liveSeries = [0, 0];
 
 // ---- HUD ------------------------------------------------------------------------------------------------
 let bannerTimer = 0, last = { striker: "red" };
@@ -23,7 +27,7 @@ function banner(big, small = "", seconds = 1.6, color = "") {
 const corner = n => `<span class="${n}">${n.toUpperCase()}</span>`;
 function onEvent(e) {
   switch (e.type) {
-    case "match_start": banner(`Match ${e.match}`, `${e.first} wins the toss`, 2); renderCards([[0, 0], [0, 0], [0, 0]]); break;
+    case "match_start": banner(e.match ? `Match ${e.match}` : "New match", `${e.first} wins the toss`, 2); renderCards([[0, 0], [0, 0], [0, 0]]); break;
     case "turn_start":
       last.striker = e.striker;
       $("round").textContent = `Round ${e.round} / 3`;
@@ -32,7 +36,7 @@ function onEvent(e) {
     case "strike":
       $("strike").textContent = `${e.speed.toFixed(1)} m/s · ${e.part.replace("_r", "")}`;
       banner(e.palm ? "Clean palm" : "Hit", `${e.speed.toFixed(1)} m/s${e.palm ? "" : " · not the palm"}`, 1.4, e.palm ? "var(--gold)" : "");
-      flash(e.pos); break;
+      if (e.pos) flash(e.pos); break;   // (Unreal's strike line has no contact point)
     case "knockdown": $("call").textContent = `${e.athlete} down (${e.part})`; break;
     case "foul": $("call").textContent = `Foul: ${e.athlete} ${e.why}`; break;
     case "turn_end": {
@@ -45,7 +49,9 @@ function onEvent(e) {
     case "result":
       renderCards(e.cards);
       banner(e.winner ? `${e.winner} wins` : "Draw", e.how, 5, e.winner === "red" ? "var(--red)" : e.winner === "blue" ? "var(--blue)" : "");
-      $("series").textContent = `Series ${game.match.series[0]} – ${game.match.series[1]}`; break;
+      if (LIVE && e.winner) liveSeries[e.winner === "red" ? 0 : 1]++;
+      { const sr = LIVE ? liveSeries : game.match.series; $("series").textContent = `Series ${sr[0]} – ${sr[1]}`; }
+      break;
   }
 }
 function renderCards(cards) {
@@ -139,6 +145,8 @@ addEventListener("resize", resize); resize();
 // ---- the loop: physics in real time, drawing every frame ---------------------------------------------------
 const get = async (p, kind) => { const r = await fetch("../" + p); if (!r.ok) throw new Error(`${p}: ${r.status}`); return kind === "text" ? r.text() : kind === "json" ? r.json() : new Uint8Array(await r.arrayBuffer()); };
 const MATCHUP = MATCHUPS[new URLSearchParams(location.search).get("m")] ? new URLSearchParams(location.search).get("m") : "gg";
+let league = {};   // training/models/league.json (training/scouting.py): Elo and tendencies per brain, if it has run
+try { league = (await get("training/models/league.json", "json")).brains || {}; } catch { }
 let game, speed = 1, paused = false, busy = false, debt = 0, prevT = performance.now();
 try {
   $("loadmsg").textContent = "Loading MuJoCo…";
@@ -149,8 +157,13 @@ try {
     + (MATCHUPS[MATCHUP].untrained ? `<span class="note">* never trained together: expect falls</span>` : "");
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
-  $("tape").innerHTML = game.match.sides.map(s => { const c = s.card; return `<div><b class="${s.name === "red" ? "r" : "b"}">${c.display}</b> ${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}</div>`; }).join("");
+  $("tape").innerHTML = game.match.sides.map((s, i) => {
+    const c = s.card, l = league[game.matchup.corners[i].brain];
+    const scout = l ? ` · ELO ${Math.round(l.elo)} · KO ${Math.round(100 * l.ko_rate)}%` : "";
+    return `<div><b class="${s.name === "red" ? "r" : "b"}">${c.display}</b> ${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}${scout}</div>`;
+  }).join("");
   $("loading").remove();
+  if (LIVE) connectLive();
   requestAnimationFrame(loop);
 } catch (err) {
   $("loadmsg").textContent = `Could not start: ${err.message}`; console.error(err);
@@ -162,11 +175,14 @@ async function advance(n) {
 }
 function loop(now) {
   const dt = Math.min(0.1, (now - prevT) / 1000); prevT = now;
-  if (!paused) debt += dt * speed;
+  if (!paused && !LIVE) debt += dt * speed;
   const h = game.match.dt;
   if (!busy && debt >= h) { const n = Math.min(Math.floor(debt / h), 60); debt -= n * h; if (debt > 0.25) debt = 0; advance(n); }
   const M = game.match;
-  if (M.phase === "walkin") {
+  if (LIVE) {
+    const age = (performance.now() - live.at) / 1000;
+    $("clock").textContent = age > 3 ? "LIVE · waiting for Unreal" : `LIVE${live.walkIn ? " · walk-in" : ""}${live.slow < 1 ? " · slow motion" : ""}`;
+  } else if (M.phase === "walkin") {
     $("round").textContent = "RING WALK-IN";
     $("turn").textContent = `Approaching podium (${Math.round((M.walkInProg || 0) * 100)}%)`;
     $("clock").textContent = `walk-in ${Math.max(0, (M.walkInLeft || 0) * h).toFixed(1)} s`;
@@ -183,6 +199,37 @@ document.querySelectorAll("[data-speed]").forEach(b => b.onclick = () => {
 });
 $("cam").onclick = () => { view = (view + 1) % VIEWS.length; setView(view); };
 $("phys").onclick = e => { art.physics = !art.physics; e.target.setAttribute("aria-pressed", art.physics); showArt(); };
+
+// ---- second screen ----------------------------------------------------------------------------------------------
+const live = { at: 0, slow: 1, walkIn: false };
+function connectLive() {
+  const azure = LIVE.includes("webpubsub.azure.com");
+  const ws = new WebSocket(LIVE, azure ? "json.webpubsub.azure.v1" : undefined);
+  ws.onopen = () => { if (azure) ws.send(JSON.stringify({ type: "joinGroup", group: "live" })); };
+  ws.onclose = () => setTimeout(connectLive, 3000);   // Unreal or the relay restarted: keep trying
+  ws.onmessage = ev => {
+    let msg = JSON.parse(ev.data);
+    if (azure) { if (msg.type !== "message") return; msg = typeof msg.data === "string" ? JSON.parse(msg.data) : msg.data; }
+    if (msg.t === "ev") { onEvent(msg.e); return; }
+    if (msg.t !== "pose") return;
+    // another pairing in Unreal: reload on the matchup whose two characters match, if this page has it
+    const corners = game.matchup.corners.map(c => c.char);
+    if (corners[0] !== msg.c[0] || corners[1] !== msg.c[1]) {
+      const key = Object.keys(MATCHUPS).find(k => MATCHUPS[k].corners[0].char === msg.c[0] && MATCHUPS[k].corners[1].char === msg.c[1]);
+      if (key) { location.search = `?m=${key}&live=${encodeURIComponent(LIVE)}`; return; }
+      $("clock").textContent = `LIVE · ${msg.c.join(" vs ")} is not on this page`; return;
+    }
+    const q = game.d.qpos, n = 7 + game.match.sides[0].qa.length;
+    game.match.sides.forEach((s, i) => {   // [root (7), joints in fingerprint order] per athlete, red then blue
+      for (let k = 0; k < 7; k++) q[s.rq + k] = msg.q[n * i + k];
+      s.qa.forEach((a, j) => { q[a] = msg.q[n * i + 7 + j]; });
+    });
+    game.match.mj.mj_forward(game.m, game.d);
+    Object.assign(live, { at: performance.now(), slow: msg.slow, walkIn: msg.w });
+    $("round").textContent = msg.w ? "RING WALK-IN" : `Round ${msg.r} / 3`;
+    $("turn").innerHTML = msg.w ? "Approaching the podium" : `${corner(msg.s)} strikes`;
+  };
+}
 
 async function loadArt(mj) {
   const TINTS = { red_: 0xd9473f, blue_: 0x4f7fe0 };

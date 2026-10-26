@@ -100,9 +100,10 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fps, prefixes, policies, first, log=None):
-        """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice)."""
-        self.m, self.first, self.log = m, first, log
+    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None):
+        """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice).
+        brains: both corners' brain names, logged with match_start (training/scouting.py credits them; compare skips it)."""
+        self.m, self.first, self.log, self.brains = m, first, log, brains
         self.d = mujoco.MjData(m)
         self.sides = [Side(m, fp, p, pol) for fp, p, pol in zip(fps, prefixes, policies)]
         # eye-contact state: each athlete stares at the OTHER'S head (indices into its own joint_order)
@@ -301,7 +302,8 @@ class Match:
 
     def play(self):
         names = [x.name for x in self.sides]
-        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY))
+        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY),
+                  **({"brains": dict(zip(names, self.brains))} if self.brains else {}))
         cards = [[0, 0] for _ in WEIGHTS]
         turns = []
         for rnd in range(1, ROUNDS + 1):
@@ -359,7 +361,7 @@ def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_c
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
     try:
-        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f).play()
+        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem)).play()
     finally:
         if f:
             f.close()

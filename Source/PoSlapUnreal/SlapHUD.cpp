@@ -3,6 +3,11 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Components/AudioComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMeshActor.h"
+#include "IWebSocket.h"
+#include "WebSocketsModule.h"
 #include "Components/LightComponent.h"
 #include "Components/PoseableMeshComponent.h"
 #include "Engine/Canvas.h"
@@ -23,6 +28,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Algo/Accumulate.h"
+#include "Algo/Sort.h"
 #include "NNEModelData.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -54,8 +60,9 @@ namespace
 {
 	constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
 	FString CommentaryFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt"); }	// Scripts/commentator.py writes it
-	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r");
-	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired");
+	FString HypeFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/hype.json"); }	// Scripts/chat.py writes it
+	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandR("hand_r");
+	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired"), PRise("Rise"), PCheer("Cheer");
 	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
 	const FColor TeamColor[2] = { FColor(235, 70, 60), FColor(70, 130, 240) };
 	const FColor Gold(255, 220, 120), Grey(200, 200, 200);
@@ -104,6 +111,17 @@ void ASlapHUD::BeginPlay()
 	bMenu = FParse::Value(FCommandLine::Get(), TEXT("SlapMenu="), Tab);
 	bUiTest = FParse::Param(FCommandLine::Get(), TEXT("SlapUiTest"));
 	bPairTest = FParse::Param(FCommandLine::Get(), TEXT("SlapPairTest"));
+	FString View;	// -SlapView=telemetry+science+xray+commentary+debug+noslow: overlays on from the start (screenshots, checks; '+', not commas)
+	if (FParse::Value(FCommandLine::Get(), TEXT("SlapView="), View))
+	{
+		bShowTelemetry = View.Contains(TEXT("telemetry"));
+		bShowScience = View.Contains(TEXT("science"));
+		bShowXRay = View.Contains(TEXT("xray"));
+		bShowCommentary = View.Contains(TEXT("commentary"));
+		bShowDebug = View.Contains(TEXT("debug"));
+		bSlowMo = !View.Contains(TEXT("noslow"));
+	}
+	bLive = FParse::Value(FCommandLine::Get(), TEXT("SlapLive="), LiveUrl);
 	Tab = FMath::Clamp(Tab, 0, 3);
 	BuildUi();
 	// broadcast assets (Scripts/broadcast_fx.py); a missing one is skipped
@@ -112,7 +130,14 @@ void ASlapHUD::BeginPlay()
 	CrowdReact = Load<USoundBase>(TEXT("/Game/Audio/S_CrowdReact.S_CrowdReact"));
 	CrowdLoop = Load<USoundBase>(TEXT("/Game/Audio/S_CrowdLoop.S_CrowdLoop"));
 	Bell = Load<USoundBase>(TEXT("/Game/Audio/S_Bell.S_Bell"));
-	if (CrowdLoop) UGameplayStatics::SpawnSound2D(this, CrowdLoop, 0.35f);
+	if (CrowdLoop) CrowdAudio = UGameplayStatics::SpawnSound2D(this, CrowdLoop, 0.35f);
+	for (TActorIterator<AStaticMeshActor> It(GetWorld()); It; ++It)	// the crowd (Scripts/arena_env.py "Env_Crowd"): Rise and Cheer
+	{
+		UStaticMeshComponent* M = It->GetStaticMeshComponent();
+		if (!M || !It->GetActorNameOrLabel().Contains(TEXT("Crowd"))) continue;
+		for (int32 k = 0; k < M->GetNumMaterials(); ++k) CrowdSkin.Add(M->CreateDynamicMaterialInstance(k));
+	}
+	LoadLeague();
 	Ringside = NewObject<USoundAttenuation>(this);	// spatialised, no fall-off inside the arena: the slap pans, it doesn't fade
 	Ringside->Attenuation.bAttenuate = true;
 	Ringside->Attenuation.bSpatialize = true;
@@ -135,8 +160,8 @@ void ASlapHUD::BeginPlay()
 		}
 	}
 	CommentaryStamp = IFileManager::Get().GetTimeStamp(*CommentaryFile());	// only lines from now on
-	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d crowd %d/%d bell %d, lights key %d rims %d/%d truss %d"), Spray ? TEXT("yes") : TEXT("MISSING"),
-		SlapSound != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num());
+	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d crowd %d/%d bell %d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"), Spray ? TEXT("yes") : TEXT("MISSING"),
+		SlapSound != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num(), CrowdSkin.Num(), Scout.Num());
 }
 
 void ASlapHUD::DrawHUD()
@@ -209,10 +234,25 @@ void ASlapHUD::DrawHUD()
 		if (GetWorld()->GetTimeSeconds() >= FxTestAt + 1.5f) H.KOSeq = -1;
 	}
 	if (H.Match > 0) Cues(H);
+	if (USlapController* C = Controller.Get())	// the VIEW switches the physics thread reads
+	{
+		C->bXRay = bShowXRay;
+		C->bSlowMo = bSlowMo;
+	}
+	if (Dilation != H.SlowMo)	// live slow motion: the world clock (effects, camera, cues) runs at the physics pace
+	{
+		Dilation = H.SlowMo;
+		UGameplayStatics::SetGlobalTimeDilation(this, Dilation);
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: slow motion %.2f at %.2f s"), Dilation, GetWorld()->GetTimeSeconds());
+	}
+	Crowd(H, GetWorld()->GetTimeSeconds());
+	Live(H);
 	if (Camera.IsValid()) Direct(Camera.Get(), H);
 	if (H.Match > 0)
 	{
 		if (bShowTelemetry) DrawTelemetry(H);
+		if (bShowScience) DrawScience(H);
+		if (bShowXRay) DrawXRay(H);
 		DrawMatch(H);
 		DrawOverlays(H);
 	}
@@ -247,6 +287,8 @@ void ASlapHUD::EndPlay(const EEndPlayReason::Type Reason)
 	UGameViewportClient* VC = GetWorld()->GetGameViewport();
 	if (VC && Ui.IsValid()) VC->RemoveViewportWidgetContent(Ui.ToSharedRef());
 	Ui.Reset();
+	if (Socket) Socket->Close();
+	Socket.Reset();
 	Super::EndPlay(Reason);
 }
 
@@ -493,6 +535,10 @@ void ASlapHUD::BuildUi()
 							[
 								SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Telemetry (momentum, balance, palm, head g, condition)"), &ASlapHUD::bShowTelemetry)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Science (KO danger, head impact, kinetic chain, palm trail)"), &ASlapHUD::bShowScience)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Brain X-ray (target pose, what each brain reacts to)"), &ASlapHUD::bShowXRay)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Live slow motion on the big moments"), &ASlapHUD::bSlowMo)]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Second screen (stream to the web viewer)"), &ASlapHUD::bLive)]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Commentary"), &ASlapHUD::bShowCommentary)]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f)[Toggle(TEXT("Debug (FPS, match / camera / frame time)"),&ASlapHUD::bShowDebug)]
 							]
@@ -501,7 +547,11 @@ void ASlapHUD::BuildUi()
 								"MOMENTUM  who is beating their own brain's expectation right now\n"
 								"RINGS  centre of mass over the soles: green < 5 cm off, red > 10\n"
 								"PALM  hand speed; the white line is a clean 8 m/s strike\n"
-								"HEAD G  the defender's head acceleration, last 2 s\n\n"
+								"HEAD G  the defender's head acceleration, last 2 s\n"
+								"KO DANGER  where he'd have to step to stop (cross); red = 15 cm outside his soles\n"
+								"HIC / BrIC  crash-test head injury numbers; the lines are the US limit and critical spin\n"
+								"KINETIC CHAIN  hips, trunk, shoulder, elbow, palm: a whip peaks in that order\n"
+								"X-RAY  stick figure = where the brain steers; rings = what it just reacted to\n\n"
 								"Build ")) + TEXT(POSLAP_BUILD_VERSION)), 16, Dim, true)]
 						]
 					]
@@ -701,6 +751,7 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		SeenMatch = H.MatchSeq;
 		TapeAt = Now;
 		HeadG.Reset();
+		LoadLeague();	// training/scouting.py may have run since
 	}
 	if (H.ScoredRound != SeenRound)
 	{
@@ -727,6 +778,17 @@ void ASlapHUD::Cues(const FSlapHud& H)
 				Cur += (Cur.IsEmpty() ? TEXT("") : TEXT(" ")) + Wd;
 			}
 			if (!Cur.IsEmpty()) Commentary.Add(Cur);
+		}
+		// chat hype: fresh for 15 s after Scripts/chat.py last wrote it
+		const FDateTime HypeStamp = IFileManager::Get().GetTimeStamp(*HypeFile());
+		TSharedPtr<FJsonObject> J;
+		Hype = 0.f;
+		if ((FDateTime::UtcNow() - HypeStamp).GetTotalSeconds() < 15.0 && FFileHelper::LoadFileToString(Raw, *HypeFile())
+			&& FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) && J)
+		{
+			Hype = FMath::Clamp((float)J->GetNumberField(TEXT("hype")), 0.f, 1.f);
+			ChatLine = J->GetStringField(TEXT("line"));
+			ChatAt = Now;
 		}
 	}
 	Stage(Now);
@@ -795,7 +857,9 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 		const float Wp = FMath::Clamp((float)H.WalkInProgress, 0.f, 1.f);
 		const float YawSweep = 28.f * (1.f - Wp);
 		Look = 0.5f * (Pelvis[0] + Pelvis[1]) + Up * 25.f;
-		Pos = Look - Fwd.RotateAngleAxis(YawSweep, Up) * FMath::Lerp(340.f, 260.f, Wp) + Up * FMath::Lerp(-15.f, 20.f, Wp);
+		const float Apart = FVector::Dist2D(Pelvis[0], Pelvis[1]);	// brain walkers start 2.4 m down each aisle
+		const float Back = FMath::Max(FMath::Lerp(340.f, 260.f, Wp), (0.5f * Apart + 70.f) / FMath::Tan(FMath::DegreesToRadians(CC->FieldOfView) * 0.5f));
+		Pos = Look - Fwd.RotateAngleAxis(YawSweep, Up) * Back + Up * FMath::Lerp(-15.f, 20.f, Wp);
 		Speed = 4.5f;
 		break;
 	}
@@ -867,7 +931,7 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 	const FColor Tc = TeamColor[Team(H.Striker)];
 	Line(Big, H.bWalkIn ? TEXT("RING WALK-IN") : *FString::Printf(TEXT("ROUND %d / %d"), H.Round, Rounds), FColor::White, 1.2f);
 	Line(Small, H.bWalkIn
-		? *FString::Printf(TEXT("Approaching podium  (%d%%)"), FMath::RoundToInt(100.0 * H.WalkInProgress))
+		? *FString::Printf(TEXT("%s  (%d%%)"), H.WalkNote.IsEmpty() ? TEXT("Approaching podium") : TEXT("Walking in on their own legs"), FMath::RoundToInt(100.0 * H.WalkInProgress))
 		: *FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Tc, 1.3f);
 	if (H.bStruck || H.Speed > 0)
 	{
@@ -998,13 +1062,16 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	if (Now - TapeAt < 4.0 && H.Result.IsEmpty())	// a match over in under 4 s: the result wins
 	{
 		const float Y = Top + 278.f * S;
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 8.f * S, Y, 524.f * S, 92.f * S);
+		const bool bScout = Scout.Contains(H.Brain[0]) || Scout.Contains(H.Brain[1]);
+		const float Row = bScout ? 48.f : 34.f;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 8.f * S, Y, 524.f * S, (24.f + 2.f * Row) * S);
 		Text(TEXT("TALE OF THE TAPE"), Cx, Y + 4.f * S, Grey, 0.9f * S, true);
 		for (int32 a = 0; a < 2; ++a)
 		{
-			const float Ya = Y + (22.f + 34.f * a) * S;
+			const float Ya = Y + (22.f + Row * a) * S;
 			Text(H.Name[a], 16.f * S, Ya, TeamColor[a], 1.2f * S);
 			Text(H.Tape[a] + TEXT("  ") + H.Brain[a], 16.f * S, Ya + 17.f * S, Grey, 0.85f * S);
+			if (const FString* L = Scout.Find(H.Brain[a])) Text(*L, 16.f * S, Ya + 31.f * S, Gold, 0.85f * S);	// training/scouting.py
 		}
 	}
 
@@ -1035,6 +1102,20 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		Text(H.Result, Cx, Top + 320.f * S, FColor::White, 1.2f * S, true);
 	}
 
+	// live slow motion: say so, so nobody thinks the stream stalled
+	if (H.SlowMo < 1.f) Text(TEXT("SLOW MOTION"), Cx, Top + 4.f * S, Gold, 1.1f * S, true);
+
+	// chat hype (Scripts/chat.py): top right, under the menu button
+	if (Now - ChatAt < 15.0)
+	{
+		const float W = 192.f * S, X = Canvas->ClipX - W - 8.f * S, Y = Top + 4.f * S;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), X, Y, W, 42.f * S);
+		Text(TEXT("CHAT HYPE"), X + 8.f * S, Y + 3.f * S, Grey, 0.85f * S);
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.12f), X + 80.f * S, Y + 6.f * S, W - 88.f * S, 8.f * S);
+		DrawRect(FLinearColor(0.6f, 0.35f, 1.f), X + 80.f * S, Y + 6.f * S, (W - 88.f * S) * Hype, 8.f * S);
+		Text(ChatLine.Left(34), X + 8.f * S, Y + 21.f * S, FColor::White, 0.85f * S);
+	}
+
 	// commentary, bottom: the latest line for 8 s, wrapped at ~44 characters
 	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && Commentary.Num())
 	{
@@ -1042,5 +1123,229 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		const float Y = Bot - 168.f * S - Lines.Num() * 20.f * S;	// above the head-g and condition panels
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), 16.f * S, Y - 6.f * S, 508.f * S, (Lines.Num() * 20.f + 10.f) * S);
 		for (int32 i = 0; i < Lines.Num(); ++i) Text(Lines[i], Cx, Y + i * 20.f * S, FColor::White, 1.1f * S, true);
+	}
+}
+
+void ASlapHUD::DrawScience(const FSlapHud& H)
+{
+	if (H.bWalkIn) return;
+	const double Now = GetWorld()->GetTimeSeconds();
+	const int32 Sk = Team(H.Striker), Def = 1 - Sk;
+	auto Heat = [](double K) { return FLinearColor::LerpUsingHSV(FLinearColor(0.35f, 0.9f, 0.45f), FLinearColor(1.f, 0.25f, 0.2f), FMath::Clamp((float)K, 0.f, 1.f)); };
+
+	// KO danger: from each athlete's centre of mass (over the floor) to his capture point; the cross is where he would have
+	// to step to stop. Green inside the soles, red 15 cm outside
+	for (int32 a = 0; a < 2; ++a)
+	{
+		const FVector C = Canvas->Project(FVector(H.Com[a].X, H.Com[a].Y, 1.0)), P = Canvas->Project(FVector(H.Capture[a].X, H.Capture[a].Y, 1.0));
+		if (C.Z <= 0 || P.Z <= 0) continue;
+		const FLinearColor Col = Heat(H.Danger[a]);
+		DrawLine(C.X, C.Y, P.X, P.Y, Col, 2.f * S);
+		const float R = 6.f * S;
+		DrawLine(P.X - R, P.Y - R, P.X + R, P.Y + R, Col, 3.f * S);
+		DrawLine(P.X - R, P.Y + R, P.X + R, P.Y - R, Col, 3.f * S);
+		if (H.Danger[a] > 0.5 && Body[a].IsValid())
+		{
+			const FVector Hd = Canvas->Project(Body[a]->GetBoneLocation(BoneHead) + FVector(0.f, 0.f, 30.f));
+			if (Hd.Z > 0) Text(FString::Printf(TEXT("KO DANGER %d%%"), FMath::RoundToInt(100.0 * H.Danger[a])), Hd.X, Hd.Y, Col.ToFColor(true), 1.2f * S, true);
+		}
+	}
+
+	// the striker's palm, last 0.35 s: brighter where it was faster
+	if (TrailOwner != Sk) { Trail.Reset(); TrailOwner = Sk; }
+	if (Body[Sk].IsValid()) Trail.Emplace(Now, Body[Sk]->GetBoneLocation(BoneHandR));
+	Trail.RemoveAll([Now](const TPair<double, FVector>& P) { return Now - P.Key > 0.35; });
+	for (int32 i = 1; i < Trail.Num(); ++i)
+	{
+		const double Dt = FMath::Max(Trail[i].Key - Trail[i - 1].Key, 1e-4);
+		const float V = (Trail[i].Value - Trail[i - 1].Value).Size() / 100.0 / Dt;	// m/s (game time: slow motion slows it too)
+		const FVector A = Canvas->Project(Trail[i - 1].Value), B = Canvas->Project(Trail[i].Value);
+		if (A.Z <= 0 || B.Z <= 0) continue;
+		const float Age = 1.f - (Now - Trail[i].Key) / 0.35f;
+		const float K = FMath::Clamp(V / (float)CleanSpeed, 0.f, 1.f);
+		DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(1.f, 0.85f + 0.15f * K, 0.4f + 0.6f * K, Age), (2.f + 5.f * K) * S);
+	}
+
+	// head impact and kinetic chain: right column, under the menu button and the chat box
+	const float W = 192.f * S, X = Canvas->ClipX - W - 8.f * S, Y = Top + 52.f * S, BarW = W - 24.f * S;
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), X, Y, W, 184.f * S);
+	Text(FString::Printf(TEXT("HEAD IMPACT  %s"), *H.Defender.ToUpper()), X + 12.f * S, Y + 6.f * S, Grey, S);
+	auto Bar = [&](float By, double V, double Max, double Line, const FString& Label, const TCHAR* LineLabel)
+	{
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.12f), X + 12.f * S, By, BarW, 10.f * S);
+		DrawRect(Heat(V / Line), X + 12.f * S, By, BarW * FMath::Clamp((float)(V / Max), 0.f, 1.f), 10.f * S);
+		const float Lx = X + 12.f * S + BarW * (Line / Max);
+		DrawLine(Lx, By - 3.f * S, Lx, By + 13.f * S, FLinearColor::White, 2.f * S);
+		Text(Label, X + 12.f * S, By + 13.f * S, FColor::White, 1.1f * S);
+		Text(LineLabel, Lx, By + 15.f * S, Grey, 0.75f * S, true);
+	};
+	Bar(Y + 26.f * S, H.Hic, 1000.0, 700.0, FString::Printf(TEXT("HIC %.0f"), H.Hic), TEXT("crash-test limit"));
+	Bar(Y + 64.f * S, H.Bric, 1.5, 1.0, FString::Printf(TEXT("BrIC %.2f"), H.Bric), TEXT("critical"));
+	const float Cy = Y + 112.f * S;
+	if (H.ChainOrder < 0)
+	{
+		Text(TEXT("KINETIC CHAIN"), X + 12.f * S, Cy, Grey, S);
+		Text(TEXT("waiting for the touch"), X + 12.f * S, Cy + 20.f * S, Grey, 0.9f * S);
+		return;
+	}
+	Text(FString::Printf(TEXT("KINETIC CHAIN  %d / 4 in order"), H.ChainOrder), X + 12.f * S, Cy, H.ChainOrder >= 3 ? Gold : Grey, S);
+	// each link at the time it peaked, joined hips to hand; the axis spans the earliest peak (left) to the touch (right)
+	float Span = 0.05f;
+	for (const double C : H.Chain) Span = FMath::Max(Span, -(float)C);
+	Text(FString::Printf(TEXT("peaks over the last %.0f ms"), 1000.f * Span), X + 12.f * S, Cy + 15.f * S, Grey, 0.75f * S);
+	static const TCHAR* Links[5] = { TEXT("H"), TEXT("T"), TEXT("S"), TEXT("E"), TEXT("P") };
+	FVector2D Prev = FVector2D::ZeroVector;
+	for (int32 k = 0; k < 5; ++k)
+	{
+		const FVector2D Pt(X + 12.f * S + BarW * (1.f + (float)H.Chain[k] / Span), Cy + 30.f * S + 9.f * S * k);
+		if (k > 0) DrawLine(Prev.X, Prev.Y, Pt.X, Pt.Y, H.Chain[k - 1] <= H.Chain[k] ? FLinearColor(0.35f, 0.9f, 0.45f) : FLinearColor(1.f, 0.3f, 0.25f), 2.f * S);
+		DrawRect(FLinearColor(Gold), Pt.X - 3.f * S, Pt.Y - 3.f * S, 6.f * S, 6.f * S);
+		Text(Links[k], Pt.X + 5.f * S, Pt.Y - 7.f * S, FColor::White, 0.75f * S);
+		Prev = Pt;
+	}
+}
+
+void ASlapHUD::DrawXRay(const FSlapHud& H)
+{
+	// each brain's target pose (where it is steering the body) as a stick figure, and a ring on what it just reacted to:
+	// its own body parts, or the opponent's head and hand. Sizes are each group's share of the reaction (sums to 1)
+	static const TCHAR* GroupName[10] = { TEXT("own legs"), TEXT("own arms"), TEXT("trunk"), TEXT("balance"), TEXT("rhythm"),
+		TEXT("opp head"), TEXT("opp hand"), TEXT("memory"), TEXT("fatigue"), TEXT("own palm") };
+	static const TArray<FName> GroupBones[10] = { { "thigh_l", "thigh_r", "shin_l", "shin_r", "foot_l", "foot_r" },
+		{ "upperarm_l", "upperarm_r", "forearm_l", "forearm_r", "hand_l" }, { "belly", "chest", "neck" }, { "pelvis" }, {},
+		{ "head" }, { "hand_r" }, { "head" }, { "chest" }, { "hand_r" } };
+	for (int32 a = 0; a < 2; ++a)
+	{
+		const FLinearColor Team(TeamColor[a]);
+		const TArray<FVector>& G = H.Ghost[a];
+		for (int32 i = 0; i < G.Num() && i < H.GhostParent[a].Num(); ++i)
+		{
+			const int32 P = H.GhostParent[a][i];
+			if (P < 0) continue;
+			const FVector A = Canvas->Project(G[i]), B = Canvas->Project(G[P]);
+			if (A.Z > 0 && B.Z > 0) DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(Team.R, Team.G, Team.B, 0.7f), 3.f * S);
+		}
+		for (int32 g = 0; g < 10; ++g)
+		{
+			const float F = H.Focus[a][g];
+			if (F < 0.05f) continue;
+			const int32 On = g == 5 || g == 6 ? 1 - a : a;	// the opponent's head and hand are on his body
+			if (!Body[On].IsValid()) continue;
+			for (const FName& Bone : GroupBones[g])
+			{
+				const FVector C = Canvas->Project(Body[On]->GetBoneLocation(Bone));
+				if (C.Z <= 0) continue;
+				const float R = (6.f + 36.f * F) * S;
+				for (int32 k = 0; k < 24; ++k)
+				{
+					const float A0 = 2.f * PI * k / 24.f, A1 = 2.f * PI * (k + 1) / 24.f;
+					DrawLine(C.X + R * FMath::Cos(A0), C.Y + R * FMath::Sin(A0), C.X + R * FMath::Cos(A1), C.Y + R * FMath::Sin(A1), FLinearColor(Team.R, Team.G, Team.B, 0.35f + 0.65f * F), 2.f * S);
+				}
+			}
+		}
+		// the top three, in words, above the bottom panels
+		int32 Order[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+		Algo::Sort(Order, [&](int32 L, int32 R) { return H.Focus[a][L] > H.Focus[a][R]; });
+		FString Row = FString::Printf(TEXT("%s REACTS TO "), a ? TEXT("BLUE") : TEXT("RED"));
+		for (int32 k = 0; k < 3 && H.Focus[a][Order[k]] > 0.f; ++k) Row += FString::Printf(TEXT(" %s %d%%"), GroupName[Order[k]], FMath::RoundToInt(100.f * H.Focus[a][Order[k]]));
+		const float Ry = Bot - (bShowTelemetry ? 150.f : 60.f) * S + 22.f * S * a;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Ry - 2.f * S, 380.f * S, 20.f * S);
+		Text(Row, 16.f * S, Ry, TeamColor[a], S);
+	}
+}
+
+void ASlapHUD::Crowd(const FSlapHud& H, double Now)
+{
+	// the crowd follows the drama: the walk-in, a defender's KO danger, the last strike, a KO, the tension close-up, chat
+	const int32 Def = Team(H.Defender);
+	float Want = H.bWalkIn ? 0.5f : 0.f;
+	if (H.Match > 0 && !H.bWalkIn) Want = FMath::Max(Want, 0.9f * (float)H.Danger[Def]);
+	if (Now - StrikeAt < 3.0) Want = FMath::Max(Want, 0.6f * (float)StrikeK * FMath::Exp((StrikeAt - Now) / 1.2));
+	if (Now - KOAt < KOShot) Want = 1.f;
+	if (Shot == EShot::Tension) Want = FMath::Max(Want, 0.35f);
+	Want = FMath::Max(Want, 0.6f * Hype);
+	const float Dt = GetWorld()->GetDeltaSeconds();
+	Tension = FMath::FInterpTo(Tension, Want, Dt, Want > Tension ? 6.f : 1.5f);	// up fast, down slowly
+	for (UMaterialInstanceDynamic* M : CrowdSkin)
+	{
+		if (!M) continue;
+		M->SetScalarParameterValue(PRise, Tension);
+		M->SetScalarParameterValue(PCheer, Tension);
+	}
+	if (UAudioComponent* A = CrowdAudio.Get()) A->SetVolumeMultiplier(0.35f * (1.f + 1.6f * Tension));
+	// a gasp the moment a struck defender's capture point leaves his soles
+	if (H.Danger[Def] > 0.7 && H.bStruck && !bGasped && CrowdReact)
+	{
+		bGasped = true;
+		UGameplayStatics::PlaySound2D(this, CrowdReact, 0.5f, 1.25f);
+	}
+	else if (H.Danger[Def] < 0.3) bGasped = false;
+}
+
+void ASlapHUD::LiveSend(const FString& Msg)
+{
+	// Azure Web PubSub's JSON subprotocol wraps every message for the "live" group; the local relay takes it bare
+	Socket->Send(bAzure ? TEXT("{\"type\":\"sendToGroup\",\"group\":\"live\",\"dataType\":\"json\",\"noEcho\":true,\"data\":") + Msg + TEXT("}") : Msg);
+}
+
+void ASlapHUD::Live(const FSlapHud& H)
+{
+	// Second screen (Web/index.html?live=...): both athletes' joints at 30 Hz and every match event, so a phone draws the
+	// match with the browser's own renderer instead of a Pixel Streaming video. Off unless switched on (VIEW, -SlapLive=)
+	USlapController* C = Controller.Get();
+	const double Now = GetWorld()->GetRealTimeSeconds();
+	if (!bLive || !C)
+	{
+		if (Socket) { Socket->Close(); Socket.Reset(); }
+		if (C) C->bLiveFeed = false;
+		return;
+	}
+	if (!Socket && Now >= LiveRetry)
+	{
+		bAzure = LiveUrl.Contains(TEXT("webpubsub.azure.com"));
+		Socket = FModuleManager::LoadModuleChecked<FWebSocketsModule>(TEXT("WebSockets")).CreateWebSocket(LiveUrl, bAzure ? TEXT("json.webpubsub.azure.v1") : TEXT(""));
+		Socket->OnConnected().AddLambda([Url = LiveUrl] { UE_LOG(LogTemp, Log, TEXT("SlapHUD: second screen connected to %s"), *Url); });
+		Socket->OnConnectionError().AddLambda([Url = LiveUrl](const FString& Why) { UE_LOG(LogTemp, Warning, TEXT("SlapHUD: second screen: no connection to %s (%s)"), *Url, *Why); });
+		Socket->Connect();
+		LiveRetry = Now + 5.0;
+	}
+	if (!Socket) return;
+	if (!Socket->IsConnected())
+	{
+		if (Now >= LiveRetry) Socket.Reset();	// try again
+		C->bLiveFeed = false;
+		return;
+	}
+	LiveRetry = Now + 5.0;
+	C->bLiveFeed = true;
+	TArray<FString> Events;
+	C->TakeEvents(Events);
+	for (const FString& E : Events) LiveSend(TEXT("{\"t\":\"ev\",\"e\":") + E + TEXT("}"));
+	if (Now - LiveSent < 1.0 / 30.0 || H.Pose.IsEmpty()) return;
+	LiveSent = Now;
+	TStringBuilder<2048> Msg;
+	Msg.Appendf(TEXT("{\"t\":\"pose\",\"c\":[\"%s\",\"%s\"],\"m\":%d,\"r\":%d,\"s\":\"%s\",\"w\":%s,\"slow\":%.2f,\"q\":["),
+		*H.Card[0], *H.Card[1], H.Match, H.Round, *H.Striker, H.bWalkIn ? TEXT("true") : TEXT("false"), H.SlowMo);
+	for (int32 i = 0; i < H.Pose.Num(); ++i) Msg.Appendf(TEXT("%s%.4f"), i ? TEXT(",") : TEXT(""), H.Pose[i]);
+	Msg << TEXT("]}");
+	LiveSend(FString(Msg));
+}
+
+void ASlapHUD::LoadLeague()
+{
+	// training/scouting.py: Elo and tendencies per brain from every logged match; a missing file = no scouting line
+	FString Raw;
+	TSharedPtr<FJsonObject> J;
+	if (!FFileHelper::LoadFileToString(Raw, *(FPaths::ProjectDir() / TEXT("training/models/league.json"))) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) || !J) return;
+	const TSharedPtr<FJsonObject>* League = nullptr;
+	if (!J->TryGetObjectField(TEXT("brains"), League)) return;
+	Scout.Reset();
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& B : (*League)->Values)
+	{
+		const TSharedPtr<FJsonObject> O = B.Value->AsObject();
+		if (!O) continue;
+		Scout.Add(B.Key, FString::Printf(TEXT("ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),
+			(int32)O->GetNumberField(TEXT("wins")), (int32)O->GetNumberField(TEXT("losses")), (int32)O->GetNumberField(TEXT("draws")),
+			100.0 * O->GetNumberField(TEXT("ko_rate")), 100.0 * O->GetNumberField(TEXT("clean_rate")), O->GetNumberField(TEXT("speed"))));
 	}
 }
