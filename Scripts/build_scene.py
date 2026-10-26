@@ -95,6 +95,7 @@ def athlete(card):
     mats = mesh.get_editor_property("materials")
     mats[0].set_editor_property("material_interface", skin)
     mesh.set_editor_property("materials", mats)
+    broadcast_fx.add_lods(mesh)     # LODs 1-2 for the wide shots on a phone
     ASSETS.save_loaded_asset(mesh)
     return mesh, skin
 

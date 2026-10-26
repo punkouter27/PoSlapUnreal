@@ -422,6 +422,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			H.Brain[a] = Labels[a];
 			H.Tape[a] = Tape[a];
 			H.Card[a] = CardName[a];
+			H.StrikeMass[a] = Athletes[a].StrikeMass;
 			H.GhostParent[a] = Athletes[a].BodyParent;
 		}
 		H.WalkNote = Walkers;

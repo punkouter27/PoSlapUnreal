@@ -2,8 +2,10 @@
 
     training/.venv/Scripts/python.exe Scripts/broadcast_audio.py      (then Scripts/broadcast_fx.py imports them)
 
-Slap: a broadband crack over a short flesh thump. CrowdReact: an "ooh" swelling into a roar. CrowdLoop: 12 s of arena
-murmur that loops seamlessly. Bell: three strikes of a boxing bell (inharmonic partials).
+Slap, Slap1-3: a broadband crack over a short flesh thump (four takes; ASlapHUD picks one and filters it by palm speed).
+Thud: a body landing (stumble, KO). Squeak0-1: a rubber sole skidding; Scrape: a sole dragged. Breath: two pants that loop
+(louder and faster as stamina drains). CrowdReact: an "ooh" swelling into a roar. CrowdLoop: 12 s of arena murmur that
+loops seamlessly. Bell: three strikes of a boxing bell (inharmonic partials).
 """
 import wave
 from pathlib import Path
@@ -41,12 +43,40 @@ def save(name, x):
     print(f"{name}.wav {len(x) / SR:.2f} s")
 
 
-def slap():
+def slap(crack_hi=9000, thump_hz=110, wet=0.6):
     s = t(0.4)
-    crack = band(rng.standard_normal(len(s)), 1500, 9000) * np.exp(-s / 0.012)
+    crack = band(rng.standard_normal(len(s)), 1500, crack_hi) * np.exp(-s / 0.012)
     body = band(rng.standard_normal(len(s)), 300, 1500) * np.exp(-s / 0.035)
-    thump = np.sin(2 * np.pi * 110 * s) * np.exp(-s / 0.045)
-    return 1.0 * crack + 0.6 * body + 0.5 * thump
+    thump = np.sin(2 * np.pi * thump_hz * s) * np.exp(-s / 0.045)
+    return 1.0 * crack + wet * body + 0.5 * thump
+
+
+def thud():
+    s = t(0.6)
+    drop = np.sin(2 * np.pi * (70 - 25 * s) * s) * np.exp(-s / 0.09)   # the pitch sags as the body settles
+    flesh = band(rng.standard_normal(len(s)), 120, 700) * np.exp(-s / 0.05)
+    return drop + 0.5 * flesh
+
+
+def squeak(f0):
+    s = t(0.22)
+    f = f0 * (1 + 0.35 * np.sin(2 * np.pi * 9 * s))                    # the sole sticks and slips
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    tone = np.sin(ph) + 0.4 * np.sin(2 * ph) + 0.2 * np.sin(3 * ph)
+    env = np.clip(s / 0.015, 0, 1) * np.clip((0.22 - s) / 0.06, 0, 1)
+    return (tone + 0.3 * band(rng.standard_normal(len(s)), 2000, 6000)) * env
+
+
+def scrape():
+    s = t(0.35)
+    grit = band(rng.standard_normal(len(s)), 400, 4000) * (0.6 + 0.4 * (rng.random(len(s)) > 0.7))
+    return grit * np.sin(np.pi * s / 0.35) ** 2
+
+
+def breath():
+    s = t(1.6)                                                           # two pants, in and out, loops cleanly
+    env = np.sin(np.pi * ((s % 0.8) / 0.8)) ** 2 * np.where((s % 0.8) < 0.3, 0.5, 1.0)
+    return band(pink(len(s)), 300, 2500) * env
 
 
 def crowd_react():
@@ -81,6 +111,13 @@ def bell():
 
 if __name__ == "__main__":
     save("Slap", slap())
+    for i, (hi, hz, wet) in enumerate(((7000, 95, 0.8), (11000, 125, 0.5), (8500, 140, 0.7)), 1):
+        save(f"Slap{i}", slap(hi, hz, wet))
+    save("Thud", thud())
+    save("Squeak0", squeak(1100))
+    save("Squeak1", squeak(1500))
+    save("Scrape", scrape())
+    save("Breath", breath())
     save("CrowdReact", crowd_react())
     save("CrowdLoop", crowd_loop())
     save("Bell", bell())

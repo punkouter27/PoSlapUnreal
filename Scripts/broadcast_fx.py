@@ -3,10 +3,11 @@
     training/.venv/Scripts/python.exe Scripts/broadcast_audio.py        (the WAVs, first)
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/broadcast_fx.py" -unattended
 
-/Game/Audio/S_Slap, S_CrowdReact, S_CrowdLoop (looping), S_Bell; /Game/FX/NS_SlapSpray (the engine's DirectionalBurst
+/Game/Audio/S_* (broadcast_audio.py's WAVs; CrowdLoop and Breath loop), RV_Arena (the hall's reverb); /Game/FX/NS_SlapSpray (the engine's DirectionalBurst
 template); the cheek ripple on M_Grandpa: world-position offset along the normal, a damped ring around RipplePoint driven
 by RippleTime / RippleAmp (ASlapHUD sets them per athlete on a strike); wear on M_Grandpa's colour: a red flush around
-FlushPoint (Flush, from neck damage) and a greyer skin (Tired, from stamina); the crowd (/Game/FX/M_CrowdLive, the parent
+FlushPoint (Flush, from neck damage), a palm print there (Print, along PrintU / PrintV: fingers, across the palm) and a
+greyer skin (Tired, from stamina); M_Scuff, the deferred decal for sole and palm marks; LODs on every athlete; the crowd (/Game/FX/M_CrowdLive, the parent
 of the arena's M_Crowd and M_PhoneLight): Rise bounces the seats, Cheer flickers the phone lights (ASlapHUD::Crowd).
 Display only: MuJoCo owns every contact.
 """
@@ -19,7 +20,7 @@ MEL = unreal.MaterialEditingLibrary
 
 
 def log(msg):
-    unreal.log(f"[broadcast_fx] {msg}")
+    unreal.log_warning(f"[broadcast_fx] {msg}")   # a warning: commandlets print nothing below Display
 
 
 def add_ripple(skin):
@@ -58,42 +59,98 @@ def add_ripple(skin):
 
 
 WEAR = ("float f = A * saturate(1 - distance(P, F) / 9);\n"
+        "float3 d = P - F;\n"                                                          # the print, cm: x along the fingers
+        "float x = dot(d, U), y = dot(d, V), z = dot(d, cross(U, V));\n"
+        "float palm = 1 - smoothstep(0.8, 1.0, length(float2((x + 1.5) / 4.5, y / 4.0)));\n"
+        "float fy = abs(frac((y + 4.0) / 2.0) - 0.5) * 2.0;\n"                          # four fingers, 2 cm apart
+        "float fing = (1 - smoothstep(0.35, 0.6, fy)) * step(abs(y), 4.0) * step(1.5, x) * (1 - smoothstep(8.0, 9.5, x));\n"
+        "float h = K * max(palm, fing) * saturate(1 - abs(z) / 3);\n"
         "float3 c = lerp(C, dot(C, float3(0.3, 0.59, 0.11)) * float3(0.7, 0.72, 0.75), T * 0.35);\n"
-        "return lerp(c, c * float3(1.5, 0.55, 0.55), f);")
+        "return lerp(c, c * float3(1.5, 0.5, 0.5), saturate(max(f, 0.85 * h)));")
+WEAR_IN = ("C", "P", "F", "A", "T", "U", "V", "K")
 
 
 def add_wear(skin):
-    """Base colour -> red flush within 9 cm of FlushPoint (Flush 0-1), greyer, darker skin (Tired 0-1). Refreshes the code if present."""
+    """Base colour -> red flush within 9 cm of FlushPoint (Flush 0-1), a palm print there (Print 0-1), greyer, darker skin
+    (Tired 0-1). An older wear node is rebuilt with its inputs kept; an up-to-date one is left alone."""
     prop = unreal.MaterialProperty.MP_BASE_COLOR
     src = MEL.get_material_property_input_node(skin, prop)
+    old = {}
     if isinstance(src, unreal.MaterialExpressionCustom):
         if src.get_editor_property("code") == WEAR:
             return False
-        src.set_editor_property("code", WEAR)
-        MEL.recompile_material(skin)
-        return True
-    out = MEL.get_material_property_input_node_output_name(skin, prop)
-    code = MEL.create_material_expression(skin, unreal.MaterialExpressionCustom, -150, 0)
-    code.set_editor_property("code", WEAR)
-    code.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
-    ins = []
-    for n in ("C", "P", "F", "A", "T"):
-        c = unreal.CustomInput()
-        c.set_editor_property("input_name", n)
-        ins.append(c)
-    code.set_editor_property("inputs", ins)
-    MEL.connect_material_expressions(src, out, code, "C")
-    wp = MEL.create_material_expression(skin, unreal.MaterialExpressionWorldPosition, -400, -200)
-    MEL.connect_material_expressions(wp, "", code, "P")
-    pt = MEL.create_material_expression(skin, unreal.MaterialExpressionVectorParameter, -400, -300)
-    pt.set_editor_property("parameter_name", "FlushPoint")
-    MEL.connect_material_expressions(pt, "", code, "F")
-    for i, name in enumerate(("Flush", "Tired")):
-        p = MEL.create_material_expression(skin, unreal.MaterialExpressionScalarParameter, -400, -500 + 100 * i)
-        p.set_editor_property("parameter_name", name)
-        MEL.connect_material_expressions(p, "", code, "AT"[i])
+        names = [str(c.get_editor_property("input_name")) for c in src.get_editor_property("inputs")]
+        for n, node in zip(names, MEL.get_inputs_for_material_expression(skin, src)):
+            if node:
+                old[n] = (node, MEL.get_input_node_output_name_for_material_expression(src, node))
+        MEL.delete_material_expression(skin, src)
+    else:
+        old["C"] = (src, MEL.get_material_property_input_node_output_name(skin, prop))
+    code = custom(skin, WEAR, WEAR_IN, -150, 0)
+    if "P" not in old:
+        old["P"] = (MEL.create_material_expression(skin, unreal.MaterialExpressionWorldPosition, -400, -200), "")
+    for i, (n, name, kind) in enumerate((("F", "FlushPoint", unreal.MaterialExpressionVectorParameter),
+                                         ("A", "Flush", unreal.MaterialExpressionScalarParameter),
+                                         ("T", "Tired", unreal.MaterialExpressionScalarParameter),
+                                         ("U", "PrintU", unreal.MaterialExpressionVectorParameter),
+                                         ("V", "PrintV", unreal.MaterialExpressionVectorParameter),
+                                         ("K", "Print", unreal.MaterialExpressionScalarParameter))):
+        if n not in old:
+            p = MEL.create_material_expression(skin, kind, -400, -800 + 100 * i)
+            p.set_editor_property("parameter_name", name)
+            old[n] = (p, "")
+    for n in WEAR_IN:
+        MEL.connect_material_expressions(old[n][0], old[n][1], code, n)
     MEL.connect_material_property(code, "", prop)
     MEL.recompile_material(skin)
+    return True
+
+
+SCUFF = ("float2 u = UV - 0.5;\n"
+         "float n = frac(sin(dot(floor(UV * float2(5, 36)), float2(12.9898, 78.233))) * 43758.5453);\n"   # streaks along U
+         "return saturate(1 - 2.2 * length(u * float2(1, 2.2))) * (0.3 + 0.7 * n) * 0.6;")
+
+
+def add_scuff():
+    """/Game/FX/M_Scuff: a dark rubber streak, deferred decal (ASlapHUD lays it where a sole skids or a palm braces)."""
+    if ASSETS.does_asset_exist("/Game/FX/M_Scuff"):
+        return
+    m = unreal.AssetToolsHelpers.get_asset_tools().create_asset("M_Scuff", "/Game/FX", unreal.Material, unreal.MaterialFactoryNew())
+    m.set_editor_property("material_domain", unreal.MaterialDomain.MD_DEFERRED_DECAL)
+    m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    col = MEL.create_material_expression(m, unreal.MaterialExpressionConstant3Vector, -400, 0)
+    col.set_editor_property("constant", unreal.LinearColor(0.025, 0.022, 0.02, 1))
+    MEL.connect_material_property(col, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    uv = MEL.create_material_expression(m, unreal.MaterialExpressionTextureCoordinate, -600, 200)
+    op = custom(m, SCUFF, ("UV",), -350, 200)
+    op.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+    MEL.connect_material_expressions(uv, "", op, "UV")
+    MEL.connect_material_property(op, "", unreal.MaterialProperty.MP_OPACITY)
+    MEL.recompile_material(m)
+    ASSETS.save_loaded_asset(m)
+    log("M_Scuff (deferred decal)")
+
+
+def add_reverb():
+    """/Game/Audio/RV_Arena: a big hall, ASlapHUD activates it at the start of play."""
+    path = "/Game/Audio/RV_Arena"
+    rv = ASSETS.load_asset(path) if ASSETS.does_asset_exist(path) else unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+        "RV_Arena", "/Game/Audio", unreal.ReverbEffect, unreal.ReverbEffectFactory())
+    for k, v in (("density", 1.0), ("diffusion", 1.0), ("gain", 0.4), ("gain_hf", 0.6), ("decay_time", 1.8),
+                 ("decay_hf_ratio", 0.7), ("reflections_gain", 0.3), ("reflections_delay", 0.02), ("late_gain", 1.4), ("late_delay", 0.035)):
+        rv.set_editor_property(k, v)
+    ASSETS.save_loaded_asset(rv)
+    log("RV_Arena")
+
+
+def add_lods(mesh):
+    """Engine-reduced LODs 1-2 (half, quarter the triangles): the wide and crane shots on a phone. No-op if it has them."""
+    sub = unreal.get_editor_subsystem(unreal.SkeletalMeshEditorSubsystem)
+    if sub.get_lod_count(mesh) >= 3:
+        return False
+    sub.regenerate_lod(mesh, 3, False, False)
+    n = sub.get_lod_count(mesh)
+    log(f"{mesh.get_name()}: {n} LODs, verts " + ", ".join(str(sub.get_num_verts(mesh, i)) for i in range(n)))
     return True
 
 
@@ -167,7 +224,8 @@ def add_crowd():
 
 def main():
     tools = unreal.AssetToolsHelpers.get_asset_tools()
-    for name, loop in (("Slap", False), ("CrowdReact", False), ("CrowdLoop", True), ("Bell", False)):
+    for name in ("Slap", "Slap1", "Slap2", "Slap3", "Thud", "Squeak0", "Squeak1", "Scrape", "Breath", "CrowdReact", "CrowdLoop", "Bell"):
+        loop = name in ("CrowdLoop", "Breath")
         t = unreal.AssetImportTask()
         t.filename = os.path.join(PROJ, "Content/Art/Exports/Audio", f"{name}.wav")
         t.destination_path, t.destination_name = "/Game/Audio", f"S_{name}"
@@ -184,10 +242,22 @@ def main():
         ASSETS.save_asset("/Game/FX/NS_SlapSpray")
     log(f"NS_SlapSpray: {ASSETS.does_asset_exist('/Game/FX/NS_SlapSpray')}")
 
-    skin = ASSETS.load_asset("/Game/Athletes/Grandpa/M_Grandpa")
-    if add_ripple(skin) | add_wear(skin):
-        ASSETS.save_loaded_asset(skin)
-    log("cheek ripple and wear on M_Grandpa")
+    for folder in ASSETS.list_assets("/Game/Athletes", recursive=False, include_folder=True):   # every athlete built so far
+        if not folder.endswith("/"):
+            continue
+        name = folder.rstrip("/").split("/")[-1]
+        skin, mesh = f"/Game/Athletes/{name}/M_{name}", f"/Game/Athletes/{name}/SK_{name}"
+        if ASSETS.does_asset_exist(skin):
+            skin = ASSETS.load_asset(skin)
+            if add_ripple(skin) | add_wear(skin):
+                ASSETS.save_loaded_asset(skin)
+            log(f"cheek ripple, wear and print on M_{name}")
+        if ASSETS.does_asset_exist(mesh):
+            mesh = ASSETS.load_asset(mesh)
+            if add_lods(mesh):
+                ASSETS.save_loaded_asset(mesh)
+    add_scuff()
+    add_reverb()
     add_crowd()
 
 

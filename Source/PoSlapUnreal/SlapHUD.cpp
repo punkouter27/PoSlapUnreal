@@ -4,6 +4,8 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
+#include "Components/DecalComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "IWebSocket.h"
@@ -33,12 +35,17 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Utils/MjUtils.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "SlapAthleteVisual.h"
 #include "SlapController.h"
+#include "SlapNames.h"
 #include "SceneView.h"
 #include "Sound/SoundAttenuation.h"
+#include "Sound/ReverbEffect.h"
 #include "Sound/SoundBase.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/UObjectIterator.h"
@@ -61,13 +68,14 @@ namespace
 	constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
 	FString CommentaryFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt"); }	// Scripts/commentator.py writes it
 	FString HypeFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/hype.json"); }	// Scripts/chat.py writes it
-	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandR("hand_r");
-	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired"), PRise("Rise"), PCheer("Cheer");
+	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandL("hand_l"), BoneHandR("hand_r");
+	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired"), PRise("Rise"), PCheer("Cheer"),
+		PPrint("Print"), PPrintU("PrintU"), PPrintV("PrintV");
 	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
 	const FColor TeamColor[2] = { FColor(235, 70, 60), FColor(70, 130, 240) };
 	const FColor Gold(255, 220, 120), Grey(200, 200, 200);
 	constexpr float TopBar = 56.f, BottomBar = 40.f;	// Slate units: the corner anchors' rows (BuildUi)
-	const TCHAR* ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO") };
+	const TCHAR* ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO"), TEXT("REPLAY") };
 	int32 Team(const FString& Name) { return Name == TEXT("blue") ? 1 : 0; }
 	template <typename T> T* Load(const TCHAR* Path) { return LoadObject<T>(nullptr, Path, nullptr, LOAD_Quiet | LOAD_NoWarn); }
 }
@@ -126,7 +134,19 @@ void ASlapHUD::BeginPlay()
 	BuildUi();
 	// broadcast assets (Scripts/broadcast_fx.py); a missing one is skipped
 	Spray = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_SlapSpray.NS_SlapSpray"));
-	SlapSound = Load<USoundBase>(TEXT("/Game/Audio/S_Slap.S_Slap"));
+	for (const TCHAR* N : { TEXT("S_Slap"), TEXT("S_Slap1"), TEXT("S_Slap2"), TEXT("S_Slap3") })
+	{
+		if (USoundBase* Snd = Load<USoundBase>(*FString::Printf(TEXT("/Game/Audio/%s.%s"), N, N))) SlapTakes.Add(Snd);
+	}
+	for (const TCHAR* N : { TEXT("S_Squeak0"), TEXT("S_Squeak1") })
+	{
+		if (USoundBase* Snd = Load<USoundBase>(*FString::Printf(TEXT("/Game/Audio/%s.%s"), N, N))) Squeaks.Add(Snd);
+	}
+	Thud = Load<USoundBase>(TEXT("/Game/Audio/S_Thud.S_Thud"));
+	Scrape = Load<USoundBase>(TEXT("/Game/Audio/S_Scrape.S_Scrape"));
+	BreathLoop = Load<USoundBase>(TEXT("/Game/Audio/S_Breath.S_Breath"));
+	ScuffMat = Load<UMaterialInterface>(TEXT("/Game/FX/M_Scuff.M_Scuff"));
+	if (UReverbEffect* Hall = Load<UReverbEffect>(TEXT("/Game/Audio/RV_Arena.RV_Arena"))) UGameplayStatics::ActivateReverbEffect(this, Hall, TEXT("Arena"), 0.f, 1.f, 0.f);
 	CrowdReact = Load<USoundBase>(TEXT("/Game/Audio/S_CrowdReact.S_CrowdReact"));
 	CrowdLoop = Load<USoundBase>(TEXT("/Game/Audio/S_CrowdLoop.S_CrowdLoop"));
 	Bell = Load<USoundBase>(TEXT("/Game/Audio/S_Bell.S_Bell"));
@@ -143,6 +163,7 @@ void ASlapHUD::BeginPlay()
 	Ringside->Attenuation.bSpatialize = true;
 	Ringside->Attenuation.AttenuationShapeExtents = FVector(1500.f, 0.f, 0.f);
 	Ringside->Attenuation.FalloffDistance = 3000.f;
+	for (int32 a = 0; a < 2 && BreathLoop; ++a) Breath[a] = UGameplayStatics::SpawnSoundAtLocation(this, BreathLoop, FVector::ZeroVector, FRotator::ZeroRotator, 0.01f, 1.f, 0.f, Ringside, nullptr, false);
 	for (TActorIterator<ALight> It(GetWorld()); It; ++It)	// Scripts/arena_env.py's rig, by label
 	{
 		// ponytail: actor labels are editor-only data (every -game run here uses the editor binary); a packaged build needs actor tags
@@ -159,9 +180,25 @@ void ASlapHUD::BeginPlay()
 			Truss[k] = Lit;
 		}
 	}
+	if (USpotLightComponent* L = NewObject<USpotLightComponent>(this, TEXT("FollowSpot")))	// a narrow spot on the striker (Spotlight)
+	{
+		const ULocalLightComponent* Ref = Truss.Num() ? Cast<ULocalLightComponent>(Truss[0].Light.Get()) : nullptr;
+		L->SetMobility(EComponentMobility::Movable);
+		L->SetIntensityUnits(Ref ? Ref->IntensityUnits : ELightUnits::Lumens);
+		SpotBase = Ref ? 2.f * Ref->Intensity : 30000.f;
+		L->SetIntensity(SpotBase);
+		L->SetAttenuationRadius(2000.f);
+		L->SetInnerConeAngle(7.f);
+		L->SetOuterConeAngle(12.f);
+		L->SetLightColor(FLinearColor(1.f, 0.93f, 0.82f));
+		L->SetCastShadows(!PLATFORM_ANDROID && !PLATFORM_IOS);	// a phone has movable spot shadows off (DefaultEngine.ini)
+		if (!GetRootComponent()) SetRootComponent(L);
+		L->RegisterComponent();
+		Spot = L;
+	}
 	CommentaryStamp = IFileManager::Get().GetTimeStamp(*CommentaryFile());	// only lines from now on
-	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d crowd %d/%d bell %d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"), Spray ? TEXT("yes") : TEXT("MISSING"),
-		SlapSound != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num(), CrowdSkin.Num(), Scout.Num());
+	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d squeak %d thud %d scrape %d breath %d crowd %d/%d bell %d, scuff %d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"), Spray ? TEXT("yes") : TEXT("MISSING"),
+		SlapTakes.Num(), Squeaks.Num(), Thud != nullptr, Scrape != nullptr, BreathLoop != nullptr, ScuffMat != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num(), CrowdSkin.Num(), Scout.Num());
 }
 
 void ASlapHUD::DrawHUD()
@@ -234,6 +271,9 @@ void ASlapHUD::DrawHUD()
 		if (GetWorld()->GetTimeSeconds() >= FxTestAt + 1.5f) H.KOSeq = -1;
 	}
 	if (H.Match > 0) Cues(H);
+	Spotlight(H);
+	Scuffs(H);
+	Pant(H);
 	if (USlapController* C = Controller.Get())	// the VIEW switches the physics thread reads
 	{
 		C->bXRay = bShowXRay;
@@ -255,6 +295,7 @@ void ASlapHUD::DrawHUD()
 		if (bShowXRay) DrawXRay(H);
 		DrawMatch(H);
 		DrawOverlays(H);
+		if (GetWorld()->GetTimeSeconds() < ReplayEnd) Text(TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, Bot - 48.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
 
 	if (bUiTest) UiTest(H);
@@ -695,6 +736,7 @@ void ASlapHUD::CacheAthletes()
 		if (Body[a].IsValid()) continue;
 		Skin[a] = It->Mesh->CreateDynamicMaterialInstance(0);
 		Body[a] = It->Mesh;
+		Visual[a] = *It;
 	}
 }
 
@@ -714,20 +756,63 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		StrikeK = FMath::Clamp(H.Speed / CleanSpeed, 0.25, 1.5);
 		const float K = StrikeK;
 		if (Spray) UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, H.StrikePos, FRotationMatrix::MakeFromZ(H.StrikeDir).Rotator(), FVector(0.3f * K));
-		if (SlapSound) UGameplayStatics::PlaySoundAtLocation(this, SlapSound, H.StrikePos, K, FMath::FRandRange(0.92f, 1.08f), 0.f, Ringside);
-		if (Body[Struck].IsValid()) FlushLocal[Struck] = Body[Struck]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace).InverseTransformPosition(H.StrikePos);
-		if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, 0.3f + 0.5f * K);
+		if (SlapTakes.Num())	// one of four takes, deeper behind a heavier arm, duller for a slow palm
+		{
+			const float Pitch = FMath::Clamp(FMath::Sqrt(3.0 / FMath::Max(H.StrikeMass[1 - Struck], 0.5)), 0.8, 1.25) * FMath::FRandRange(0.94f, 1.06f);
+			if (UAudioComponent* A = UGameplayStatics::SpawnSoundAtLocation(this, SlapTakes[FMath::RandHelper(SlapTakes.Num())], H.StrikePos, FRotator::ZeroRotator, K, Pitch, 0.f, Ringside))
+			{
+				A->SetLowPassFilterEnabled(true);
+				A->SetLowPassFilterFrequency(2500.f + 17500.f * FMath::Min(K, 1.f));
+			}
+		}
+		if (Body[Struck].IsValid())
+		{
+			const FTransform HeadT = Body[Struck]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace);
+			FlushLocal[Struck] = HeadT.InverseTransformPosition(H.StrikePos);
+			const FVector N = (H.StrikePos - HeadT.GetLocation()).GetSafeNormal();	// the print: fingers along the palm's travel, flat on the cheek
+			const FVector U = (H.StrikeDir - N * (H.StrikeDir | N)).GetSafeNormal();
+			PrintU[Struck] = HeadT.InverseTransformVectorNoScale(U);
+			PrintV[Struck] = HeadT.InverseTransformVectorNoScale(N ^ U);
+			Print[Struck] = FMath::Min(1.f, Print[Struck] + 0.4f * K);
+			SweatHead0 = HeadT.GetLocation();
+			SweatAt = Now + 0.08;
+		}
+		RoarAt = Now + 0.2;	// the crowd catches its breath (Crowd ducks the murmur), then roars
+		RoarVolume = 0.3f + 0.5f * K;
 		if (Skin.IsValidIndex(Struck) && Skin[Struck])
 		{
 			Skin[Struck]->SetVectorParameterValue(TEXT("RipplePoint"), FLinearColor(H.StrikePos));
 			Skin[Struck]->SetScalarParameterValue(TEXT("RippleAmp"), 0.2f * H.Speed);	// cm: 1.6 at a clean 8 m/s
 		}
 	}
-	for (int32 a = 0; a < Skin.Num(); ++a)	// wear: the flush follows the head; 1 at the neck-strength and stamina floors
+	if (SweatAt >= 0.0 && Now >= SweatAt && Body[Struck].IsValid())	// sweat off the far side, as hard as the head snapped
+	{
+		SweatAt = -1.0;
+		const FVector Head = Body[Struck]->GetBoneLocation(BoneHead);
+		const double Snap = FVector::Dist(Head, SweatHead0) / 100.0 / FMath::Max(Now - StrikeAt, 0.01);	// m/s (clean slaps: 2-7)
+		const FVector Off = (Head - StrikePos).GetSafeNormal();
+		// ponytail: the spray system again, smaller; a droplet emitter of its own if it reads as spray
+		if (Spray) UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, Head + Off * 8.f, FRotationMatrix::MakeFromZ(Off + H.StrikeDir).Rotator(), FVector(0.15f * FMath::Clamp(Snap / 5.0, 0.2, 1.5)));
+	}
+	if (RoarAt >= 0.0 && Now >= RoarAt)
+	{
+		RoarAt = -1.0;
+		if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, RoarVolume);
+	}
+	const float Dt = GetWorld()->GetDeltaSeconds();
+	for (int32 a = 0; a < Skin.Num(); ++a)	// wear: the flush and the print follow the head; 1 at the neck-strength and stamina floors
 	{
 		if (!Skin[a]) continue;
 		Skin[a]->SetScalarParameterValue(PRippleTime, a == Struck ? Now - StrikeAt : 100.f);
-		if (Body[a].IsValid()) Skin[a]->SetVectorParameterValue(PFlushPoint, FLinearColor(Body[a]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace).TransformPosition(FlushLocal[a])));
+		if (Body[a].IsValid())
+		{
+			const FTransform HeadT = Body[a]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace);
+			Skin[a]->SetVectorParameterValue(PFlushPoint, FLinearColor(HeadT.TransformPosition(FlushLocal[a])));
+			Skin[a]->SetVectorParameterValue(PPrintU, FLinearColor(HeadT.TransformVectorNoScale(PrintU[a])));
+			Skin[a]->SetVectorParameterValue(PPrintV, FLinearColor(HeadT.TransformVectorNoScale(PrintV[a])));
+		}
+		Print[a] *= FMath::Exp(-Dt / 25.f);
+		Skin[a]->SetScalarParameterValue(PPrint, Print[a]);
 		const double Sting = a == Struck ? 0.5 * FMath::Clamp(StrikeSpeed / CleanSpeed, 0.0, 1.5) * FMath::Exp((StrikeAt - Now) / 2.0) : 0.0;
 		Skin[a]->SetScalarParameterValue(PFlush, FMath::Clamp((1.0 - H.Neck[a]) / (1.0 - MinNeck) + Sting, 0.0, 1.0));
 		Skin[a]->SetScalarParameterValue(PTired, FMath::Clamp((1.0 - H.Stamina[a]) / (1.0 - MinStamina), 0.0, 1.0));
@@ -739,6 +824,18 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		if (Bell) UGameplayStatics::PlaySound2D(this, Bell);
 		if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, 1.4f, 0.9f);
 		if (Spray) UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, StrikePos, FRotator(90, 0, 0), FVector(0.6f));
+		if (Thud && Body[Struck].IsValid()) UGameplayStatics::PlaySoundAtLocation(this, Thud, Body[Struck]->GetBoneLocation(BonePelvis), 1.2f, 0.9f, 0.f, Ringside);
+		ReplayAt = Now + 0.8;
+	}
+	if (ReplayAt >= 0.0 && Now >= ReplayAt)	// the KO again at half speed: its last 1.5 s, inside the post-match hold
+	{
+		ReplayAt = -1.0;
+		const double Dur = FMath::Max(1.0, KOShot - 1.0), Window = FMath::Min(1.5, 0.5 * Dur);
+		for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
+		{
+			if (V.IsValid()) V->Replay(KOAt - Window, KOAt, Window / Dur);
+		}
+		ReplayEnd = Now + Dur;
 	}
 	if (H.Round != SeenTurnRound || H.Striker != SeenTurnStriker)	// a new turn: the last turn's commentary is stale
 	{
@@ -752,6 +849,12 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		TapeAt = Now;
 		HeadG.Reset();
 		LoadLeague();	// training/scouting.py may have run since
+		Print[0] = Print[1] = 0.f;	// a fresh match: clean cheeks, a clean floor
+		for (const TWeakObjectPtr<UDecalComponent>& M : Marks)
+		{
+			if (M.IsValid()) M->DestroyComponent();
+		}
+		Marks.Reset();
 	}
 	if (H.ScoredRound != SeenRound)
 	{
@@ -832,13 +935,14 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	if (!Box.IsValid) return;
 
 	EShot Want = H.bWalkIn ? EShot::WalkIn : EShot::Wide;
-	if (Now - KOAt < KOShot) Want = EShot::KO;
+	if (Now < ReplayEnd) Want = EShot::Replay;
+	else if (Now - KOAt < KOShot) Want = EShot::KO;
 	else if (Now - StrikeAt < 1.6) Want = EShot::Strike;
 	else if (!H.bWalkIn && H.Match > 0 && !H.bStruck && H.HandDist < 0.55 && H.HandSpeed > 1.5) Want = EShot::Tension;
 	bool bCut = false;
 	if (Want != Shot && (Want > Shot || Want == EShot::WalkIn || Now - ShotStart > 1.0))
 	{
-		bCut = Want == EShot::WalkIn || Want == EShot::Tension || Want == EShot::KO;
+		bCut = Want == EShot::WalkIn || Want == EShot::Tension || Want == EShot::KO || Want == EShot::Replay;
 		Shot = Want;
 		ShotStart = Now;
 	}
@@ -878,6 +982,14 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 		Look = 0.5f * (Pelvis[0] + Pelvis[1]);
 		Pos = Look - Fwd.RotateAngleAxis(12.f * T, Up) * 330.f + Up * (140.f + 45.f * T);
 		Speed = 1.5f;
+		break;
+	}
+	case EShot::Replay:		// close on the replayed defender's head, orbiting
+	{
+		const float T = Now - ShotStart;
+		Look = Head[Struck];
+		Pos = Look - Fwd.RotateAngleAxis((Struck == 1 ? -35.f : 35.f) + 20.f * T, Up) * 190.f + Up * 25.f;
+		Speed = 6.f;
 		break;
 	}
 	default:				// wide, side-on: both athletes framed (~60 % of the portrait height), below the HUD panel
@@ -1272,14 +1384,107 @@ void ASlapHUD::Crowd(const FSlapHud& H, double Now)
 		M->SetScalarParameterValue(PRise, Tension);
 		M->SetScalarParameterValue(PCheer, Tension);
 	}
-	if (UAudioComponent* A = CrowdAudio.Get()) A->SetVolumeMultiplier(0.35f * (1.f + 1.6f * Tension));
+	if (UAudioComponent* A = CrowdAudio.Get()) A->SetVolumeMultiplier(0.35f * (1.f + 1.6f * Tension) * (Now - StrikeAt < 0.2 ? 0.3f : 1.f));	// ducked for the slap
 	// a gasp the moment a struck defender's capture point leaves his soles
 	if (H.Danger[Def] > 0.7 && H.bStruck && !bGasped && CrowdReact)
 	{
 		bGasped = true;
 		UGameplayStatics::PlaySound2D(this, CrowdReact, 0.5f, 1.25f);
+		if (Thud && Body[Def].IsValid()) UGameplayStatics::PlaySoundAtLocation(this, Thud, Body[Def]->GetBoneLocation(BonePelvis), 0.6f, 1.1f, 0.f, Ringside);	// he stumbles
 	}
 	else if (H.Danger[Def] < 0.3) bGasped = false;
+}
+
+void ASlapHUD::Spotlight(const FSlapHud& H)
+{
+	// a narrow spot from above: on the striker through the wind-up, snapping onto the struck head at the touch and a KO
+	USpotLightComponent* L = Spot.Get();
+	if (!L || H.Match == 0) return;
+	const double Now = GetWorld()->GetTimeSeconds();
+	const bool bOnStruck = Now - StrikeAt < 1.6 || Now - KOAt < KOShot;
+	const int32 Who = bOnStruck ? Struck : Team(H.Striker);
+	if (!Body[Who].IsValid()) return;
+	const FVector Head = Body[Who]->GetBoneLocation(BoneHead);
+	const FVector Want = bOnStruck ? Head : 0.5f * (Head + Body[Who]->GetBoneLocation(BonePelvis));
+	SpotAim = SpotAim.IsZero() ? Want : FMath::VInterpTo(SpotAim, Want, GetWorld()->GetDeltaSeconds(), bOnStruck ? 14.f : 4.f);
+	const FVector Pos = SpotAim + FVector::UpVector * 520.f - BaseRot.Vector() * 160.f;	// above, a little toward the camera
+	L->SetWorldLocationAndRotation(Pos, (SpotAim - Pos).Rotation());
+	L->SetIntensity(SpotBase * (Now - StrikeAt < 1.0 ? 1.f + 1.5f * StrikeK * FMath::Exp(-6.0 * (Now - StrikeAt)) : 1.f));
+}
+
+void ASlapHUD::Scuffs(const FSlapHud& H)
+{
+	// from the drawn bones (display only): a sole skidding along the floor squeaks and leaves a streak; a palm landing on the
+	// podium leaves a mark where it braced
+	const double Now = GetWorld()->GetTimeSeconds();
+	const float Dt = GetWorld()->GetDeltaSeconds();
+	if (!Podium.IsValid)
+	{
+		AAMjManager* Manager = AAMjManager::GetManager();
+		const mjModel* m = Manager && Manager->PhysicsEngine ? Manager->PhysicsEngine->GetModel() : nullptr;
+		const int32 g = m ? Slap::Find(m, mjOBJ_GEOM, m->ngeom, TEXT("podium")) : -1;
+		if (g >= 0) Podium = FBox::BuildAABB(MjUtils::MjToUEPosition(m->geom_pos + 3 * g), 100.0 * FVector(m->geom_size[3 * g], m->geom_size[3 * g + 1], m->geom_size[3 * g + 2]));
+	}
+	const bool bMark = H.Match > 0 && !H.bWalkIn && Now >= ReplayEnd && Dt > 0.f;
+	for (int32 a = 0; a < 2; ++a)
+	{
+		if (!Body[a].IsValid()) continue;
+		for (int32 f = 0; f < 2; ++f)
+		{
+			const FVector P = Body[a]->GetBoneLocation(f ? BoneFootR : BoneFootL);
+			const FVector V = (P - FootPrev[a][f]) / FMath::Max(Dt, 1e-4f);
+			FootPrev[a][f] = P;
+			FootLow[a][f] = FMath::Min(FootLow[a][f], (float)P.Z);	// the ankle's planted height
+			const float Sp = V.Size2D();	// cm/s
+			Slide[a][f] = bMark && P.Z < FootLow[a][f] + 3.f && Sp > 50.f && Sp < 400.f ? Slide[a][f] + 1 : 0;	// a reset's jump breaks the run
+			if (Slide[a][f] < 4 || Now < FootNext[a][f]) continue;	// a skid, not a twitch
+			FootNext[a][f] = Now + 0.5;
+			Scuff(FVector(P.X, P.Y, 0.0), V.Rotation().Yaw, FVector(10.f, 5.f, 14.f));
+			USoundBase* Snd = Sp > 90.f && Squeaks.Num() ? Squeaks[FMath::RandHelper(Squeaks.Num())].Get() : Scrape.Get();
+			if (Snd) UGameplayStatics::PlaySoundAtLocation(this, Snd, P, FMath::Clamp(Sp / 150.f, 0.3f, 1.2f), FMath::FRandRange(0.9f, 1.1f), 0.f, Ringside);
+		}
+		for (int32 h = 0; h < 2 && Podium.IsValid; ++h)
+		{
+			const FVector P = Body[a]->GetBoneLocation(h ? BoneHandR : BoneHandL);	// the wrist: the palm lies within ~12 cm
+			const bool bOn = FMath::Abs(P.Z - Podium.Max.Z) < 12.f && P.X > Podium.Min.X - 6.f && P.X < Podium.Max.X + 6.f && P.Y > Podium.Min.Y - 4.f && P.Y < Podium.Max.Y + 4.f;
+			if (bOn && !bPalmDown[a][h] && bMark) Scuff(FVector(P.X, P.Y, Podium.Max.Z), 0.f, FVector(10.f, 7.f, 9.f));
+			bPalmDown[a][h] = bOn;
+		}
+	}
+}
+
+void ASlapHUD::Scuff(const FVector& At, float Yaw, const FVector& Size)
+{
+	// a deferred decal pointing down (its U runs along Yaw), the match's last 8 kept: a phone pays per decal
+	if (!ScuffMat) return;
+	if (UDecalComponent* D = UGameplayStatics::SpawnDecalAtLocation(this, ScuffMat, Size, At, FRotator(-90.f, Yaw, 0.f)))
+	{
+		D->SetFadeScreenSize(0.f);
+		Marks.Add(D);
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: scuff at %s"), *At.ToCompactString());
+	}
+	while (Marks.Num() > 8)
+	{
+		if (Marks[0].IsValid()) Marks[0]->DestroyComponent();
+		Marks.RemoveAt(0);
+	}
+}
+
+void ASlapHUD::Pant(const FSlapHud& H)
+{
+	// each athlete breathes at his head: louder and quicker as stamina drains; the striker blows for a moment after a swing
+	const double Now = GetWorld()->GetTimeSeconds();
+	for (int32 a = 0; a < 2; ++a)
+	{
+		UAudioComponent* A = Breath[a].Get();
+		if (!A || !Body[a].IsValid()) continue;
+		const double Tired = H.Match > 0 ? FMath::Clamp((1.0 - H.Stamina[a]) / (1.0 - MinStamina), 0.0, 1.0) : 0.0;
+		const double Effort = a != Struck && Now - StrikeAt < 3.0 ? 0.4 * FMath::Exp(StrikeAt - Now) : 0.0;
+		const float Need = FMath::Min(1.0, Tired + Effort);
+		A->SetWorldLocation(Body[a]->GetBoneLocation(BoneHead));
+		A->SetVolumeMultiplier(0.01f + 0.6f * Need * Need);
+		A->SetPitchMultiplier(1.f + 0.45f * Need);
+	}
 }
 
 void ASlapHUD::LiveSend(const FString& Msg)

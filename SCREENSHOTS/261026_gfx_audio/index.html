@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Graphics and audio pass</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:24px auto;padding:0 16px}.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:240px;margin:0}img{width:100%;border:1px solid #ccc}li{margin:4px 0}code{font-size:13px}</style>
+<h1>Graphics and audio pass: ten effects (2026-10-26)</h1>
+<p>Grandpa vs Grandpa, 540 × 960, <code>-SlapFxTest=8</code> (a fake clean strike at 8 s and a fake KO at 9.5 s).
+Every effect is display only. The effects read the drawn bones and the HUD state. MuJoCo, the brains and the match
+rules are untouched, so the match log and parity checks are unaffected. The UI click test still passes (10 of 10 clicks, a full match ended and the next began).</p>
+<div class="row">
+<figure><img src="before_strike.png" alt="Before: the strike"><figcaption>Before: the strike</figcaption></figure>
+<figure><img src="after_strike_annotated.png" alt="After: the strike, with sweat thrown off the far side"><figcaption>After: the strike</figcaption></figure>
+</div>
+<div class="row">
+<figure><img src="before_ko.png" alt="Before: 1.6 s after the KO, the crane shot"><figcaption>Before: 1.6 s after the KO</figcaption></figure>
+<figure><img src="after_ko_annotated.png" alt="After: the KO replay at half speed"><figcaption>After: the KO replay</figcaption></figure>
+<figure><img src="after_print_annotated.png" alt="After: palm print on the struck cheek"><figcaption>After: the struck cheek, 0.6 s on (close-up taken with a temporary check camera)</figcaption></figure>
+</div>
+<ol>
+<li><b>Palm print:</b> a procedural palm and four fingers in the skin's wear shader at the contact point. The fingers point along the palm's direction of travel and follow the head. Each hit deepens it, and it fades over about 25 s.</li>
+<li><b>Scuffs:</b> deferred decals (<code>/Game/FX/M_Scuff</code>) where a sole skids along the floor (4 frames in a row at 50–400 cm/s) and where a palm lands on the podium. The match's last 8 are kept, and a new match starts with a clean floor. A 2-minute match left about 2 marks per turn, from the striker's pivot and the defender's palms bracing on the podium.</li>
+<li><b>Sweat:</b> the spray system again, smaller, thrown off the far side of the head 80 ms after the touch. Its size follows how far the head moved (the head snap).</li>
+<li><b>Slap sound:</b> one of four synthesised takes. A heavier striker (the card's strike mass) plays it lower, and a slow palm plays it duller (a low-pass filter from 2.5 to 20 kHz). This is the same result the MetaSounds option would give, without the MetaSounds plugin.</li>
+<li><b>Squeaks:</b> each sole skid squeaks above 90 cm/s or scrapes below, placed at the foot.</li>
+<li><b>Hall reverb and ducking:</b> <code>RV_Arena</code> (1.8 s decay). The crowd murmur drops to 30 % for 0.2 s at the touch, then the roar comes in.</li>
+<li><b>KO replay:</b> 0.8 s after a KO, the last 1.5 s play again at half speed with an orbiting close-up and a "REPLAY" tag. It fits inside the 4 s hold after a match. It replays recorded bone poses only. Physics keeps running underneath, unseen.</li>
+<li><b>Follow spot:</b> a narrow, warm spot from above. It is on the striker through the wind-up and snaps to the struck head at the touch and the KO. It casts shadows on desktop only; phones have movable-spot shadows off.</li>
+<li><b>Panting:</b> a breath loop at each athlete's head. It gets louder and quicker as stamina drains, and the striker blows for a moment after each swing. A thud plays when a struck defender stumbles (the same moment as the crowd's gasp), and a louder one on a KO.</li>
+<li><b>LODs:</b> engine-reduced LOD 1 and LOD 2 on every athlete (Grandpa 15.7k → 5.4k → 3.1k vertices, Kim 6.4k → 2.2k → 1.3k). <code>build_scene.py</code> adds them for new athletes, so Matt gets them when his arena is built.</li>
+</ol>
+<p>Not visible in a still frame: the audio (items 4–6 and 9) and the squeaks. The asset check confirmed every sound
+and that the breath loops. The skid log confirmed the scuffs trigger. Frame rate on the desktop while a GPU training run
+shared the card: 61–77 fps average. A phone run is still pending (task E5).</p>
+<p>Not done: retopology in Blender. The scans are already 8–28k triangles and new topology would mean re-rigging, so the
+LODs come from the engine's own reduction. MetaSounds was also skipped, for the reason in item 4.</p>

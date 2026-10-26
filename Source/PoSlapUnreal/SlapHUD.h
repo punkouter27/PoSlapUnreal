@@ -8,6 +8,10 @@
 #include "SlapHUD.generated.h"
 
 class ACameraActor;
+class ASlapAthleteVisual;
+class UDecalComponent;
+class UMaterialInterface;
+class USpotLightComponent;
 class IWebSocket;
 class UAudioComponent;
 class ULightComponent;
@@ -21,8 +25,9 @@ class SWidget;
 /**
  * The broadcast: match panel + telemetry (palm-speed gauge, head-g trace, balance rings, fatigue, judges' slide-in card,
  * tale of the tape, commentary line), the director camera (wide / tension close-up / strike whip / KO crane), and impact
- * effects (spray, shockwave, flash, cheek ripple, shake, fringe, light flare, KO grade, sound at the contact), and wear on the
- * skin (cheek flush from neck damage, greyer when tired). All cosmetic: MuJoCo decides everything.
+ * effects (spray, sweat, shockwave, flash, cheek ripple, shake, fringe, light flare, KO grade, sound at the contact), wear on
+ * the skin (cheek flush from neck damage, a palm print, greyer when tired), sole and palm scuffs with squeaks, panting, a
+ * spotlight on the striker, and a half-speed replay of a KO. All cosmetic: MuJoCo decides everything.
  * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
  * Slate layer inside the safe zone: title, FPS, menu, debug line, build stamp at the corners; the menu is a tabbed bottom
@@ -40,7 +45,7 @@ public:
 	virtual void DrawHUD() override;
 
 private:
-	enum class EShot : uint8 { WalkIn, Wide, Tension, Strike, KO };
+	enum class EShot : uint8 { WalkIn, Wide, Tension, Strike, KO, Replay };
 
 	void DrawMatch(const FSlapHud& H);
 	void DrawTelemetry(const FSlapHud& H);
@@ -48,6 +53,10 @@ private:
 	void Direct(ACameraActor* Cam, const FSlapHud& H);
 	void Cues(const FSlapHud& H);			// one-shot effects when the controller's counters move on
 	void Stage(double Now);					// light flare on a strike, chase on a KO
+	void Spotlight(const FSlapHud& H);		// follows the striker, snaps onto the defender at the touch
+	void Scuffs(const FSlapHud& H);			// a skidding sole or a palm braced on the podium: a mark and a squeak
+	void Scuff(const FVector& At, float Yaw, const FVector& Size);
+	void Pant(const FSlapHud& H);			// breathing, louder and faster as stamina drains
 	void Text(const FString& Str, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
 	void BuildUi();
 	void LoadRoster();	// training/characters/*.json into the 16 roster slots
@@ -113,7 +122,28 @@ private:
 	FStageLight Key, Rim[2];
 	TArray<FStageLight> Truss;
 	TWeakObjectPtr<UPoseableMeshComponent> Body[2];
+	TWeakObjectPtr<ASlapAthleteVisual> Visual[2];
 	FVector FlushLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	FVector PrintU[2], PrintV[2];	// the palm print's axes in head-bone space: along the fingers, across the palm
+	float Print[2] = {};			// how deep the print is (0-1): each strike adds to it, it fades over ~25 s
+
+	// sweat on the head snap, the crowd's roar a beat after the touch, the KO replay (game time; < 0 = none pending)
+	double SweatAt = -1.0, RoarAt = -1.0, ReplayAt = -1.0, ReplayEnd = -1.0;
+	FVector SweatHead0 = FVector::ZeroVector;
+	float RoarVolume = 0.f;
+
+	// scuffs: the podium box (Unreal cm, from the MuJoCo model), each sole's last position, lowest height and next allowed mark
+	FBox Podium = FBox(ForceInit);
+	FVector FootPrev[2][2];
+	float FootLow[2][2] = { { 1e9f, 1e9f }, { 1e9f, 1e9f } };
+	bool bPalmDown[2][2] = {};
+	int32 Slide[2][2] = {};	// frames in a row each sole has slid along the floor
+	double FootNext[2][2] = {};
+	TArray<TWeakObjectPtr<UDecalComponent>> Marks;
+	TWeakObjectPtr<USpotLightComponent> Spot;
+	FVector SpotAim = FVector::ZeroVector;
+	float SpotBase = 0.f;
+	TWeakObjectPtr<UAudioComponent> Breath[2];
 
 	// director
 	EShot Shot = EShot::Wide;
@@ -153,7 +183,12 @@ private:
 	double LiveSent = 0.0, LiveRetry = 0.0;
 
 	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> Spray;
-	UPROPERTY(Transient) TObjectPtr<USoundBase> SlapSound;
+	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> SlapTakes;	// S_Slap, S_Slap1-3
+	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> Squeaks;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> Thud;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> Scrape;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> BreathLoop;
+	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> ScuffMat;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdReact;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdLoop;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Bell;

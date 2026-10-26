@@ -27,6 +27,9 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	/** Action replay (display only): from now on show the pose recorded between game times From and To at Rate x speed. */
+	void Replay(double From, double To, double Rate) { ReplayFrom = From; ReplayTo = To; ReplayRate = Rate; ReplayStart = GetWorld()->GetTimeSeconds(); }
+
 private:
 	bool Init();
 
@@ -39,4 +42,6 @@ private:
 	TArray<int32> RefToDriven;	// reference-skeleton index -> driven-bone index, or INDEX_NONE
 	TArray<FTransform> LastPose;	// world pose set last frame, kept only until the self-check runs
 	TArray<FTransform> Pose, CompSpace;	// per-frame scratch (world pose, component space), kept to skip the allocations
+	TArray<TPair<double, TArray<FTransform>>> History;	// world poses of the last 3 s of game time (replay)
+	double ReplayFrom = 0.0, ReplayTo = 0.0, ReplayRate = 0.0, ReplayStart = 0.0;	// rate 0 = live
 };

@@ -38,6 +38,7 @@ struct FSlapHud
 	double HeadG = 0.0;						// defender's head acceleration over the last 20 ms (g)
 	FVector Com[2], Feet[2];				// centre of mass, midpoint of the soles (Unreal cm)
 	double Stamina[2] = { 1.0, 1.0 }, Neck[2] = { 1.0, 1.0 };
+	double StrikeMass[2] = {};				// character card: the body behind the palm (kg); the slap's pitch
 	double Value[2] = {};					// each brain's critic: its own expected reward over the next ~2 s
 	int32 Role[2] = {};						// the role each was playing then (+1 strike, -1 defend, 0 guard)
 

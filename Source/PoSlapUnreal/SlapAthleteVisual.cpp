@@ -1,6 +1,7 @@
 #include "SlapAthleteVisual.h"
 
 #include "AnimationRuntime.h"
+#include "Algo/BinarySearch.h"
 #include "Components/PoseableMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "MuJoCo/Core/AMjManager.h"
@@ -113,6 +114,27 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 		}
 	});
 	if (Pose.Num() == 0) return;
+
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (ReplayRate > 0.0)	// replay: the recorded pose at the replay clock, blended between the two frames around it
+	{
+		const double T = ReplayFrom + (Now - ReplayStart) * ReplayRate;
+		const int32 k = Algo::UpperBoundBy(History, T, [](const TPair<double, TArray<FTransform>>& F) { return F.Key; });
+		if (T >= ReplayTo || k == 0 || k >= History.Num()) ReplayRate = 0.0;
+		else
+		{
+			const auto& A = History[k - 1];
+			const auto& B = History[k];
+			const float Alpha = (T - A.Key) / FMath::Max(B.Key - A.Key, 1e-6);
+			for (int32 i = 0; i < Pose.Num(); ++i) Pose[i].Blend(A.Value[i], B.Value[i], Alpha);
+		}
+	}
+	if (ReplayRate == 0.0)	// live: record (the replay plays from a frozen history)
+	{
+		History.Emplace(Now, Pose);
+		const int32 Old = Algo::LowerBoundBy(History, Now - 3.0, [](const TPair<double, TArray<FTransform>>& F) { return F.Key; });
+		if (Old > 0) History.RemoveAt(0, Old);
+	}
 
 	// World pose -> parent-relative transforms in one pass. (SetBoneTransformByName converts with the
 	// parent's previous-frame transform, so a moving child would lag a frame.)
