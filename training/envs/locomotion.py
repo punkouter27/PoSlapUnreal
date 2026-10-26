@@ -420,10 +420,13 @@ class LocomotionEnv:
             self.last_lead = torch.where(lead != 0, lead, self.last_lead)
 
             moving = (self.v_cmd > 0.1).float()
-            vel_rew = 1.2 * torch.exp(-(v_err ** 2) / 0.25)
+            # 2026-10-26: standing paid ~2.2 a step and a 1.2 m/s miss cost only 1.2, so the S2 "graduates" stood still
+            # (0.15 m in 20 s). A wide kernel pays partial speed, and forward progress pays linearly up to the command
+            vel_rew = 2.0 * torch.exp(-(v_err ** 2) / 1.0)
+            progress = 1.5 * (v_head[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0) * moving
             gait_rew = moving * (0.4 * stride_clear + 0.4 * stance_match) + (1.0 - moving) * (0.8 * torch.exp(-(self.com_err ** 2) / 0.005))
             r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
-                 + vel_rew + gait_rew
+                 + vel_rew + progress + gait_rew
                  - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag)
 
         return torch.where(fell, torch.full_like(r, -25.0), r)
