@@ -3,7 +3,7 @@
 ### 1. Project Setup & Daily Workflow
 - **Getting Started & Version Watermark:** Read the documentation in `/DOCS` first. Automatically stamp the build date (formatted as `YYMMDD`) in the bottom-right corner of the screen.
 - **Git Rules:** Work directly on the `master` branch. Always save and commit your work before syncing or pulling updates.
-- **Building Scenes & Art:** Create levels, objects, and scripts using automated Unreal tools. When editing Blender files, save the original file in `Content/Art/Raw/` and put the exported 3D model files in `Content/Art/Exports/`.
+- **Building Scenes & Art:** Create levels, objects, and scripts using automated Unreal tools. When editing Blender files, save the original file in `Content/Art/Raw/` and put the exported 3D model files in `Content/Art/Exports/`. Use headless Blender (`blender -b`) or the Blender MCP as needed to change the main scene.
 - **Keep Unreal Running at Full Speed:** Turn off power-saving mode ("Use Less CPU when in Background") so Unreal runs smoothly even when you click away to another window.
 - **UI Tracking:** Whenever you change the user interface, save annotated before-and-after screenshots and an HTML change report inside `SCREENSHOTS/`.
 
