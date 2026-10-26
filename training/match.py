@@ -24,7 +24,7 @@ Both reset each match; a "condition" event after every turn logs them.
 Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, turn/round summaries, and every 5th
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
-import argparse, json, math, os, re, sys, time
+import argparse, json, math, os, random, re, sys, time
 from pathlib import Path
 
 import mujoco
@@ -51,6 +51,27 @@ WATCH_MAX_STEP = 0.25   # rad per decision while PLANTED: re-acquiring a snappin
 # even at barely-there strengths and restricted to the striking arm). The striker's "stay balanced" duty is
 # served by leaving the brain in charge of the body; the servo contributes only the WATCH (below).
 GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
+
+
+def mix(*v):
+    """32-bit integer hash (USlapController::Mix, Web/sim.js mix: the same bits everywhere): the match's dice."""
+    h = 0x9E3779B9
+    for x in v:
+        h ^= int(x) & 0xFFFFFFFF
+        h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+        h ^= h >> 13
+        h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+        h ^= h >> 16
+    return h
+
+
+def faint_step(card, seed, rnd, s, i, dt):
+    """Fainting (card faint_chance_per_turn, user 2026-10-26: Matt "passes out randomly on rare occasion"): the physics
+    step of athlete i's faint this turn (1-10 s in, on a brain step), or None."""
+    p = card.get("faint_chance_per_turn", 0.0)
+    if p <= 0.0 or mix(seed, rnd, s, i, 0) / 4294967296.0 >= p:
+        return None
+    return int(round((1.0 + 9.0 * mix(seed, rnd, s, i, 1) / 4294967296.0) / dt / 4)) * 4
 
 
 def dist(a, b):   # spelled out so Unreal's C++ rounds identically (np.linalg.norm may sum in another order)
@@ -91,6 +112,7 @@ class Side:
     def __init__(self, m, fp, prefix, policy):
         self.a, self.policy, self.card, self.fp, self.prefix = Athlete(m, fp, prefix), policy, card(fp), fp, prefix
         self.fr0 = m.actuator_forcerange[self.a.neck].copy()
+        self.fr_all = m.actuator_forcerange[self.a.act].copy()   # every motor's own force (fainting slackens them all)
         self.name = prefix.split("_")[-2] if prefix.count("_") >= 1 else prefix
         g = lambda n: m.geom(prefix + n).id
         self.head, self.hand, self.feet = g("head"), g("hand_r"), (g("foot_l"), g("foot_r"))
@@ -100,10 +122,11 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None):
+    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None, seed=None):
         """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice).
         brains: both corners' brain names, logged with match_start (training/scouting.py credits them; compare skips it)."""
         self.m, self.first, self.log, self.brains = m, first, log, brains
+        self.seed = random.getrandbits(31) if seed is None else seed   # the match's dice (fainting); Unreal logs its own
         self.d = mujoco.MjData(m)
         self.sides = [Side(m, fp, p, pol) for fp, p, pol in zip(fps, prefixes, policies)]
         # eye-contact state: each athlete stares at the OTHER'S head (indices into its own joint_order)
@@ -195,6 +218,7 @@ class Match:
         for x in self.sides:
             x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
             x.wbias = self.gaze_desire(x, m, self.d).copy()   # eye contact: world bias starts on the eye line
+            m.actuator_forcerange[x.a.act] = x.fr_all   # back from any faint
             m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength   # damage: a weaker neck
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}
@@ -205,9 +229,18 @@ class Match:
         touch_k, com0 = None, None
         kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
         self.emit(type="turn_start", round=rnd, striker=S.name, defender=D.name)
+        faints = [(x, k0, k0 + int(round(x.card.get("faint_seconds", 2.0) / m.opt.timestep)))
+                  for i, x in enumerate(self.sides) if (k0 := faint_step(x.card, self.seed, rnd, s, i, m.opt.timestep)) is not None]
         k = 0
         while True:
             t = k * m.opt.timestep
+            for x, k0, k1 in faints:   # out cold: every motor slack, then back (the referee calls whatever follows)
+                if k == k0:
+                    m.actuator_forcerange[x.a.act] = x.fr_all * x.card.get("faint_strength", 0.05)
+                    self.emit(type="faint", t=round(t, 3), athlete=x.name)
+                elif k == k1:
+                    m.actuator_forcerange[x.a.act] = x.fr_all
+                    m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength
             if k % 4 == 0:   # the referee looks every brain step, before the brains decide (as Unreal)
                 for x in (D, S):
                     part = self.down(x, x is D)
@@ -302,7 +335,7 @@ class Match:
 
     def play(self):
         names = [x.name for x in self.sides]
-        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY),
+        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY), seed=self.seed,
                   **({"brains": dict(zip(names, self.brains))} if self.brains else {}))
         cards = [[0, 0] for _ in WEIGHTS]
         turns = []
@@ -356,12 +389,12 @@ def log_path(first):
     return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None):
+def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None, seed=None):
     m, fps, pre = load(mjb, character, blue_character)
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
     try:
-        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem)).play()
+        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem), seed).play()
     finally:
         if f:
             f.close()
@@ -395,10 +428,11 @@ def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None):
 def compare(onnx, ue_log, mjb, blue=None, character="grandpa", blue_character=None):
     """Unreal's match log vs this simulator, same first striker, same model: every event must match."""
     ue = [json.loads(l) for l in Path(ue_log).read_text().splitlines() if l.strip()]
-    first = next(e for e in ue if e["type"] == "match_start")["first"]
-    res, turns, path = play(onnx, ["red", "blue"].index(first), mjb, blue=blue, character=character, blue_character=blue_character)
+    start = next(e for e in ue if e["type"] == "match_start")
+    res, turns, path = play(onnx, ["red", "blue"].index(start["first"]), mjb, blue=blue, character=character, blue_character=blue_character,
+                            seed=start.get("seed"))
     py = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
-    keys = ("strike", "knockdown", "foul", "turn_end", "condition", "round", "result")
+    keys = ("strike", "faint", "knockdown", "foul", "turn_end", "condition", "round", "result")
     a = [e for e in py if e["type"] in keys]
     b = [e for e in ue if e["type"] in keys]
     bad = [(x, y) for x, y in zip(a, b) if x != y]

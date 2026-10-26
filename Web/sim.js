@@ -16,6 +16,18 @@ const quatMat = (w, x, y, z) => [
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const v3 = (arr, i) => [arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// the match's dice: match.py mix() / USlapController::Mix, the same 32-bit integer hash
+export const mix = (...v) => {
+  let h = 0x9E3779B9;
+  for (const x of v) { h = (h ^ (x >>> 0)) >>> 0; h = Math.imul(h, 0x85EBCA6B) >>> 0; h = (h ^ (h >>> 13)) >>> 0; h = Math.imul(h, 0xC2B2AE35) >>> 0; h = (h ^ (h >>> 16)) >>> 0; }
+  return h;
+};
+// fainting (card faint_chance_per_turn): the physics step of athlete i's faint this turn (1-10 s in, on a brain step), or null
+const faintStep = (card, seed, rnd, s, i, dt) => {
+  const p = card.faint_chance_per_turn || 0;
+  if (p <= 0 || mix(seed, rnd, s, i, 0) / 4294967296 >= p) return null;
+  return Math.round((1 + 9 * mix(seed, rnd, s, i, 1) / 4294967296) / dt / 4) * 4;
+};
 
 class Athlete {
   constructor(m, fp, card, prefix, policy) {
@@ -39,6 +51,7 @@ class Athlete {
     this.maxStep = this.order.map((_, i) => (Array.isArray(s) ? s[i] : s) * 0.02);
     this.neck = this.act.filter((_, i) => this.order[i].startsWith("neck"));
     this.fr0 = this.neck.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);
+    this.frAll = this.act.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);   // fainting slackens them all
     this.hipL = this.order.indexOf("hip_flex_l"); this.hipR = this.order.indexOf("hip_flex_r");
     this.kneeL = this.order.indexOf("knee_l"); this.kneeR = this.order.indexOf("knee_r");
     this.ankleL = this.order.indexOf("ankle_flex_l"); this.ankleR = this.order.indexOf("ankle_flex_r");
@@ -99,7 +112,8 @@ export class Match {
     this.matchNo++; this.first = Math.random() < 0.5 ? 0 : 1; this.round = 1; this.turnInRound = 0;
     this.cards = WEIGHTS.map(() => [0, 0]); this.recs = []; this.result = null; this.lastWinner = null;
     for (const x of this.sides) { x.mem = [0, 0]; x.stamina = 1; x.neckStrength = 1; }
-    this.emit({ type: "match_start", match: this.matchNo, first: this.sides[this.first].name });
+    this.seed = Math.floor(Math.random() * 2147483648);   // the match's dice (fainting)
+    this.emit({ type: "match_start", match: this.matchNo, first: this.sides[this.first].name, seed: this.seed });
     if (typeof window !== "undefined" && !new URLSearchParams(location.search).has("nowalkin")) {
       this.stand();
       this.walkInTotal = this.walkInLeft = Math.round(WALKIN / this.dt);
@@ -123,6 +137,7 @@ export class Match {
     this.stand();
     for (const x of this.sides) {
       x.reset();
+      x.act.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.frAll[i][0]; m.actuator_forcerange[2 * a + 1] = x.frAll[i][1]; });   // back from any faint
       x.neck.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.fr0[i][0] * x.neckStrength; m.actuator_forcerange[2 * a + 1] = x.fr0[i][1] * x.neckStrength; });
     }
     this.mj.mj_forward(m, d);
@@ -131,6 +146,11 @@ export class Match {
     this.handPrev = v3(d.geom_xpos, S.hand); this.headPrev = v3(d.geom_xpos, D.head);
     this.rec = { round: this.round, striker: S.name, touch: null, part: null, palm: false, speed: 0, head_peak: 0, stagger: false, fouls: [], ko: false, end: null };
     this.touchK = null; this.com0 = null; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
+    this.faints = [];
+    this.sides.forEach((x, i) => {
+      const k0 = faintStep(x.card, this.seed, this.round, this.s, i, this.dt);
+      if (k0 !== null) this.faints.push([x, k0, k0 + Math.round((x.card.faint_seconds ?? 2) / this.dt)]);
+    });
     this.emit({ type: "turn_start", round: this.round, striker: S.name, defender: D.name });
   }
 
@@ -156,6 +176,13 @@ export class Match {
     if (this.phase === "hold" || this.phase === "after") return this.holdStep();
     if (this.phase !== "turn") return;
     const { mj, m, d, dt } = this, S = this.sides[this.s], D = this.sides[1 - this.s], rec = this.rec, t = this.k * dt;
+    for (const [x, k0, k1] of this.faints) {   // out cold: every motor slack, then back (the referee calls whatever follows)
+      if (this.k !== k0 && this.k !== k1) continue;
+      const g = this.k === k0 ? (x.card.faint_strength ?? 0.05) : 1;
+      x.act.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.frAll[i][0] * g; m.actuator_forcerange[2 * a + 1] = x.frAll[i][1] * g; });
+      if (this.k === k1) x.neck.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.fr0[i][0] * x.neckStrength; m.actuator_forcerange[2 * a + 1] = x.fr0[i][1] * x.neckStrength; });
+      else this.emit({ type: "faint", t, athlete: x.name });
+    }
     if (this.k % 4 === 0) {
       for (const x of [D, S]) {
         const part = this.down(x, x === D);

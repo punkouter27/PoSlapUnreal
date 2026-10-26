@@ -336,7 +336,11 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			A.StaminaPerStrike = Card->GetNumberField(TEXT("stamina_per_strike"));
 			A.NeckDamage = Card->GetNumberField(TEXT("neck_damage_per_snap"));
 			A.StrikeMass = Card->GetNumberField(TEXT("strike_mass"));
+			Card->TryGetNumberField(TEXT("faint_chance_per_turn"), A.FaintChance);
+			Card->TryGetNumberField(TEXT("faint_seconds"), A.FaintSeconds);
+			Card->TryGetNumberField(TEXT("faint_strength"), A.FaintStrength);
 		}
+		for (const int32 Act : A.Act) A.FrAll.Append({ m->actuator_forcerange[2 * Act], m->actuator_forcerange[2 * Act + 1] });
 		auto Geom = [&](const TCHAR* N) { return mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + N))); };
 		A.Feet = { Geom(TEXT("foot_l")), Geom(TEXT("foot_r")) };	// the foot box is the sole (Blueprint 2.1)
 		A.Head = Geom(TEXT("head"));
@@ -545,6 +549,20 @@ namespace
 	}
 
 	FString Num(double X, int32 Digits) { return FString::Printf(TEXT("%.*f"), Digits, X); }
+
+	uint32 Mix(std::initializer_list<uint32> V)	// the match's dice: match.py mix(), Web/sim.js mix(), the same bits
+	{
+		uint32 H = 0x9E3779B9u;
+		for (const uint32 X : V)
+		{
+			H ^= X;
+			H *= 0x85EBCA6Bu;
+			H ^= H >> 13;
+			H *= 0xC2B2AE35u;
+			H ^= H >> 16;
+		}
+		return H;
+	}
 	FString Str(const FString& S) { return TEXT("\"") + S + TEXT("\""); }
 	FString Bool(bool B) { return B ? TEXT("true") : TEXT("false"); }
 	FString CardsJson(const int32 (&C)[3][2]) { return FString::Printf(TEXT("[[%d, %d], [%d, %d], [%d, %d]]"), C[0][0], C[0][1], C[1][0], C[1][1], C[2][0], C[2][1]); }
@@ -621,6 +639,9 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 	int32 Forced = -1;	// -SlapFirst=0|1: the first match's coin toss (match.py compare)
 	const bool Force = MatchNo == 1 && FParse::Value(FCommandLine::Get(), TEXT("SlapFirst="), Forced) && (Forced == 0 || Forced == 1);
 	First = Force ? Forced : FMath::RandRange(0, 1);
+	int64 FixedSeed = -1;	// -SlapSeed=<n>: the first match's dice (checks); else from the clock
+	Seed = MatchNo == 1 && FParse::Value(FCommandLine::Get(), TEXT("SlapSeed="), FixedSeed) && FixedSeed >= 0 ? (uint32)FixedSeed
+		: (uint32)(FDateTime::Now().GetTicks() * 2654435761ull >> 16) & 0x7FFFFFFFu;
 	Round = 1;
 	TurnInRound = 0;
 	FMemory::Memzero(Cards);
@@ -640,8 +661,8 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 		Brains[0] = Hud.Brain[0];
 		Brains[1] = Hud.Brain[1];
 	}
-	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}, \"brains\": {\"red\": %s, \"blue\": %s}}"),
-		*Str(Athletes[First].Name), Rounds, *Str(Brains[0]), *Str(Brains[1])));
+	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}, \"seed\": %u, \"brains\": {\"red\": %s, \"blue\": %s}}"),
+		*Str(Athletes[First].Name), Rounds, Seed, *Str(Brains[0]), *Str(Brains[1])));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
 	if (bWalkIn && HoldSteps(WalkInHold) > 0)
 	{
@@ -902,11 +923,14 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, A.Act.Num());
 		A.bFresh = true;
-		for (int32 k = 0; k < A.NeckAct.Num(); ++k)	// damage: a weaker neck (match.py: forcerange = own x neck strength)
-		{
-			m->actuator_forcerange[2 * A.NeckAct[k]] = A.Fr0[2 * k] * A.NeckStrength;
-			m->actuator_forcerange[2 * A.NeckAct[k] + 1] = A.Fr0[2 * k + 1] * A.NeckStrength;
-		}
+		SetForce(m, A, 1.0);	// back from any faint; damage: a weaker neck (match.py: forcerange = own x neck strength)
+	}
+	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)	// fainting (match.py faint_step): 1-10 s in, on a brain step
+	{
+		const FAthlete& A = Athletes[a];
+		if (A.FaintChance <= 0.0 || Mix({ Seed, (uint32)Round, (uint32)Turn.Striker, (uint32)a, 0u }) / 4294967296.0 >= A.FaintChance) continue;
+		Turn.FaintAt[a] = (int64)std::nearbyint((1.0 + 9.0 * Mix({ Seed, (uint32)Round, (uint32)Turn.Striker, (uint32)a, 1u }) / 4294967296.0) / m->opt.timestep / 4.0) * 4;
+		Turn.FaintEnd[a] = Turn.FaintAt[a] + (int64)std::nearbyint(A.FaintSeconds / m->opt.timestep);
 	}
 	bTelReady = false;
 	ChainAt = ChainNum = 0;
@@ -1402,6 +1426,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 					if (MatchNo == 0 || Round > Rounds) { StartMatch(m, d); if (WalkInLeft > 0) break; }
 					else StartTurn(m, d);
 				}
+				Faint(m);
 				if (PreStep(m, d)) break;
 			}
 			if (WalkInLeft == 0 && (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0))
@@ -1651,5 +1676,40 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 		const double GaitAngle = 2.0 * PI * 1.8 * d->time;
 		O[56 + N] = (float)std::sin(GaitAngle);
 		O[57 + N] = (float)std::cos(GaitAngle);
+	}
+}
+
+void USlapController::SetForce(mjModel* m, const FAthlete& A, double Gain) const
+{
+	for (int32 j = 0; j < A.Act.Num(); ++j)
+	{
+		m->actuator_forcerange[2 * A.Act[j]] = A.FrAll[2 * j] * Gain;
+		m->actuator_forcerange[2 * A.Act[j] + 1] = A.FrAll[2 * j + 1] * Gain;
+	}
+	if (Gain != 1.0) return;	// out cold: the neck as slack as the rest
+	for (int32 k = 0; k < A.NeckAct.Num(); ++k)
+	{
+		m->actuator_forcerange[2 * A.NeckAct[k]] = A.Fr0[2 * k] * A.NeckStrength;
+		m->actuator_forcerange[2 * A.NeckAct[k] + 1] = A.Fr0[2 * k + 1] * A.NeckStrength;
+	}
+}
+
+void USlapController::Faint(mjModel* m)
+{
+	// Fainting (card faint_chance_per_turn; user 2026-10-26: Matt "passes out randomly on rare occasion"): every motor at
+	// faint_strength of its force for faint_seconds, then back; the referee calls whatever follows, as in match.py
+	if (!bInTurn) return;
+	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+	{
+		const FAthlete& A = Athletes[a];
+		if (Turn.Step == Turn.FaintAt[a])
+		{
+			SetForce(m, A, A.FaintStrength);
+			Emit(FString::Printf(TEXT("{\"type\": \"faint\", \"t\": %s, \"athlete\": %s}"), *Num(Turn.Step * m->opt.timestep, 3), *Str(A.Name)));
+			UE_LOG(LogSlap, Log, TEXT("t=%.3f %s passes out"), Turn.Step * m->opt.timestep, *A.Name);
+			const FString Call = A.Name.ToUpper() + TEXT(" PASSES OUT!");
+			SetHud([&](FSlapHud& H) { H.Event = Call; });
+		}
+		else if (Turn.Step == Turn.FaintEnd[a]) SetForce(m, A, 1.0);
 	}
 }

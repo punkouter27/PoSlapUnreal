@@ -18,5 +18,10 @@
   "name": "Grandpa Challenger",
   "card": "grandpa",
   "brain": "models/brains/grandpa_challenger_vs_kim.onnx"
+ },
+ {
+  "name": "MATT",
+  "card": "matt",
+  "brain": "models/brains/matt_final.onnx"
  }
 ]

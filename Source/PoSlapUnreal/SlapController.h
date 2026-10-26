@@ -160,6 +160,8 @@ private:
 		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
+		double FaintChance = 0.0, FaintSeconds = 2.0, FaintStrength = 0.05;	// card: fainting (match.py faint_step)
+		TArray<double> FrAll;	// every motor's own forcerange (lo, hi per motor): a faint slackens them all
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
 		int32 HipL = -1, HipR = -1, KneeL = -1, KneeR = -1, AnkleL = -1, AnkleR = -1, ShSwingL = -1, ShSwingR = -1;
@@ -200,9 +202,13 @@ private:
 		double Chain[5] = {};
 		int32 ChainOrder = -1;
 		int64 SlowSteps = 0;	// steps of pre-touch slow motion spent (capped: a slap that never lands)
+		int64 FaintAt[2] = { -1, -1 }, FaintEnd[2] = { -1, -1 };	// per athlete: the steps a faint starts and ends, -1 = none
 	};
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0, LastWinner = -1;
+	uint32 Seed = 0;	// the match's dice (fainting), logged in match_start; -SlapSeed= fixes the first match's (checks)
+	void SetForce(mjModel* m, const FAthlete& A, double Gain) const;	// every motor at Gain x its own force, the neck's damage on top
+	void Faint(mjModel* m);	// a faint starting or ending this step (before the referee looks, as match.py)
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
 	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
 	mutable std::atomic<bool> bHudReady = false;	// set once ASlapHUD::DrawHUD begins rendering so walk-in isn't consumed during level load

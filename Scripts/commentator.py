@@ -19,7 +19,7 @@ from xml.sax.saxutils import escape
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "Saved" / "Commentary" / "latest.txt"
 HYPE = ROOT / "Saved" / "Commentary" / "hype.json"   # Scripts/chat.py
-PRIORITY = {"result": 6, "knockdown": 5, "strike": 4, "round": 3, "match_start": 2, "foul": 2, "turn_start": 1}
+PRIORITY = {"result": 6, "faint": 5, "knockdown": 5, "strike": 4, "round": 3, "match_start": 2, "foul": 2, "turn_start": 1}
 SYSTEM = ("You are the play-by-play voice of a Power Slap broadcast. The athletes are Red and Blue (e.g. Grandpa vs Kim), "
           "driven by trained AI brains in a physics simulator with a pre-match ring walk-in and post-match victory celebration. "
           "Call the event you are given in ONE punchy spoken "
@@ -35,6 +35,7 @@ TEMPLATES = {
     "strike": ["{striker} lands it at {speed} meters per second!", "Contact! {speed} meters per second from {striker}.",
                "{striker} connects with the {part}, {speed} meters per second."],
     "knockdown": ["{athlete} is down! The {part} touched the deck.", "Down goes {athlete}!"],
+    "faint": ["{athlete} has passed out on the podium!", "Oh no, {athlete} is out cold before anyone touched him!"],
     "foul": ["Foul on {athlete}: {why}.", "The referee steps in: {athlete}, {why}."],
     "round": ["That is round {round} in the books.", "End of round {round}, the judges are writing."],
     "result": ["{winner} wins by {how} and raises both arms in victory!",
