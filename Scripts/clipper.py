@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLIPS = ROOT / "Saved" / "Clips"
 BUF = CLIPS / "buffer"
 SEG = 2.0
-WINDOW = {"ko": (8.0, 2.0), "strike": (4.0, 2.0)}   # seconds before, after
+WINDOW = {"ko": (8.0, 4.0), "strike": (4.0, 2.0), "walkin": (0.0, 4.0), "celebration": (2.0, 4.0)}   # seconds before, after (4 s after KO/result captures winner celebration)
 
 
 RECT_PS = r"""
@@ -94,6 +94,10 @@ def main():
                         e = json.loads(raw)
                         if "ko" in kinds and e["type"] == "result" and e["how"] == "KO":
                             pending.append(("ko", time.time()))
+                        elif "celebration" in kinds and e["type"] == "result" and e.get("winner"):
+                            pending.append(("celebration", time.time()))
+                        elif "walkin" in kinds and e["type"] == "match_start":
+                            pending.append(("walkin", time.time()))
                         elif "strike" in kinds and e["type"] == "strike":
                             pending.append(("strike", time.time()))
             for job in [j for j in pending if time.time() > j[1] + WINDOW[j[0]][1] + SEG + 0.5]:

@@ -15,22 +15,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "Saved" / "Commentary" / "latest.txt"
 PRIORITY = {"result": 6, "knockdown": 5, "strike": 4, "round": 3, "match_start": 2, "foul": 2, "turn_start": 1}
-SYSTEM = ("You are the play-by-play voice of a Power Slap broadcast. The athletes are two simulated grandpas, Red and "
-          "Blue, driven by trained AI brains in a physics simulator. Call the event you are given in ONE punchy spoken "
+SYSTEM = ("You are the play-by-play voice of a Power Slap broadcast. The athletes are Red and Blue (e.g. Grandpa vs Kim), "
+          "driven by trained AI brains in a physics simulator with a pre-match ring walk-in and post-match victory celebration. "
+          "Call the event you are given in ONE punchy spoken "
           "sentence of at most 18 words: vivid, warm, a little funny, never cruel. Use the numbers when they add drama "
           "(hand speed in m/s, head snap, stamina and neck from 0 to 1). No emojis, no stage directions, no quotes, and "
           "never repeat a previous line.")
 
 TEMPLATES = {
-    "match_start": ["{first} wins the toss and strikes first. Grandpas, take your marks!",
-                    "A brand new match, and {first} gets the first swing."],
+    "match_start": ["Ring walk-in underway! {first} wins the toss and marches up the aisle to strike first!",
+                    "Both athletes stride down the aisle toward the podium as {first} takes the opening toss!"],
     "turn_start": ["{striker} steps up. {defender}, brace yourself.", "{striker} to strike, {defender} on the podium."],
     "strike": ["{striker} lands it at {speed} meters per second!", "Contact! {speed} meters per second from {striker}.",
                "{striker} connects with the {part}, {speed} meters per second."],
     "knockdown": ["{athlete} is down! The {part} touched the deck.", "Down goes {athlete}!"],
     "foul": ["Foul on {athlete}: {why}.", "The referee steps in: {athlete}, {why}."],
     "round": ["That is round {round} in the books.", "End of round {round}, the judges are writing."],
-    "result": ["{winner} wins by {how}!", "It is over: {winner}, by {how}."],
+    "result": ["{winner} wins by {how} and raises both arms in victory!",
+               "Victory celebration at the podium! {winner} takes it by {how}!"],
 }
 
 
@@ -92,6 +94,7 @@ def main():
     ap.add_argument("--voice", default="")
     ap.add_argument("--no-ai", action="store_true", help="templates only")
     ap.add_argument("--mute", action="store_true", help="HUD line only, no voice")
+    ap.add_argument("--once", action="store_true", help="replay the newest log from the start and exit")
     a = ap.parse_args()
     ai = None
     if not a.no_ai:
@@ -102,7 +105,7 @@ def main():
     voice = None if a.mute else Voice(a.voice)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     log, context, previous = newest_log(), {}, []
-    pos = log.stat().st_size if log else 0   # join the match where it is now
+    pos = 0 if a.once else (log.stat().st_size if log else 0)   # join the match where it is now unless --once
     print("commentator: following", ROOT / "Logs" / "Gameplay")
     while True:
         newest = newest_log()
@@ -150,6 +153,8 @@ def main():
         print(f"[{e['type']}] {line}", flush=True)
         if voice:
             voice.say(line)
+        elif a.once:
+            break
         else:
             time.sleep(2.0)
 
