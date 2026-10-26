@@ -9,6 +9,7 @@
 #include "Misc/Paths.h"
 #include "NNE.h"
 #include "NNEModelData.h"
+#include "NNERuntimeBasicCpuBuilder.h"
 #include "NNERuntimeCPU.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -58,6 +59,74 @@ namespace
 			UE_LOG(LogSlap, Error, TEXT("Could not read %s"), *RelPath);
 		}
 		return Obj;
+	}
+
+	/** UE 5.8 has no ONNX runtime on Android: the same brain rebuilt for NNE's basic CPU runtime from the weights
+	 * training/export_cpu_brains.py stages in Content/Data/Brains (normalise, clip, then the actor and critic MLPs side by
+	 * side: one output, the actions then the value). Null when the file is missing or malformed. */
+	UNNEModelData* RebuildForBasicCpu(const FString& Name)
+	{
+		TArray<uint8> Raw;
+		if (!FFileHelper::LoadFileToArray(Raw, *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Data/Brains"), Name + TEXT(".bin"))))
+		{
+			UE_LOG(LogSlap, Error, TEXT("No Content/Data/Brains/%s.bin (training/export_cpu_brains.py)"), *Name);
+			return nullptr;
+		}
+		// int32 tensor count, then per tensor int32 ndims, int32 dims[ndims], float32 data: mean, std, clip lo, clip hi,
+		// then (weight [out][in], bias) per linear layer, the actor's then the critic's
+		int64 At = 0;
+		auto Int = [&](int32& V) { if (At + 4 > Raw.Num()) return false; FMemory::Memcpy(&V, Raw.GetData() + At, 4); At += 4; return true; };
+		int32 Count = 0;
+		if (!Int(Count) || Count < 8 || (Count - 4) % 4) return nullptr;
+		TArray<TArray<float>> T;
+		TArray<TArray<int32>> Dims;
+		for (int32 t = 0; t < Count; ++t)
+		{
+			int32 Nd = 0, Num = 1;
+			if (!Int(Nd) || Nd < 1 || Nd > 2) return nullptr;
+			TArray<int32>& D = Dims.AddDefaulted_GetRef();
+			for (int32 k = 0; k < Nd; ++k)
+			{
+				int32 V = 0;
+				if (!Int(V) || V < 1) return nullptr;
+				D.Add(V);
+				Num *= V;
+			}
+			if (At + 4 * (int64)Num > Raw.Num()) return nullptr;
+			TArray<float>& Values = T.AddDefaulted_GetRef();
+			Values.SetNumUninitialized(Num);
+			FMemory::Memcpy(Values.GetData(), Raw.GetData() + At, 4 * (int64)Num);
+			At += 4 * (int64)Num;
+		}
+
+		using namespace UE::NNE::RuntimeBasic;
+		FModelBuilder B;
+		const int32 Layers = (Count - 4) / 4;
+		auto Head = [&](int32 First)
+		{
+			TArray<FModelBuilderElement> Seq;
+			for (int32 l = 0; l < Layers; ++l)
+			{
+				const int32 w = First + 2 * l, O = Dims[w][0], I = Dims[w].Num() > 1 ? Dims[w][1] : 1;
+				TArrayView<float> Wt = B.MakeValuesZero(I * O);	// the builder wants [in][out]
+				for (int32 r = 0; r < O; ++r) for (int32 c = 0; c < I; ++c) Wt[c * O + r] = T[w][r * I + c];
+				Seq.Add(B.MakeLinear(I, O, Wt, B.MakeValuesCopy(T[w + 1])));
+				if (l < Layers - 1) Seq.Add(B.MakeELU(O));
+			}
+			return B.MakeSequence(Seq);
+		};
+		const uint32 In = T[0].Num();
+		const FModelBuilderElement Net = B.MakeSequence({
+			B.MakeNormalize(In, B.MakeValuesCopy(T[0]), B.MakeValuesCopy(T[1])),
+			B.MakeClamp(In, B.MakeValuesConstant(In, T[2][0]), B.MakeValuesConstant(In, T[3][0])),
+			B.MakeSpread({ Head(4), Head(4 + 2 * Layers) }) });
+		TArray<uint8> File;
+		File.SetNumUninitialized(B.GetWriteByteNum(Net));
+		uint32 NumIn = 0, NumOut = 0;
+		B.WriteFileData(File, NumIn, NumOut, Net);
+		UNNEModelData* Data = NewObject<UNNEModelData>(GetTransientPackage(), FName(*Name));
+		Data->Init(TEXT("ubnne"), File);
+		return Data;
 	}
 
 	/** One name per qpos slot; same as joint_names() in training/replay_check.py. */
@@ -201,11 +270,20 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 {
 	// each corner its own character: joint ranges, stand pose, speed limit and card come from that athlete's fingerprint
 	FString Tape[2] = { TEXT("?"), TEXT("?") }, Display[2] = { TEXT("?"), TEXT("?") }, CardName[2];
-	for (int32 b = 0; b < m->nbody; ++b)
+	// red, then blue, by name: a cooked build compiles the components in another order (blue's body first on Android),
+	// and everything indexed by corner (walk-in side, fingerprint, turns) assumes 0 = red
+	TArray<int32> Pelvises;
+	for (const TCHAR* Corner : { TEXT("red_pelvis"), TEXT("blue_pelvis") })
+	{
+		for (int32 b = 0; b < m->nbody; ++b)
+		{
+			if (Slap::Name(m, mjOBJ_BODY, b).EndsWith(Corner)) Pelvises.Add(b);
+		}
+	}
+	for (const int32 b : Pelvises)
 	{
 		const FString BodyName = Slap::Name(m, mjOBJ_BODY, b);
-		if (!BodyName.EndsWith(TEXT("pelvis"))) continue;
-		const int32 c = FMath::Min(Athletes.Num(), 1);	// athletes bind in body order: red, then blue
+		const int32 c = FMath::Min(Athletes.Num(), 1);
 		const FJsonObject& Fp = *Fps[c];
 		const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
 		const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
@@ -313,7 +391,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 	{
 		FAthlete& A = Athletes[a];
 		FNet N;
-		if (!MakeNet(a == 1 ? Blue : Red, N)) continue;	// athletes bind in body order: red, then blue
+		if (!MakeNet(a == 1 ? Blue : Red, N)) continue;	// athletes bind red, then blue (BindPolicy)
 		A.Net = N.Net;
 		A.NumIn = N.NumIn;
 		A.NumOut = N.NumOut;
@@ -337,24 +415,67 @@ bool USlapController::MakeNet(UNNEModelData* Data, FNet& Out)
 {
 	if (!Data) return false;
 
-	// 1. Try NNERuntimeORTCpu (desktop ORT for bit-exact check)
-	TWeakInterfacePtr<INNERuntimeCPU> Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeORTCpu"));
-	if (!Runtime.IsValid())
+	// ORT on desktop (the bit-exact matching check); without it (Android) the brain rebuilt for the basic CPU runtime.
+	// -SlapBasicCpu takes Android's path on desktop and logs how far it lands from ORT on one made-up observation
+	auto Make = [](const TCHAR* RuntimeName, UNNEModelData* D, FNet& N)
 	{
-		// 2. Fallback to platform-neutral NNERuntimeBasicCpu (Android / mobile CPU runtime)
-		Runtime = UE::NNE::GetRuntime<INNERuntimeCPU>(TEXT("NNERuntimeBasicCpu"));
-	}
-
-	TSharedPtr<UE::NNE::IModelCPU> Model = Runtime.IsValid() ? Runtime->CreateModelCPU(Data) : nullptr;
-	Out.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
-	if (!Out.Net) return false;
-	const TConstArrayView<int32> In = Out.Net->GetInputTensorDescs()[0].GetShape().GetData();
-	Out.NumIn = FMath::Min(NumObs, In.Num() > 1 && In[1] > 0 ? In[1] : 108);
-	const uint32 Shape[] = { 1, (uint32)Out.NumIn };
-	Out.Net->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
-	Out.NumOut = Out.Net->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+		TWeakInterfacePtr<INNERuntimeCPU> R = UE::NNE::GetRuntime<INNERuntimeCPU>(RuntimeName);
+		TSharedPtr<UE::NNE::IModelCPU> Model = R.IsValid() && D ? R->CreateModelCPU(D) : nullptr;
+		N.Net = Model ? Model->CreateModelInstanceCPU() : nullptr;
+		if (!N.Net) return false;
+		const TConstArrayView<int32> In = N.Net->GetInputTensorDescs()[0].GetShape().GetData();
+		N.NumIn = FMath::Min(NumObs, In.Num() > 1 && In[1] > 0 ? In[1] : 108);
+		const uint32 Shape[] = { 1, (uint32)N.NumIn };
+		N.Net->SetInputTensorShapes({ UE::NNE::FTensorShape::Make(Shape) });
+		N.NumOut = N.Net->GetOutputTensorDescs().Num() > 1 ? 2 : 1;
+		return true;
+	};
 	Out.Label = Data->GetName();
+	FNet Ort;
+	const bool bOrt = Make(TEXT("NNERuntimeORTCpu"), Data, Ort);
+	if (bOrt && !FParse::Param(FCommandLine::Get(), TEXT("SlapBasicCpu")))
+	{
+		Out.Net = Ort.Net;
+		Out.NumIn = Ort.NumIn;
+		Out.NumOut = Ort.NumOut;
+		return true;
+	}
+	if (!Make(TEXT("NNERuntimeBasicCpu"), RebuildForBasicCpu(Data->GetName()), Out)) return false;
+	Out.NumOut = 0;	// one output: the actions, then the value
+	// probe: one made-up observation, logged on every platform (compare a device's line with desktop's)
+	TArray<float> Obs, A, B;
+	for (int32 k = 0; k < Out.NumIn; ++k) Obs.Add(2.f * FMath::Sin(1.7f * k + 0.3f));
+	A.SetNumZeroed(31);
+	B.SetNumZeroed(31);
+	const UE::NNE::FTensorBindingCPU In{ Obs.GetData(), (uint64)Obs.Num() * sizeof(float) };
+	const bool bProbe = Out.Net->RunSync({ In }, { { B.GetData(), 31 * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
+	double Sum = 0.0;
+	for (const float V : B) Sum += FMath::Abs(V);
+	UE_LOG(LogSlap, Log, TEXT("Basic CPU brain %s probe: %s, sum |out| %.6f, action 0 %.6f, value %.4f"), *Out.Label, bProbe ? TEXT("ran") : TEXT("FAILED TO RUN"), Sum, B[0], B[30]);
+	if (bOrt)
+	{
+		const UE::NNE::FTensorBindingCPU OrtOut[] = { { A.GetData(), 30 * sizeof(float) }, { &A[30], sizeof(float) } };
+		const bool bRan = bProbe && Ort.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(OrtOut, Ort.NumOut)) == UE::NNE::EResultStatus::Ok;
+		float Worst = 0.f;
+		for (int32 k = 0; k < (Ort.NumOut > 1 ? 31 : 30); ++k) Worst = FMath::Max(Worst, FMath::Abs(A[k] - B[k]) / FMath::Max(1.f, FMath::Abs(A[k])));
+		UE_LOG(LogSlap, Log, TEXT("Basic CPU brain %s vs ORT: %s, max relative difference %g (actions %g / %g, value %g / %g)"), *Out.Label,
+			bRan ? TEXT("ran") : TEXT("FAILED TO RUN"), Worst, A[0], B[0], A[30], B[30]);
+	}
 	return true;
+}
+
+bool USlapController::Infer(const FAthlete& A, const float* InObs, float& Value)
+{
+	const UE::NNE::FTensorBindingCPU In{ (void*)InObs, (uint64)A.NumIn * sizeof(float) };
+	if (A.NumOut == 0)	// the rebuilt brain: one output, the actions then the value
+	{
+		Action.SetNumUninitialized(Action.Num() + 1, EAllowShrinking::No);
+		const bool bOk = A.Net->RunSync({ In }, { { Action.GetData(), (uint64)Action.Num() * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
+		Value = Action.Pop(EAllowShrinking::No);
+		return bOk;
+	}
+	const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
+	return A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) == UE::NNE::EResultStatus::Ok;
 }
 
 void USlapController::RequestMatch(UNNEModelData* Red, UNNEModelData* Blue)
@@ -532,9 +653,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 		{
 			BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs);
 			float Value = 0.f;
-			const UE::NNE::FTensorBindingCPU In{ Obs, (uint64)A.NumIn * sizeof(float) };
-			const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
-			if (A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) == UE::NNE::EResultStatus::Ok)
+			if (Infer(A, Obs, Value))
 			{
 				for (int32 j = 0; j < A.Act.Num(); ++j)
 				{
@@ -944,9 +1063,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		BuildObs(m, d, A, Role, Clock, Match ? &Athletes[1 - a] : nullptr, Obs);
 		if (!A.Net) continue;
 		float Value = 0.f;	// trained brains also output the critic's value (the HUD's momentum bar)
-		const UE::NNE::FTensorBindingCPU In{ Obs, (uint64)A.NumIn * sizeof(float) };
-		const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
-		if (A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) != UE::NNE::EResultStatus::Ok) continue;
+		if (!Infer(A, Obs, Value)) continue;
 		if (!RecordFile.IsEmpty() && StepCount == 0)	// live check diagnostics: first decision at full precision
 		{
 			FString S;

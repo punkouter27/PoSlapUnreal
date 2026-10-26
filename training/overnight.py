@@ -83,7 +83,7 @@ def main():
         run = RUNS / f"{char}_{stage['level']}{vs_of[char]}_night{len(done) + 1}_{time.strftime('%H%M')}"
         resume = stage.get("resume") or carry.get(char)
         if vs:
-            opp = carry.get(vs) or HERE / "models" / "brains" / f"{vs}_final.pt"
+            opp = carry.get(vs) or stage.get("opponent") or HERE / "models" / "brains" / f"{vs}_final.pt"   # "opponent": seed the first spar
             stage = {**stage, "args": stage.get("args", []) + ["--opponent", f"{vs}:{opp}"]}
         log(event="stage", level=stage["level"], run=run.name, minutes=round(minutes, 1), resume=str(resume))
         end = time.time() + minutes * 60

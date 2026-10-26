@@ -1,7 +1,7 @@
 From e9fc1d6c4106aa75e1959df2b37c09aadf3d2ecd Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:28:05 -0400
-Subject: [PATCH 1/3] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
+Subject: [PATCH 1/5] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
 
 ---
  third_party/MuJoCo/src | 2 +-
@@ -21,7 +21,7 @@ index 67a1ea6..28009f9 160000
 From 14373b8981961f5a52e5d7c457f6f26cd094f84c Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:50:39 -0400
-Subject: [PATCH 2/3] UE 5.8: JSON object keys are FSharedString
+Subject: [PATCH 2/5] UE 5.8: JSON object keys are FSharedString
 
 ---
  .../URLab/Private/Bridge/MsgpackHelpers.cpp   |  2 +-
@@ -145,7 +145,7 @@ index 9758d6f..2f812b9 100644
 From c6589d1397d809140d40f1debc8788426bd8d4f3 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:51:00 -0400
-Subject: [PATCH 3/3] UE 5.8: remaining FSharedString keys
+Subject: [PATCH 3/5] UE 5.8: remaining FSharedString keys
 
 ---
  Source/URLab/Private/Bridge/RpcDispatcher.cpp | 4 ++--
@@ -173,6 +173,304 @@ index 2f812b9..a9adf88 100644
  					int Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*FullName));
  					if (Jid < 0)
  						Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*JPair.Key));
+-- 
+2.55.0.windows.3
+
+
+From 165aef616968628d30116a7bdb1095b2d3437565 Mon Sep 17 00:00:00 2001
+From: punkouter26 <punkouter26@gmail.com>
+Date: Sun, 25 Oct 2026 12:19:00 -0400
+Subject: [PATCH 4/5] feat(android): add Android arm64-v8a build support for
+ MuJoCo 3.10.0
+
+---
+ .gitignore                           |  2 +
+ Source/URLab/URLab.Build.cs          | 52 +++++++++++++++++++---
+ third_party/MuJoCo/build_android.ps1 | 64 ++++++++++++++++++++++++++++
+ 3 files changed, 113 insertions(+), 5 deletions(-)
+ create mode 100644 third_party/MuJoCo/build_android.ps1
+
+diff --git a/.gitignore b/.gitignore
+index 8dd8005..ff4ab55 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -144,3 +144,5 @@ build.log
+ # Local docs preview env + build output (Scripts/docs.ps1 / docs.sh)
+ .venv-docs/
+ /site/
++
++third_party/*/build_android/
+diff --git a/Source/URLab/URLab.Build.cs b/Source/URLab/URLab.Build.cs
+index 749d2d4..5d6d093 100644
+--- a/Source/URLab/URLab.Build.cs
++++ b/Source/URLab/URLab.Build.cs
+@@ -121,16 +121,26 @@ public class URLab : ModuleRules
+ 				"pthread", "dl", "rt"
+ 			});
+ 		}
++		else if (Target.Platform == UnrealTargetPlatform.Android)
++		{
++			PublicSystemLibraries.AddRange(new string[]
++			{
++				"log", "c", "m", "dl"
++			});
++		}
+ 
+ 		// Don't define _WIN32 on Linux: `#if defined _WIN32` is true even
+ 		// when _WIN32 is 0, which sends MuJoCo's mjexport.h down the
+ 		// __declspec(dllimport) branch and breaks clang on Linux.
+ 
+-		VerifyThirdPartyInstalls();
++		VerifyThirdPartyInstalls(Target);
+ 
+ 		AddMuj(Target);
+-		AddCoACD(Target);
+-		AddZeroMQ(Target);
++		if (Target.Platform != UnrealTargetPlatform.Android)
++		{
++			AddCoACD(Target);
++			AddZeroMQ(Target);
++		}
+ 	}
+ 
+ 	private string ThirdPartyPath
+@@ -226,6 +236,34 @@ public class URLab : ModuleRules
+ 				}
+ 			}
+ 		}
++		else if (Target.Platform == UnrealTargetPlatform.Android)
++		{
++			string Arch = "arm64-v8a";
++			string LibPath = Path.Combine(FullPath, "lib", "Android", Arch);
++			if (!Directory.Exists(LibPath))
++			{
++				LibPath = Path.Combine(FullPath, "lib", Arch);
++			}
++			if (!Directory.Exists(LibPath))
++			{
++				LibPath = Path.Combine(FullPath, "lib");
++			}
++			if (Directory.Exists(LibPath))
++			{
++				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so", SearchOption.AllDirectories))
++				{
++					PublicAdditionalLibraries.Add(LibFile);
++				}
++				foreach (string LibFile in Directory.GetFiles(LibPath, "*.a", SearchOption.AllDirectories))
++				{
++					PublicAdditionalLibraries.Add(LibFile);
++				}
++				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so*", SearchOption.AllDirectories))
++				{
++					RuntimeDependencies.Add(LibFile);
++				}
++			}
++		}
+ 	}
+ 
+ 	// Set to true to skip the submodule/install SHA drift checks. The default
+@@ -255,7 +293,7 @@ public class URLab : ModuleRules
+ 	// drift (Layer B). Runs once up front so any failure message is clearly
+ 	// attributable before UBT tries to resolve libs/includes. If URLab itself
+ 	// isn't a git checkout (release zip), the checks self-disable with a note.
+-	private void VerifyThirdPartyInstalls()
++	private void VerifyThirdPartyInstalls(ReadOnlyTargetRules Target)
+ 	{
+ 		if (SkipThirdPartyDriftChecks)
+ 		{
+@@ -274,7 +312,11 @@ public class URLab : ModuleRules
+ 
+ 		RegisterDriftCheckDependencies(PluginRoot);
+ 
+-		foreach (string Package in ThirdPartyPackages)
++		string[] PackagesToCheck = (Target.Platform == UnrealTargetPlatform.Android)
++			? new[] { "MuJoCo" }
++			: ThirdPartyPackages;
++
++		foreach (string Package in PackagesToCheck)
+ 		{
+ 			VerifyPackageInstall(PluginRoot, Package);
+ 		}
+diff --git a/third_party/MuJoCo/build_android.ps1 b/third_party/MuJoCo/build_android.ps1
+new file mode 100644
+index 0000000..8ce516f
+--- /dev/null
++++ b/third_party/MuJoCo/build_android.ps1
+@@ -0,0 +1,64 @@
++param(
++    [string]$InstallDir = "../install/MuJoCo",
++    [string]$BuildType = "Release",
++    [string]$AndroidApi = "28",
++    [string]$AndroidAbi = "arm64-v8a"
++)
++
++# Convert to absolute path
++if (-not [System.IO.Path]::IsPathRooted($InstallDir)) {
++    $InstallDir = Join-Path $PSScriptRoot $InstallDir
++}
++$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
++$InstallDir = $InstallDir.Replace('\', '/')
++
++# Locate NDK
++$ndk = $env:NDK_ROOT
++if (-not $ndk) { $ndk = $env:ANDROID_NDK_ROOT }
++if (-not $ndk -and $env:ANDROID_HOME) {
++    $ndkDirs = Get-ChildItem -Directory "$env:ANDROID_HOME/ndk" | Sort-Object Name -Descending
++    if ($ndkDirs) { $ndk = $ndkDirs[0].FullName }
++}
++if (-not $ndk) { throw "Android NDK not found. Set NDK_ROOT or ensure NDK is installed under ANDROID_HOME." }
++$ndk = [System.IO.Path]::GetFullPath($ndk).Replace('\', '/')
++$toolchain = "$ndk/build/cmake/android.toolchain.cmake"
++
++Write-Host "Configuring MuJoCo 3.10.0 for Android $AndroidAbi (API $AndroidApi) using NDK at $ndk..." -ForegroundColor Cyan
++
++$BuildDir = Join-Path $PSScriptRoot "build_android"
++New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
++Push-Location $BuildDir
++
++$RepoDir = Join-Path $PSScriptRoot "src"
++$RepoDir = $RepoDir.Replace('\', '/')
++
++cmake $RepoDir -G "Ninja" `
++  "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
++  "-DANDROID_ABI=$AndroidAbi" `
++  "-DANDROID_PLATFORM=android-$AndroidApi" `
++  "-DCMAKE_BUILD_TYPE=$BuildType" `
++  "-DCMAKE_C_FLAGS=-D_POSIX_C_SOURCE=200809L" `
++  "-DCMAKE_CXX_FLAGS=-D_POSIX_C_SOURCE=200809L" `
++  "-DMUJOCO_BUILD_EXAMPLES=OFF" `
++  "-DMUJOCO_BUILD_TESTS=OFF" `
++  "-DMUJOCO_BUILD_SIMULATE=OFF" `
++  "-DMUJOCO_TEST_PYTHON_UTIL=OFF" `
++  "-DBUILD_SHARED_LIBS=ON" `
++  "-DCMAKE_INSTALL_PREFIX=$InstallDir"
++
++if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed for Android MuJoCo" }
++
++Write-Host "Building MuJoCo for Android $AndroidAbi..." -ForegroundColor Cyan
++ninja -j 4
++if ($LASTEXITCODE -ne 0) { throw "Build failed for Android MuJoCo" }
++
++Write-Host "Installing MuJoCo..." -ForegroundColor Cyan
++cmake --install .
++
++# Stage directly into lib/Android/arm64-v8a
++$stageDir = Join-Path $InstallDir "lib/Android/$AndroidAbi"
++New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
++Copy-Item "lib/libmujoco.so" "$stageDir/libmujoco.so" -Force
++
++Pop-Location
++Write-Host "MuJoCo Android build complete: $stageDir/libmujoco.so" -ForegroundColor Green
+-- 
+2.55.0.windows.3
+
+
+From 74606a4dc2b4c2738a0832816bfed9236787ffc6 Mon Sep 17 00:00:00 2001
+From: PoSlap <punkouter26@gmail.com>
+Date: Mon, 26 Oct 2026 04:09:43 -0400
+Subject: [PATCH 5/5] Android: stub libzmq/CoACD headers, package libmujoco.so
+
+The dev bridge (ZMQ) and mesh decomposition (CoACD) have no Android build;
+stub headers make their calls fail cleanly. URLab_UPL.xml copies
+libmujoco.so into the APK next to libUnreal.so.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/URLab/AndroidStubs/CoACD/coacd.h | 13 +++++++++++
+ Source/URLab/AndroidStubs/zmq.h         | 31 +++++++++++++++++++++++++
+ Source/URLab/URLab.Build.cs             |  6 +++++
+ Source/URLab/URLab_UPL.xml              |  7 ++++++
+ 4 files changed, 57 insertions(+)
+ create mode 100644 Source/URLab/AndroidStubs/CoACD/coacd.h
+ create mode 100644 Source/URLab/AndroidStubs/zmq.h
+ create mode 100644 Source/URLab/URLab_UPL.xml
+
+diff --git a/Source/URLab/AndroidStubs/CoACD/coacd.h b/Source/URLab/AndroidStubs/CoACD/coacd.h
+new file mode 100644
+index 0000000..ad467d7
+--- /dev/null
++++ b/Source/URLab/AndroidStubs/CoACD/coacd.h
+@@ -0,0 +1,13 @@
++// Android stand-in for CoACD (PoSlap): mesh decomposition is an editor step; at game time it returns no hulls.
++#pragma once
++#include <stdint.h>
++
++struct CoACD_Mesh { double* vertices_ptr; uint64_t vertices_count; int* triangles_ptr; uint64_t triangles_count; };
++struct CoACD_MeshArray { CoACD_Mesh* meshes_ptr; uint64_t meshes_count; };
++
++constexpr int preprocess_auto = 0;
++constexpr int apx_ch = 0;
++
++inline void CoACD_freeMeshArray(CoACD_MeshArray) {}
++inline CoACD_MeshArray CoACD_run(CoACD_Mesh const&, double, int, int, int, int, int, int, int, bool, bool, bool, int,
++	bool, double, int, unsigned int, bool) { return { nullptr, 0 }; }
+diff --git a/Source/URLab/AndroidStubs/zmq.h b/Source/URLab/AndroidStubs/zmq.h
+new file mode 100644
+index 0000000..d65632c
+--- /dev/null
++++ b/Source/URLab/AndroidStubs/zmq.h
+@@ -0,0 +1,31 @@
++// Android stand-in for libzmq (PoSlap): the dev bridge and camera streaming are desktop-only. Every call fails the way a
++// real one does when nothing can bind or connect (null handles, -1), so URLab's existing error paths take over.
++#pragma once
++#include <stddef.h>
++
++#define ZMQ_PUB 1
++#define ZMQ_SUB 2
++#define ZMQ_REP 4
++#define ZMQ_SUBSCRIBE 6
++#define ZMQ_RCVMORE 13
++#define ZMQ_SNDHWM 23
++#define ZMQ_RCVTIMEO 27
++#define ZMQ_SNDTIMEO 28
++#define ZMQ_DONTWAIT 1
++#define ZMQ_SNDMORE 2
++
++typedef struct zmq_msg_t { unsigned char _[64]; } zmq_msg_t;
++
++static inline void* zmq_ctx_new(void) { return nullptr; }
++static inline int zmq_ctx_term(void*) { return 0; }
++static inline void* zmq_socket(void*, int) { return nullptr; }
++static inline int zmq_close(void*) { return 0; }
++static inline int zmq_setsockopt(void*, int, const void*, size_t) { return -1; }
++static inline int zmq_getsockopt(void*, int, void*, size_t*) { return -1; }
++static inline int zmq_bind(void*, const char*) { return -1; }
++static inline int zmq_send(void*, const void*, size_t, int) { return -1; }
++static inline int zmq_msg_init(zmq_msg_t*) { return 0; }
++static inline int zmq_msg_recv(zmq_msg_t*, void*, int) { return -1; }
++static inline int zmq_msg_close(zmq_msg_t*) { return 0; }
++static inline void* zmq_msg_data(zmq_msg_t* M) { return M->_; }
++static inline size_t zmq_msg_size(zmq_msg_t*) { return 0; }
+diff --git a/Source/URLab/URLab.Build.cs b/Source/URLab/URLab.Build.cs
+index 5d6d093..ec33e54 100644
+--- a/Source/URLab/URLab.Build.cs
++++ b/Source/URLab/URLab.Build.cs
+@@ -141,6 +141,12 @@ public class URLab : ModuleRules
+ 			AddCoACD(Target);
+ 			AddZeroMQ(Target);
+ 		}
++		else
++		{
++			// no libzmq / CoACD on Android: headers whose calls fail cleanly (no bridge, no mesh decomposition in the game)
++			PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "AndroidStubs"));
++			AdditionalPropertiesForReceipt.Add("AndroidPlugin", Path.Combine(ModuleDirectory, "URLab_UPL.xml"));	// libmujoco.so into the APK
++		}
+ 	}
+ 
+ 	private string ThirdPartyPath
+diff --git a/Source/URLab/URLab_UPL.xml b/Source/URLab/URLab_UPL.xml
+new file mode 100644
+index 0000000..a152b3f
+--- /dev/null
++++ b/Source/URLab/URLab_UPL.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- PoSlap: libUnreal.so links libmujoco.so dynamically; put it beside it in the APK's native libs -->
++<root xmlns:android="http://schemas.android.com/apk/res/android">
++	<resourceCopies>
++		<copyFile src="$S(PluginDir)/../../third_party/install/MuJoCo/lib/Android/arm64-v8a/libmujoco.so" dst="$S(BuildDir)/libs/arm64-v8a/libmujoco.so" />
++	</resourceCopies>
++</root>
 -- 
 2.55.0.windows.3
 

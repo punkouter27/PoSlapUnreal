@@ -187,7 +187,7 @@ private:
 	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);
 
 	// brains the menu picked, handed to the physics thread (RequestMatch -> StepPolicy)
-	struct FNet { TSharedPtr<UE::NNE::IModelInstanceCPU> Net; int32 NumIn = 0, NumOut = 1; FString Label; };
+	struct FNet { TSharedPtr<UE::NNE::IModelInstanceCPU> Net; int32 NumIn = 0, NumOut = 1; FString Label; };	// NumOut 0: one output, actions then value (Android)
 	static bool MakeNet(UNNEModelData* Data, FNet& Out);
 	FCriticalSection PendingLock;
 	TOptional<FNet> Pending[2];
@@ -217,6 +217,7 @@ private:
 	int64 StepCount = 0;
 	TArray<FAthlete> Athletes;
 	TArray<float> Action;	// brain output scratch, sized once
+	bool Infer(const FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into Action, its critic into Value
 
 	/** Runtime brains from -SlapRedBrain= / -SlapBlueBrain= (.onnx files), kept alive here. */
 	UPROPERTY(Transient)

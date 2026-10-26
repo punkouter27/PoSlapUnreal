@@ -44,7 +44,10 @@
 		},
 		{
 			"Name": "PixelStreaming2",
-			"Enabled": true
+			"Enabled": true,
+			"PlatformAllowList": [
+				"Win64"
+			]
 		}
 	]
 }
