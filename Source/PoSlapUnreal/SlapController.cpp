@@ -508,8 +508,8 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 
 void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 {
-	// Display-only pre-match walk-in: both athletes walk from 1.6 m down the aisle into their podium footboxes
-	// using their locomotion/balance brain blended with an alternating heel-to-toe stride cycle and eye contact.
+	// Pre-match walk-in: both athletes walk from 1.6 m down the aisle into their podium footboxes
+	// using closed-loop NNE balance inference blended with an alternating heel-to-toe stride cycle and eye contact.
 	// When WalkInLeft reaches 0, StartTurn() resets mjData to the exact stand pose for 0.000 cm match.py parity.
 	const double Prog = 1.0 - (double)WalkInLeft / (double)FMath::Max<int64>(1, WalkInTotal);
 	const double S = FMath::Clamp(Prog / 0.85, 0.0, 1.0);
@@ -517,6 +517,8 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	const double Offset = 1.60 * (1.0 - U);
 	const double Env = Prog < 0.85 ? FMath::Sin(PI * S) : 0.0;
 	const double Phase = 2.0 * PI * 1.8 * Prog * WalkInHold;
+	float Obs[NumObs];
+	const bool bRunNet = (WalkInLeft % ControlEvery == 0);
 	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
 	{
 		FAthlete& A = Athletes[a];
@@ -526,6 +528,24 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 		d->qpos[A.RootQ + 2] = m->qpos0[A.RootQ + 2] + 0.015 * Env * FMath::Abs(FMath::Sin(Phase));
 		for (int32 k = 3; k < 7; ++k) d->qpos[A.RootQ + k] = m->qpos0[A.RootQ + k];
 		for (int32 k = 0; k < 6; ++k) d->qvel[A.RootV + k] = 0.0;
+		if (bRunNet && A.Net)
+		{
+			BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs);
+			float Value = 0.f;
+			const UE::NNE::FTensorBindingCPU In{ Obs, (uint64)A.NumIn * sizeof(float) };
+			const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
+			if (A.Net->RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, A.NumOut)) == UE::NNE::EResultStatus::Ok)
+			{
+				for (int32 j = 0; j < A.Act.Num(); ++j)
+				{
+					const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
+					const double Tgt = FMath::Clamp(A.Stand[j] + 0.25 * (Act > 0.0 ? Act * (A.Hi[j] - A.Stand[j]) : Act * (A.Stand[j] - A.Lo[j])), A.Lo[j], A.Hi[j]);
+					d->qpos[A.Qadr[j]] = Tgt;
+					A.Goal[j] = Tgt;
+					A.PrevAction[j] = (float)Act;
+				}
+			}
+		}
 		const double SinP = FMath::Sin(Phase + (a == 1 ? PI * 0.5 : 0.0));
 		const double CosP = FMath::Cos(Phase + (a == 1 ? PI * 0.5 : 0.0));
 		auto SetJ = [&](int32 Idx, double Delta)
@@ -603,8 +623,10 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	FMemory::Memcpy(Turn.HeadPrev, d->geom_xpos + 3 * D.Head, sizeof(Turn.HeadPrev));
 	bInTurn = true;
 	Emit(FString::Printf(TEXT("{\"type\": \"turn_start\", \"round\": %d, \"striker\": %s, \"defender\": %s}"), Round, *Str(S.Name), *Str(D.Name)));
+	const FString Toss = (Round == 1 && TurnInRound == 0) ? (Athletes[First].Name + TEXT(" wins the toss")) : FString();
 	SetHud([&](FSlapHud& H) { H.Round = Round; H.Striker = S.Name; H.Defender = D.Name; H.Clock = StrikeClock; H.bStruck = false;
-		H.Speed = H.HeadPeak = 0.0; H.Part.Reset(); H.Event.Reset(); });	// the last turn's strike stats and call had stayed up through this one
+		H.bWalkIn = false; H.WalkInProgress = 1.0;
+		H.Speed = H.HeadPeak = 0.0; H.Part.Reset(); H.Event = Toss; });	// the last turn's strike stats and call had stayed up through this one
 }
 
 bool USlapController::PreStep(const mjModel* m, mjData* d)
@@ -804,6 +826,7 @@ int64 USlapController::HoldSteps(double Seconds)
 
 void USlapController::EndMatch(int32 Winner)
 {
+	LastWinner = Winner;
 	HoldLeft = HoldSteps(PostMatchHold);
 	SetHud([&](FSlapHud& H) { Winner < 0 ? ++H.Draws : ++H.Wins[Winner]; });
 }
@@ -1022,12 +1045,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		if (WalkInLeft > 0)
 		{
 			StepWalkIn(m, d);
-			if (bHudReady.load(std::memory_order_relaxed) && --WalkInLeft == 0)
-			{
-				const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
-				StartTurn(m, d);
-				SetHud([&](FSlapHud& H) { H.bWalkIn = false; H.WalkInProgress = 1.0; H.Event = Toss; });
-			}
+			if (bHudReady.load(std::memory_order_relaxed)) --WalkInLeft;
 		}
 		else
 		{
@@ -1042,7 +1060,17 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 				}
 				if (PreStep(m, d)) break;
 			}
-			if (WalkInLeft == 0 && (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0)) Decide(m, d);	// the hold: both stand (role 0)
+			if (WalkInLeft == 0 && (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0))
+			{
+				Decide(m, d);	// the hold: both stand (role 0)
+				if (!bInTurn && Round > Rounds && LastWinner >= 0 && LastWinner < Athletes.Num())
+				{
+					// Post-match winner celebration (display-only during PostMatchHold before StartMatch resets)
+					FAthlete& W = Athletes[LastWinner];
+					if (W.ShSwingL >= 0) W.Goal[W.ShSwingL] = FMath::Clamp(W.Stand[W.ShSwingL] + 0.85, W.Lo[W.ShSwingL], W.Hi[W.ShSwingL]);
+					if (W.ShSwingR >= 0) W.Goal[W.ShSwingR] = FMath::Clamp(W.Stand[W.ShSwingR] + 0.85, W.Lo[W.ShSwingR], W.Hi[W.ShSwingR]);
+				}
+			}
 		}
 	}
 	else if (StepCount % ControlEvery == 0) Decide(m, d);

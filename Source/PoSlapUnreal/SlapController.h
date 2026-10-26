@@ -162,7 +162,7 @@ private:
 		double Kick[6] = {};	// the slap's impact on the defender's head (force, torque) for KickSteps steps after the touch
 	};
 	int32 Floor = -1, Podium = -1;
-	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0;
+	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0, LastWinner = -1;
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
 	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
 	mutable std::atomic<bool> bHudReady = false;	// set once ASlapHUD::DrawHUD begins rendering so walk-in isn't consumed during level load
