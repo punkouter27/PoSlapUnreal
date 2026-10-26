@@ -1,7 +1,7 @@
 From e9fc1d6c4106aa75e1959df2b37c09aadf3d2ecd Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:28:05 -0400
-Subject: [PATCH 1/5] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
+Subject: [PATCH 1/6] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
 
 ---
  third_party/MuJoCo/src | 2 +-
@@ -21,7 +21,7 @@ index 67a1ea6..28009f9 160000
 From 14373b8981961f5a52e5d7c457f6f26cd094f84c Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:50:39 -0400
-Subject: [PATCH 2/5] UE 5.8: JSON object keys are FSharedString
+Subject: [PATCH 2/6] UE 5.8: JSON object keys are FSharedString
 
 ---
  .../URLab/Private/Bridge/MsgpackHelpers.cpp   |  2 +-
@@ -145,7 +145,7 @@ index 9758d6f..2f812b9 100644
 From c6589d1397d809140d40f1debc8788426bd8d4f3 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:51:00 -0400
-Subject: [PATCH 3/5] UE 5.8: remaining FSharedString keys
+Subject: [PATCH 3/6] UE 5.8: remaining FSharedString keys
 
 ---
  Source/URLab/Private/Bridge/RpcDispatcher.cpp | 4 ++--
@@ -180,7 +180,7 @@ index 2f812b9..a9adf88 100644
 From 165aef616968628d30116a7bdb1095b2d3437565 Mon Sep 17 00:00:00 2001
 From: punkouter26 <punkouter26@gmail.com>
 Date: Sun, 25 Oct 2026 12:19:00 -0400
-Subject: [PATCH 4/5] feat(android): add Android arm64-v8a build support for
+Subject: [PATCH 4/6] feat(android): add Android arm64-v8a build support for
  MuJoCo 3.10.0
 
 ---
@@ -368,7 +368,7 @@ index 0000000..8ce516f
 From 74606a4dc2b4c2738a0832816bfed9236787ffc6 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Mon, 26 Oct 2026 04:09:43 -0400
-Subject: [PATCH 5/5] Android: stub libzmq/CoACD headers, package libmujoco.so
+Subject: [PATCH 5/6] Android: stub libzmq/CoACD headers, package libmujoco.so
 
 The dev bridge (ZMQ) and mesh decomposition (CoACD) have no Android build;
 stub headers make their calls fail cleanly. URLab_UPL.xml copies
@@ -471,6 +471,36 @@ index 0000000..a152b3f
 +		<copyFile src="$S(PluginDir)/../../third_party/install/MuJoCo/lib/Android/arm64-v8a/libmujoco.so" dst="$S(BuildDir)/libs/arm64-v8a/libmujoco.so" />
 +	</resourceCopies>
 +</root>
+-- 
+2.55.0.windows.3
+
+
+From 3a79fffe9d0d7dd649b8e711c5e2ddb2a921c3d1 Mon Sep 17 00:00:00 2001
+From: PoSlap <punkouter26@gmail.com>
+Date: Mon, 26 Oct 2026 10:14:25 -0400
+Subject: [PATCH 6/6] Android: 16 KB page-aligned libmujoco.so (Android 15+)
+
+---
+ third_party/MuJoCo/build_android.ps1 | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/third_party/MuJoCo/build_android.ps1 b/third_party/MuJoCo/build_android.ps1
+index 8ce516f..380c80b 100644
+--- a/third_party/MuJoCo/build_android.ps1
++++ b/third_party/MuJoCo/build_android.ps1
+@@ -36,6 +36,7 @@ cmake $RepoDir -G "Ninja" `
+   "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
+   "-DANDROID_ABI=$AndroidAbi" `
+   "-DANDROID_PLATFORM=android-$AndroidApi" `
++  "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" `
+   "-DCMAKE_BUILD_TYPE=$BuildType" `
+   "-DCMAKE_C_FLAGS=-D_POSIX_C_SOURCE=200809L" `
+   "-DCMAKE_CXX_FLAGS=-D_POSIX_C_SOURCE=200809L" `
+@@ -62,3 +63,4 @@ Copy-Item "lib/libmujoco.so" "$stageDir/libmujoco.so" -Force
+ 
+ Pop-Location
+ Write-Host "MuJoCo Android build complete: $stageDir/libmujoco.so" -ForegroundColor Green
++
 -- 
 2.55.0.windows.3
 
