@@ -28,15 +28,17 @@ class SWidget;
  * effects (spray, sweat, shockwave, flash, cheek ripple, shake, fringe, light flare, KO grade, sound at the contact), wear on
  * the skin (cheek flush from neck damage, a palm print, greyer when tired), sole and palm scuffs with squeaks, panting, a
  * spotlight on the striker, and a half-speed replay of a KO. All cosmetic: MuJoCo decides everything.
- * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits; `-SlapFxTest=<seconds>` fakes a clean strike on
+ * `-SlapShot=<seconds>` saves Saved/Screenshots/slapshot.png then quits (`-SlapShotResult`: once a match ends); `-SlapFxTest=<seconds>` fakes a clean strike on
  * the defender's cheek then, and a KO 1.5 s later (automated checks of the effects without a striking brain).
  * Slate layer inside the safe zone, one corner each: TL title, TC FPS + MuJoCo step counter, TR menu (icon), BL physics
- * debug (opt-in), BR build stamp. The menu is a tabbed bottom sheet, tabs at its foot (thumb reach): MATCH (status, pairing,
+ * debug (opt-in), BR build stamp; a grip at the bottom centre opens the menu under the thumb. On the play area a swipe
+ * steps the view presets and a double tap replays. A finished match shows a result card (judges, series, REMATCH). The menu is a tabbed bottom sheet, tabs at its foot (thumb reach): MATCH (status, pairing,
  * each corner's brain, START, instant replay, and the view badges TEL SCI XRAY SLOW LIVE COM DBG on one screen), ROSTER
   * (every character card), ABOUT (legend). Nothing scrolls: the sheet's content is capped to a measured height budget and
   * every tab is compacted to fit it. `-SlapMenu=<0-2>` opens it on that tab (screenshots); `-SlapUiTest` clicks through it;
   * `-SlapLayoutTest` measures the laid-out sheet against the budget, the safe zone, the corner anchors and the touch
-  * minimum, and logs what would overflow.
+  * minimum, and logs what would overflow. `-SlapSafeZone=<top>,<bottom>` (fractions of the screen height) fakes a notch
+  * and a nav bar so the audit also checks every anchor sits inside them.
  */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
@@ -80,10 +82,13 @@ private:
 	TArray<float> Frames;
 	double FpsSince = 0.0;
 	float ShotAt = -1.f, FxTestAt = -1.f;
-	bool bShotTaken = false;
+	bool bShotTaken = false, bShotOnResult = false;	// -SlapShotResult: the shot 0.5 s after a match ends (the result card)
 
 	// layout: canvas scale (authored at 540 x 960) and the free rows between the Slate bars, in canvas pixels
 	float S = 1.f, Top = 0.f, Bot = 0.f;
+	float PanelBottom = 0.f;	// canvas y under the round panel (DrawMatch): the momentum bar, the tape and the replay line hang off it
+	FMargin FakeSafe;	// -SlapSafeZone, as Slate's safe-zone ratios (zero = the device's own)
+	FMargin Safe;	// the platform's safe insets this frame, pixels (a notch, a nav bar; -SlapSafeZone fakes them)
 	float Fps = 60.f, WorstMs = 0.f;
 
 	// Slate layer and menu
@@ -101,7 +106,7 @@ private:
 	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
 	int32 RosterSel = 0;
-	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: VIEW tab
+	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: MATCH tab badges or a swipe
 	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;	// slow motion is an effect, on by default
 	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
@@ -109,10 +114,15 @@ private:
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
 	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
 	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/Arena open the next pairing at 3 s, then log what loaded
-	enum EHit { HitMenu, HitTabMatch, HitTabRoster, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitCount };
+	enum EHit { HitMenu, HitTabMatch, HitTabRoster, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad, HitRematch, HitCount };
+	bool bQuarter = false;	// the replay runs at 1/4 speed instead of 1/2 (the MATCH tab's x1/4 badge)
+	FVector2D PadDown = FVector2D::ZeroVector;	// where a press on the play area began: a swipe cycles the view presets
+	int32 Preset = 0;	// 0 none, 1 TEL, 2 TEL+SCI, 3 XRAY: what a swipe steps through
+	void CyclePreset(int32 Dir);
+	bool bRematched = false;	// -SlapUiTest: REMATCH was tapped on the result card
 	bool bTravelling = false;	// a pairing's level is opening: START, replay and the pickers stay inert until it has
 	double TravelledAt = -1.0;	// when the level was asked for: if it never opens, the menu comes back (a failed load would brick it)
-	void InstantReplay();	// the MATCH tab's replay button: the last 2.5 s at half speed (or back to live)
+	void InstantReplay();	// the MATCH tab's replay button or a double tap: the last 2.5 s at 1/2 (or 1/4) speed, or back to live
 	TSharedPtr<SWidget> Hit[HitCount];	// click targets for -SlapUiTest
 	bool bUiTest = false, bUiChecked = false, bUiDone = false;
 	int32 UiStep = 0, UiFails = 0, UiMatch0 = 0, UiSeq = 0;

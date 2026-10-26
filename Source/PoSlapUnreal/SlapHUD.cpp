@@ -59,7 +59,6 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSafeZone.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
@@ -118,6 +117,7 @@ void ASlapHUD::BeginPlay()
 {
 	Super::BeginPlay();
 	FParse::Value(FCommandLine::Get(), TEXT("SlapShot="), ShotAt);
+	bShotOnResult = FParse::Param(FCommandLine::Get(), TEXT("SlapShotResult"));
 	FParse::Value(FCommandLine::Get(), TEXT("SlapFxTest="), FxTestAt);
 	bMenu = FParse::Value(FCommandLine::Get(), TEXT("SlapMenu="), Tab);
 	bUiTest = FParse::Param(FCommandLine::Get(), TEXT("SlapUiTest"));
@@ -135,6 +135,13 @@ void ASlapHUD::BeginPlay()
 	}
 	bLive = FParse::Value(FCommandLine::Get(), TEXT("SlapLive="), LiveUrl);
 	Tab = FMath::Clamp(Tab, 0, 2);
+	FString Zone;	// -SlapSafeZone=0.05+0.03: a fake notch (top) and nav bar (bottom), fractions of the screen height ('+', not a comma)
+	if (FParse::Value(FCommandLine::Get(), TEXT("SlapSafeZone="), Zone) && FSlateApplication::IsInitialized())
+	{
+		FString T, B;
+		Zone.Split(TEXT("+"), &T, &B);
+		FakeSafe = FMargin(0.f, 2.f * FCString::Atof(*T), 0.f, 2.f * FCString::Atof(*B));	// ratios of the half height; DrawHUD keeps it applied
+	}
 	BuildUi();
 	// broadcast assets (Scripts/broadcast_fx.py); a missing one is skipped
 	Spray = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_SlapSpray.NS_SlapSpray"));
@@ -238,7 +245,11 @@ void ASlapHUD::DrawHUD()
 	S = FMath::Min(Canvas->ClipX / 540.f, Canvas->ClipY / 960.f);
 	FVector2D View(Canvas->ClipX, Canvas->ClipY);
 	if (UGameViewportClient* VC = GetWorld()->GetGameViewport()) VC->GetViewportSize(View);
-	FMargin Safe(0.f);
+	if (FakeSafe != FMargin() && FSlateApplication::IsInitialized() && FSlateApplication::Get().GetCustomSafeZone() != FakeSafe)
+	{
+		FSlateApplication::Get().SetCustomSafeZone(FakeSafe);	// the viewport's own refresh zeroes it, so it is put back whenever it drifts
+	}
+	Safe = FMargin(0.f);
 	if (FSlateApplication::IsInitialized()) FSlateApplication::Get().GetSafeZoneSize(Safe, View);	// pixels
 	const float Dpi = DpiScale = GetDefault<UUserInterfaceSettings>()->GetDPIScaleBasedOnSize(FIntPoint(View.X, View.Y));
 	const FIntRect R = Canvas->SceneView ? Canvas->SceneView->UnscaledViewRect : FIntRect(0, 0, View.X, View.Y);
@@ -312,12 +323,12 @@ void ASlapHUD::DrawHUD()
 	if (Camera.IsValid()) Direct(Camera.Get(), H);
 	if (H.Match > 0)
 	{
+		DrawMatch(H);	// first: the momentum bar and the tape hang off its panel
 		if (bShowTelemetry) DrawTelemetry(H);
 		if (bShowScience) DrawScience(H);
 		if (bShowXRay) DrawXRay(H);
-		DrawMatch(H);
 		DrawOverlays(H);
-		if (GetWorld()->GetTimeSeconds() < ReplayEnd) Text(TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, Bot - 48.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
+		if (GetWorld()->GetTimeSeconds() < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
 
 	if (bUiTest) UiTest(H);
@@ -332,6 +343,7 @@ void ASlapHUD::DrawHUD()
 			UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
 		}
 	}
+	if (bShotOnResult && ShotAt < 0.f && !H.Result.IsEmpty()) ShotAt = GetWorld()->GetTimeSeconds() + 0.5f;
 	if (ShotAt >= 0.f && GetWorld()->GetTimeSeconds() >= ShotAt)
 	{
 		if (!bShotTaken)
@@ -549,13 +561,51 @@ void ASlapHUD::BuildUi()
 	auto ReplayLabel = [Self]
 	{
 		const bool bOn = Self.IsValid() && Self->GetWorld() && Self->GetWorld()->GetTimeSeconds() < Self->ReplayEnd;
-		return FText::FromString(bOn ? TEXT("LIVE") : TEXT("REPLAY 1/2"));
+		return FText::FromString(bOn ? TEXT("LIVE") : Self.IsValid() && Self->bQuarter ? TEXT("REPLAY 1/4") : TEXT("REPLAY 1/2"));
 	};
+	auto Rematch = [Self]	// the result card: the same two brains again, now (the hold would start the next match anyway)
+	{
+		if (!Self.IsValid() || Self->bTravelling || !Self->Controller.IsValid()) return FReply::Handled();
+		Self->Controller->RequestMatch(nullptr, nullptr);
+		Self->bRematched = true;
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: rematch"));
+		return FReply::Handled();
+	};
+	auto CardButton = [&](const TCHAR* Name, FLinearColor Colour, TFunction<FReply()> Click, TSharedPtr<SWidget>& Out)
+	{
+		TSharedRef<SBox> Box = SNew(SBox).MinDesiredHeight(Touch)
+			[SAssignNew(Out, SButton).ButtonColorAndOpacity(Colour).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(MoveTemp(Click))[Label(FText::FromString(Name), 18, White)]];
+		if (Self.IsValid()) Self->Targets.Add(Box);
+		return Box;
+	};
+	static const FSlateRoundedBoxBrush CardBrush(FLinearColor(0.f, 0.f, 0.f, 0.8f), 14.f);
+	static const FSlateRoundedBoxBrush GripBrush(FLinearColor(0.f, 0.f, 0.f, 0.45f), 12.f);
+	auto Resulted = [Self] { return Self.IsValid() && !Self->bMenu && !Self->Last.Result.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; };
+	TSharedPtr<SBox> GripBox;
 
 	Ui = SNew(SOverlay)
+		+ SOverlay::Slot()	// the play area, under everything: a sideways swipe steps the view presets, a double tap replays
+		[
+			SAssignNew(Hit[HitPad], SBorder).BorderImage(FCoreStyle::Get().GetBrush("NoBorder")).Visibility(EVisibility::Visible)
+			.OnMouseButtonDown_Lambda([Self](const FGeometry&, const FPointerEvent& E) { if (Self.IsValid()) Self->PadDown = E.GetScreenSpacePosition(); return FReply::Handled(); })
+			.OnMouseButtonUp_Lambda([Self](const FGeometry& G, const FPointerEvent& E)
+			{
+				if (!Self.IsValid()) return FReply::Handled();
+				const FVector2D D = (E.GetScreenSpacePosition() - Self->PadDown) / FMath::Max(G.GetAccumulatedLayoutTransform().GetScale(), 0.01f);	// Slate units
+				if (FMath::Abs(D.X) > 80.f && FMath::Abs(D.X) > 2.f * FMath::Abs(D.Y)) Self->CyclePreset(D.X < 0.f ? 1 : -1);
+				return FReply::Handled();
+			})
+			.OnMouseDoubleClick_Lambda([Self](const FGeometry&, const FPointerEvent&)
+			{
+				if (Self.IsValid() && !Self->bTravelling && Self->Last.Match > 0) Self->InstantReplay();
+				return FReply::Handled();
+			})
+		]
 		+ SOverlay::Slot()
 		[
-			SNew(SSafeZone).IsTitleSafe(true)	// the same inset the engine gives the canvas
+			// the safe insets DrawHUD reads each frame (pixels -> Slate units): the corners and the canvas follow one source.
+			// (SSafeZone in the editor binary keeps a stale margin after the insets change.)
+			SNew(SBox).Padding(TAttribute<FMargin>::CreateLambda([Self] { return Self.IsValid() ? Self->Safe * (1.f / FMath::Max(Self->DpiScale, 0.01f)) : FMargin(0.f); }))
 			[
 				SNew(SOverlay)
 				+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
@@ -606,6 +656,41 @@ void ASlapHUD::BuildUi()
 					SAssignNew(Anchor[4], SBox).HeightOverride(BottomBar).VAlign(VAlign_Center).Padding(FMargin(16.f, 0.f))
 					[SNew(SBorder).BorderImage(&ScrimBrush).Padding(FMargin(6.f, 2.f))[Label(FText::FromString(TEXT(POSLAP_BUILD_VERSION)), 14, FLinearColor(1.f, 1.f, 1.f, 0.8f))]]
 				]
+				+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)	// BC: a grip that opens the menu under the thumb (TR is a stretch one-handed)
+				[
+					SAssignNew(GripBox, SBox).WidthOverride(120.f).HeightOverride(Touch)
+					[
+						SAssignNew(Hit[HitGrip], SButton).ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder")).HAlign(HAlign_Center).VAlign(VAlign_Center)
+						.ToolTipText(FText::FromString(TEXT("Menu"))).OnClicked_Lambda([Self, Menu] { return Menu(Self.IsValid() && !Self->bMenu); })
+						[SNew(SBorder).BorderImage(&GripBrush).Padding(FMargin(18.f, 8.f))[SNew(SBox).WidthOverride(44.f).HeightOverride(4.f)[SNew(SImage).Image(&Bar)]]]
+					]
+				]
+				+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(24.f, 0.f, 24.f, BottomBar + 120.f))	// Win/Loss: the lower third, above the telemetry strips
+				[
+					SNew(SBorder).BorderImage(&CardBrush).Padding(FMargin(22.f, 14.f)).Visibility_Lambda(Resulted)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+						[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() && Self->Last.Result.Contains(TEXT("KO")) ? TEXT("KNOCKOUT") : TEXT("DECISION")); }), 30,
+							TAttribute<FSlateColor>::CreateLambda([Self, Hi] { return FSlateColor(Self.IsValid() && Self->Last.Result.Contains(TEXT("KO")) ? FLinearColor(FColor(250, 80, 60)) : Hi); }))]
+						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 2.f)
+						[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->Last.Result : FString()); }), 18, White)]
+						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 4.f, 0.f, 10.f)
+						[Label(TAttribute<FText>::CreateLambda([Self]
+						{
+							if (!Self.IsValid()) return FText();
+							const FSlapHud& H = Self->Last;
+							return FText::FromString(FString::Printf(TEXT("JUDGES %d:%d  %d:%d  %d:%d     SERIES %d-%d%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
+								H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT("")));
+						}), 15, Dim)]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 4.f, 0.f))[CardButton(TEXT("REMATCH"), FLinearColor(0.75f, 0.2f, 0.15f), Rematch, Hit[HitRematch])]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 0.f, 0.f))[CardButton(TEXT("MENU"), FLinearColor::White, [Menu] { return Menu(true); }, Spare)]
+						]
+					]
+				]
 			]
 		]
 		+ SOverlay::Slot()
@@ -621,7 +706,11 @@ void ASlapHUD::BuildUi()
 			[
 				SAssignNew(SheetRoot, SBorder).BorderImage(&SheetBrush).Padding(FMargin(12.f, 12.f, 12.f, 4.f))
 				[
-					SNew(SSafeZone).IsTitleSafe(true).PadTop(false)	// the sheet's own background runs to the screen edge
+					SNew(SBox).Padding(TAttribute<FMargin>::CreateLambda([Self]	// the side insets; the sheet already sits above the bottom one
+					{
+						const float K = Self.IsValid() ? 1.f / FMath::Max(Self->DpiScale, 0.01f) : 0.f;
+						return Self.IsValid() ? FMargin(Self->Safe.Left * K, 0.f, Self->Safe.Right * K, 0.f) : FMargin(0.f);
+					}))
 					[
 						// The sheet's height budget: the box is capped to it and clips whatever does not fit, so no tab can
 						// run off the screen and nothing scrolls (the zero-scroll rule). The budget is measured from the
@@ -648,11 +737,12 @@ void ASlapHUD::BuildUi()
 											SNew(SBox).MinDesiredHeight(Touch)
 											[SAssignNew(Hit[HitStart], SButton).ButtonColorAndOpacity(FLinearColor(0.75f, 0.2f, 0.15f)).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START")), 18, White)]]
 										]
-										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 0.f, 0.f))
+										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 4.f, 0.f))
 										[
 											SNew(SBox).MinDesiredHeight(Touch)
 											[SAssignNew(Hit[HitReplay], SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).IsEnabled_Lambda([Self] { return Self.IsValid() && Self->Last.Match > 0; }).OnClicked_Lambda(ReplayClick)[Label(TAttribute<FText>::CreateLambda(ReplayLabel), 16, White)]]
 										]
+										+ SHorizontalBox::Slot().FillWidth(0.6f)[Badge(TEXT("x1/4"), &ASlapHUD::bQuarter)]	// the replay's pace, beside it
 									]
 									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 									[
@@ -679,7 +769,7 @@ void ASlapHUD::BuildUi()
 								[
 									SNew(SVerticalBox)
 									+ SVerticalBox::Slot().AutoHeight()
-									[Label(FText::FromString(TEXT("Two AI athletes trade open-palm slaps across a podium. MuJoCo runs the physics; Unreal only draws it.")), 13, Dim)]
+									[Label(FText::FromString(TEXT("Two AI athletes trade slaps across a podium. MuJoCo runs the physics; Unreal only draws it.\nOn the arena: swipe sideways for views (none, TEL, TEL+SCI, XRAY), double tap to replay.")), 13, Dim)]
 									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
 									[
 										SNew(SUniformGridPanel).SlotPadding(FMargin(6.f, 1.f))
@@ -698,11 +788,11 @@ void ASlapHUD::BuildUi()
 										+ SUniformGridPanel::Slot(0, 6)[Label(FText::FromString(TEXT("DBG")), 13, Hi)]
 										+ SUniformGridPanel::Slot(1, 6)[Label(FText::FromString(TEXT("sim clock, timestep, pace, camera, worst frame")), 13, Dim)]
 										+ SUniformGridPanel::Slot(0, 7)[Label(FText::FromString(TEXT("REPLAY")), 13, Hi)]
-										+ SUniformGridPanel::Slot(1, 7)[Label(FText::FromString(TEXT("the last 2.5 s at half speed; tap again to return")), 13, Dim)]
+										+ SUniformGridPanel::Slot(1, 7)[Label(FText::FromString(TEXT("the last 2.5 s at 1/2 speed (x1/4: quarter); tap again to return")), 13, Dim)]
 										+ SUniformGridPanel::Slot(0, 8)[Label(FText::FromString(TEXT("RINGS")), 13, Hi)]
 										+ SUniformGridPanel::Slot(1, 8)[Label(FText::FromString(TEXT("green under 5 cm off the soles, red over 10")), 13, Dim)]
-										+ SUniformGridPanel::Slot(0, 9)[Label(FText::FromString(TEXT("PALM")), 13, Hi)]
-										+ SUniformGridPanel::Slot(1, 9)[Label(FText::FromString(TEXT("the line on the gauge is a clean 8 m/s")), 13, Dim)]
+										+ SUniformGridPanel::Slot(0, 9)[Label(FText::FromString(TEXT("GAUGE")), 13, Hi)]
+										+ SUniformGridPanel::Slot(1, 9)[Label(FText::FromString(TEXT("right edge, palm speed; the line is a clean 8 m/s")), 13, Dim)]
 										+ SUniformGridPanel::Slot(0, 10)[Label(FText::FromString(TEXT("KO DANGER")), 13, Hi)]
 										+ SUniformGridPanel::Slot(1, 10)[Label(FText::FromString(TEXT("the cross is where to step; red 15 cm out")), 13, Dim)]
 									]
@@ -724,6 +814,7 @@ void ASlapHUD::BuildUi()
 				]
 			]
 		];
+	Targets.Add(GripBox);
 	VC->AddViewportWidgetContent(Ui.ToSharedRef(), 10);
 	if (SheetBody.IsValid()) SheetBody->SetClipping(EWidgetClipping::ClipToBounds);	// a tab too tall for the budget is cut, never spills over the tab row
 }
@@ -749,7 +840,8 @@ void ASlapHUD::InstantReplay()
 	// carries on unseen; the director cuts to the replay shot. Tapped again during a replay: back to live at once
 	const double Now = GetWorld()->GetTimeSeconds();
 	const bool bStop = Now < ReplayEnd;
-	constexpr double Window = 2.5, Rate = 0.5;
+	constexpr double Window = 2.5;
+	const double Rate = bQuarter ? 0.25 : 0.5;
 	for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
 	{
 		if (V.IsValid()) bStop ? V->Replay(0.0, 0.0, 0.0) : V->Replay(Now - Window, Now, Rate);
@@ -757,6 +849,15 @@ void ASlapHUD::InstantReplay()
 	ReplayAt = -1.0;	// a pending KO replay would cut this one short
 	ReplayEnd = bStop ? Now : Now + Window / Rate;
 	UE_LOG(LogTemp, Log, TEXT("SlapHUD: instant replay %s at %.2f s"), bStop ? TEXT("stopped") : TEXT("started"), Now);
+}
+
+void ASlapHUD::CyclePreset(int32 Dir)
+{
+	Preset = (Preset + Dir + 4) % 4;	// a swipe on the arena: none, TEL, TEL+SCI, XRAY (the badges still set any mix)
+	bShowTelemetry = Preset == 1 || Preset == 2;
+	bShowScience = Preset == 2;
+	bShowXRay = Preset == 3;
+	UE_LOG(LogTemp, Log, TEXT("SlapHUD: view preset %d"), Preset);
 }
 
 void ASlapHUD::LoadRoster()
@@ -858,6 +959,18 @@ void ASlapHUD::LayoutAudit()
 		if (OverlapX > 2.f && OverlapY > 2.f) ++Covered;	// a shared edge is a touch, not a cover
 	}
 	Fails += Covered;
+	int32 Unsafe = 0;	// every corner anchor and the grip inside the platform's safe insets (a notch, a nav bar; -SlapSafeZone fakes them)
+	for (const TSharedPtr<SWidget>& W : { Anchor[0], Anchor[1], Anchor[2], Anchor[3], Anchor[4], Hit[HitGrip] })
+	{
+		FVector2D APos, ASize;
+		Rect(W, APos, ASize);
+		if (ASize.X <= 0.f || ASize.Y <= 0.f) continue;
+		if (APos.Y < LPos.Y + Safe.Top - Eps || APos.Y + ASize.Y > LPos.Y + LSize.Y - Safe.Bottom + Eps || APos.X < LPos.X + Safe.Left - Eps || APos.X + ASize.X > LPos.X + LSize.X - Safe.Right + Eps)
+		{
+			if (!Unsafe++) UE_LOG(LogTemp, Log, TEXT("SlapHUD layout: outside the safe zone: %s + %s in layer %s + %s"), *APos.ToString(), *ASize.ToString(), *LPos.ToString(), *LSize.ToString());
+		}
+	}
+	Fails += Unsafe;
 	float MinTouch = 1e9f;
 	for (const TSharedPtr<SWidget>& W : Targets)	// the 44-unit targets
 	{
@@ -873,8 +986,8 @@ void ASlapHUD::LayoutAudit()
 	}
 	if (MinTouch < 43.5f) ++Fails;
 	LayoutFails += Fails;
-	UE_LOG(LogTemp, Log, TEXT("SlapHUD layout tab %d: sheet %.0fx%.0f dp at (%.0f,%.0f), layer %.0fx%.0f dp, budget %.0f, box %.0f, content %.0f of %.0f wanted, tabs %.0f, anchors covered %d, smallest target %.0f dp, dpi %.3f, fails %d"),
-		Tab, Local(SheetRoot).X, Local(SheetRoot).Y, SPos.X, SPos.Y, Local(Ui).X, Local(Ui).Y, SheetBudget, BoxLocal.Y, ContentLocal.Y, Wanted, TabsLocal.Y, Covered, MinTouch, DpiScale, Fails);
+	UE_LOG(LogTemp, Log, TEXT("SlapHUD layout tab %d: sheet %.0fx%.0f dp at (%.0f,%.0f), layer %.0fx%.0f dp, budget %.0f, box %.0f, content %.0f of %.0f wanted, tabs %.0f, anchors covered %d, outside the safe zone %d (insets T%.0f B%.0f px, fake %.3f/%.3f, custom %d %.3f/%.3f), smallest target %.0f dp, dpi %.3f, fails %d"),
+		Tab, Local(SheetRoot).X, Local(SheetRoot).Y, SPos.X, SPos.Y, Local(Ui).X, Local(Ui).Y, SheetBudget, BoxLocal.Y, ContentLocal.Y, Wanted, TabsLocal.Y, Covered, Unsafe, Safe.Top, Safe.Bottom, FakeSafe.Top, FakeSafe.Bottom, FSlateApplication::Get().IsCustomSafeZoneSet(), FSlateApplication::Get().GetCustomSafeZone().Top, FSlateApplication::Get().GetCustomSafeZone().Bottom, MinTouch, DpiScale, Fails);
 	LayoutWait = 3;	// a few frames before the next tab
 	if (++LayoutStep >= 3)
 	{
@@ -887,14 +1000,14 @@ void ASlapHUD::LayoutAudit()
 void ASlapHUD::UiTest(const FSlapHud& H)
 {
 	// -SlapUiTest: synthetic Slate clicks at the real widgets (hit-testing included, the OS cursor untouched), one every
-	// 1.5 s from 3 s: menu, TEL badge, scrim, menu, ROSTER, MATCH, replay (closes the sheet, replay runs), menu, red's next
-	// brain, START (a new match with that brain), menu, X; each followed by its expected state. Every click target must
-	// be bound (a null one fails at once). Then waits for a match to end and the next to start
-	// (Gameplay -> Win/Loss -> Loop Reset). Logs PASS or FAIL.
+	// 1.5 s from 3 s: grip, TEL badge, scrim, menu, ROSTER, MATCH, replay (closes the sheet, replay runs), menu, red's next
+	// brain, START (a new match with that brain), menu, X, a double tap on the arena (replay runs); each followed by its
+	// expected state. Every click target must be bound (a null one fails at once). Then waits for a match to end, taps
+	// REMATCH on the result card and waits for the next to start (Gameplay -> Win/Loss -> Loop Reset). Logs PASS or FAIL.
 	struct FStep { int32 Target; bool bMenuAfter; int32 TabAfter; bool bTelemetryAfter; };
-	static const FStep Steps[] = { { HitMenu, true, 0, false }, { HitTelemetry, true, 0, true }, { HitScrim, false, 0, true },
+	static const FStep Steps[] = { { HitGrip, true, 0, false }, { HitTelemetry, true, 0, true }, { HitScrim, false, 0, true },
 		{ HitMenu, true, 0, true }, { HitTabRoster, true, 1, true }, { HitTabMatch, true, 0, true }, { HitReplay, false, 0, true },
-		{ HitMenu, true, 0, true }, { HitRedNext, true, 0, true }, { HitStart, false, 0, true }, { HitMenu, true, 0, true }, { HitClose, false, 0, true } };
+		{ HitMenu, true, 0, true }, { HitRedNext, true, 0, true }, { HitStart, false, 0, true }, { HitMenu, true, 0, true }, { HitClose, false, 0, true }, { HitPad, false, 0, true } };
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (UiStep == 0 && !bUiChecked)	// null bindings: every target the test (and a player) needs exists
 	{
@@ -920,7 +1033,7 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 				bOk &= H.MatchSeq > UiSeq && H.Brain[0] == UiBrain;
 				Extra = FString::Printf(TEXT(", match seq %d -> %d, red brain %s (picked %s)"), UiSeq, H.MatchSeq, *H.Brain[0], *UiBrain);
 			}
-			if (Was.Target == HitReplay)	// the replay is running over the live match
+			if (Was.Target == HitReplay || Was.Target == HitPad)	// the replay is running over the live match
 			{
 				bOk &= Now < ReplayEnd;
 				Extra = FString::Printf(TEXT(", replay until %.2f s"), ReplayEnd);
@@ -929,16 +1042,11 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 			UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test click %d (target %d): menu %d tab %d telemetry %d%s - %s"), UiStep, Was.Target, bMenu, Tab, bShowTelemetry, *Extra, bOk ? TEXT("ok") : TEXT("WRONG"));
 		}
 	}
-	if (UiStep < UE_ARRAY_COUNT(Steps) && Now >= 3.0 + 1.5 * UiStep)
+	auto Click = [&](int32 Target)
 	{
-		const TSharedPtr<SWidget> W = Hit[Steps[UiStep].Target];
-		if (Steps[UiStep].Target == HitStart)
-		{
-			UiSeq = H.MatchSeq;
-			UiBrain = Pick[0] != INDEX_NONE ? Brains[Pick[0]].AssetName.ToString() : H.Brain[0];
-		}
+		const TSharedPtr<SWidget> W = Hit[Target];
 		FSlateApplication& App = FSlateApplication::Get();
-		const FVector2D P = W.IsValid() ? FVector2D(W->GetTickSpaceGeometry().GetAbsolutePositionAtCoordinates(FVector2f(0.5f, Steps[UiStep].Target == HitScrim ? 0.2f : 0.5f))) : FVector2D::ZeroVector;
+		const FVector2D P = W.IsValid() ? FVector2D(W->GetTickSpaceGeometry().GetAbsolutePositionAtCoordinates(FVector2f(0.5f, Target == HitScrim ? 0.2f : Target == HitPad ? 0.4f : 0.5f))) : FVector2D::ZeroVector;
 		// hit-tested in the game window itself (the Process*Event path asks the OS which window is under the real cursor)
 		const int32 User = App.GetUserIndexForMouse();
 		const TSharedPtr<SWindow> Win = GetWorld()->GetGameViewport() ? GetWorld()->GetGameViewport()->GetWindow() : nullptr;
@@ -949,21 +1057,41 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 		App.RoutePointerMoveEvent(Path, Ev({}, EKeys::Invalid), false);	// hover: SButton clicks only when hovered
 		App.RoutePointerDownEvent(Path, Ev({ EKeys::LeftMouseButton }, EKeys::LeftMouseButton));
 		App.RoutePointerUpEvent(Path, Ev({}, EKeys::LeftMouseButton));
+		if (Target == HitPad)	// the second tap of a double tap
+		{
+			App.RoutePointerDoubleClickEvent(Path, Ev({ EKeys::LeftMouseButton }, EKeys::LeftMouseButton));
+			App.RoutePointerUpEvent(Path, Ev({}, EKeys::LeftMouseButton));
+		}
+	};
+	if (UiStep < UE_ARRAY_COUNT(Steps) && Now >= 3.0 + 1.5 * UiStep)
+	{
+		if (Steps[UiStep].Target == HitStart)
+		{
+			UiSeq = H.MatchSeq;
+			UiBrain = Pick[0] != INDEX_NONE ? Brains[Pick[0]].AssetName.ToString() : H.Brain[0];
+		}
+		Click(Steps[UiStep].Target);
 		++UiStep;
 		UiAt = Now;
 		bUiChecked = false;
 	}
-	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && !bUiDone && UiMatch0 > 0 && H.Wins[0] + H.Wins[1] + H.Draws >= UiMatch0 && H.Match > 0 && H.Result.IsEmpty())	// a match ended, the next began
+	const bool bEnded = UiMatch0 > 0 && H.Wins[0] + H.Wins[1] + H.Draws >= UiMatch0;
+	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && bEnded && !H.Result.IsEmpty() && !bRematched && Now >= UiAt + 0.5)	// the result card is up: REMATCH
+	{
+		Click(HitRematch);
+		UiAt = Now;
+	}
+	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && !bUiDone && bEnded && bRematched && H.Match > 0 && H.Result.IsEmpty())	// a match ended, REMATCH, the next began
 	{
 		bUiDone = true;
-		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test %s: %d of %d clicks wrong; a match ended (series %d-%d, %d drawn) and match %d began"), UiFails ? TEXT("FAIL") : TEXT("PASS"),
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test %s: %d of %d clicks wrong; a match ended (series %d-%d, %d drawn), REMATCH, and match %d began"), UiFails ? TEXT("FAIL") : TEXT("PASS"),
 			UiFails, (int32)UE_ARRAY_COUNT(Steps), H.Wins[0], H.Wins[1], H.Draws, H.Match);
 		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);	// short: training shares this machine
 	}
 	else if (!bUiDone && Now > 120.0)
 	{
 		bUiDone = true;
-		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test FAIL: %d of %d clicks wrong, no match ended within 120 s"), UiFails, (int32)UE_ARRAY_COUNT(Steps));
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test FAIL: %d of %d clicks wrong, within 120 s: match ended %d, REMATCH tapped %d"), UiFails, (int32)UE_ARRAY_COUNT(Steps), bEnded, bRematched);
 		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
 	}
 }
@@ -1296,18 +1424,20 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 		Lines.Add(L);
 	};
 	const FColor Tc = TeamColor[Team(H.Striker)];
-	Add(Big, H.bWalkIn ? TEXT("RING WALK-IN") : *FString::Printf(TEXT("ROUND %d / %d"), H.Round, Rounds), FColor::White, 1.2f);
-	Add(Small, H.bWalkIn
-		? *FString::Printf(TEXT("%s  (%d%%)"), H.WalkNote.IsEmpty() ? TEXT("Approaching podium") : TEXT("Walking in on their own legs"), FMath::RoundToInt(100.0 * H.WalkInProgress))
-		: *FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Tc, 1.3f);
-	if (H.bStruck || H.Speed > 0)
+	// three short lines: who strikes and the clock; the touch (speed, part, head snap, what it was); judges and series
+	if (H.bWalkIn)
 	{
-		Add(Small, FString::Printf(TEXT("Hand speed %.1f m/s (%s)   head snap %.1f m/s"), H.Speed, *H.Part, H.HeadPeak), Gold, 1.2f);
+		Add(Big, FString::Printf(TEXT("WALK-IN  %d%%"), FMath::RoundToInt(100.0 * H.WalkInProgress)), FColor::White, 1.2f);
+		Add(Small, H.WalkNote.IsEmpty() ? TEXT("Approaching the podium") : TEXT("Walking in on their own legs"), Grey, 1.1f);
 	}
-	if (!H.Event.IsEmpty()) Add(Small, H.Event, FColor(230, 230, 230), 1.2f);
-	Add(Small, FString::Printf(TEXT("Judges (R:B)  %d:%d  %d:%d  %d:%d"),
-		H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1]), Grey, 1.1f);
-	Add(Small, FString::Printf(TEXT("Series  RED %d - %d BLUE%s"), H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT("  (%d drawn)"), H.Draws) : TEXT("")), FColor(120, 230, 140), 1.1f);
+	else
+	{
+		Add(Big, FString::Printf(TEXT("R%d/%d   %s   %s %.1fs"), H.Round, Rounds, *H.Striker.ToUpper(), H.bStruck ? TEXT("REC") : TEXT("CLOCK"), FMath::Max(0.0, H.Clock)), Tc, 1.2f);
+		const FString Touch = H.bStruck || H.Speed > 0 ? FString::Printf(TEXT("%.1f m/s (%s)   snap %.1f   "), H.Speed, *H.Part, H.HeadPeak) : FString();
+		if (!(Touch + H.Event).IsEmpty()) Add(Small, Touch + H.Event, Gold, 1.15f);
+	}
+	Add(Small, FString::Printf(TEXT("J %d:%d  %d:%d  %d:%d     SERIES %d-%d%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
+		H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT("")), Grey, 1.1f);
 	float Total = 0.f, W = 0.f;
 	for (const FLine& L : Lines) { Total += L.H; W = FMath::Max(W, L.W); }
 	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Top, FMath::Max(120.f * S, W + 16.f * S), Total + 6.f * S);	// legible over the truss
@@ -1317,6 +1447,7 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 		Text(L.Str, X, Y, L.Color, S * L.Scale, false, L.Font);
 		Y += L.H;
 	}
+	PanelBottom = Top + Total + 6.f * S;
 }
 
 void ASlapHUD::DrawTelemetry(const FSlapHud& H)
@@ -1342,7 +1473,7 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 		Z[a] = (H.Value[a] - RoleMean[R]) / FMath::Sqrt(RoleVar[R]);
 	}
 	Momentum = FMath::FInterpTo(Momentum, 1.f / (1.f + FMath::Exp(Z[1] - Z[0])), GetWorld()->GetDeltaSeconds(), 2.f);
-	const float MX = 8.f * S, MY = Top + 256.f * S, MW = 524.f * S, MH = 16.f * S;	// under the panel
+	const float MX = 8.f * S, MY = PanelBottom + 6.f * S, MW = 524.f * S, MH = 16.f * S;	// right under the panel: no dead band over the crowd
 	DrawRect(FLinearColor(TeamColor[1]), MX, MY, MW, MH);
 	DrawRect(FLinearColor(TeamColor[0]), MX, MY, MW * Momentum, MH);
 	DrawLine(MX + MW * 0.5f, MY - 2.f * S, MX + MW * 0.5f, MY + MH + 2.f * S, FLinearColor::White, 2.f * S);
@@ -1369,19 +1500,18 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	// palm-speed gauge, right edge: live before the touch, the touch's speed after it; the line is the clean 8 m/s
 	const float GX = 504.f * S, GY = Top + 372.f * S, GH = 230.f * S, GW = 16.f * S, Max = 12.f;
 	const float V = H.bStruck ? H.Speed : H.HandSpeed;
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), GX - 4.f * S, GY - 26.f * S, GW + 8.f * S, GH + 52.f * S);
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), GX - 4.f * S, GY - 6.f * S, GW + 8.f * S, GH + 32.f * S);
 	DrawRect(FLinearColor(TeamColor[Sk]), GX, GY + GH * (1.f - FMath::Clamp(V / Max, 0.f, 1.f)), GW, GH * FMath::Clamp(V / Max, 0.f, 1.f));
 	const float Y8 = GY + GH * (1.f - CleanSpeed / Max);
 	DrawLine(GX - 4.f * S, Y8, GX + GW + 4.f * S, Y8, FLinearColor::White, 2.f * S);
-	Text(TEXT("PALM"), GX + GW * 0.5f, GY - 22.f * S, Grey, S, true);
 	Text(FString::Printf(TEXT("%.1f"), V), GX + GW * 0.5f, GY + GH + 6.f * S, H.bStruck && H.Speed >= CleanSpeed ? Gold : FColor::White, S, true);
 
 	// the defender's head acceleration, last 2 s
-	const float BX = 16.f * S, BY = Bot - 84.f * S, BW = 230.f * S, BH = 70.f * S;
+	const float BX = 16.f * S, BY = Bot - 34.f * S, BW = 230.f * S, BH = 26.f * S;	// a strip: the feet (where knockdowns show) stay in view
 	const float Peak = FMath::Max(HeadG);	// 0 when empty
 	const float Scale = FMath::Max(20.f, Peak);
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), BX - 6.f * S, BY - 22.f * S, BW + 12.f * S, BH + 28.f * S);
-	Text(FString::Printf(TEXT("HEAD G  %s  peak %.0f g"), *H.Defender.ToUpper(), Peak), BX, BY - 20.f * S, Grey, S);
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), BX - 6.f * S, BY - 18.f * S, BW + 12.f * S, BH + 22.f * S);
+	Text(FString::Printf(TEXT("HEAD G  %s  peak %.0f g"), *H.Defender.ToUpper(), Peak), BX, BY - 17.f * S, Grey, 0.85f * S);
 	for (int32 i = 1; i < HeadG.Num(); ++i)
 	{
 		const float X0 = BX + BW * (i - 1) / 119.f, X1 = BX + BW * i / 119.f;
@@ -1389,19 +1519,20 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	}
 
 	// fatigue: stamina (joint speed) and neck strength, both from 1 fresh down to their floors
-	const float FX = 290.f * S, FY = Bot - 84.f * S;
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), FX - 6.f * S, FY - 22.f * S, 240.f * S, 98.f * S);
-	Text(TEXT("CONDITION     STAMINA     NECK"), FX, FY - 20.f * S, Grey, S);
+	const float FX = 290.f * S, FY = Bot - 34.f * S;
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), FX - 6.f * S, FY - 18.f * S, 240.f * S, 48.f * S);
+	Text(TEXT("STAMINA"), FX + 50.f * S, FY - 17.f * S, Grey, 0.85f * S);
+	Text(TEXT("NECK"), FX + 140.f * S, FY - 17.f * S, Grey, 0.85f * S);
 	for (int32 a = 0; a < 2; ++a)
 	{
-		const float Y = FY + 6.f * S + a * 34.f * S;
-		Text(a ? TEXT("BLUE") : TEXT("RED"), FX, Y, TeamColor[a], 1.1f * S);
+		const float Y = FY + a * 14.f * S;
+		Text(a ? TEXT("BLUE") : TEXT("RED"), FX, Y - 2.f * S, TeamColor[a], 0.85f * S);
 		const double Bars[2] = { (H.Stamina[a] - MinStamina) / (1.0 - MinStamina), (H.Neck[a] - MinNeck) / (1.0 - MinNeck) };
 		for (int32 b = 0; b < 2; ++b)
 		{
-			const float X = FX + (64.f + 82.f * b) * S;
-			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.15f), X, Y + 2.f * S, 70.f * S, 12.f * S);
-			DrawRect(FLinearColor(TeamColor[a]), X, Y + 2.f * S, 70.f * S * FMath::Clamp((float)Bars[b], 0.f, 1.f), 12.f * S);
+			const float X = FX + (50.f + 90.f * b) * S;
+			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.15f), X, Y, 80.f * S, 10.f * S);
+			DrawRect(FLinearColor(TeamColor[a]), X, Y, 80.f * S * FMath::Clamp((float)Bars[b], 0.f, 1.f), 10.f * S);
 		}
 	}
 }
@@ -1410,7 +1541,6 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 {
 	const double Now = GetWorld()->GetTimeSeconds();
 	const float Cx = Canvas->ClipX * 0.5f;
-	UFont* Big = GEngine->GetLargeFont();
 
 	// impact: a white flash and a shockwave ring from the contact point
 	const double Ts = Now - StrikeAt;
@@ -1432,7 +1562,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	// tale of the tape, at every match start: under the panel and the momentum bar, clear of the athletes' heads
 	if (Now - TapeAt < 4.0 && H.Result.IsEmpty())	// a match over in under 4 s: the result wins
 	{
-		const float Y = Top + 278.f * S;
+		const float Y = PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S;	// under the panel (and the momentum bar)
 		const bool bScout = Scout.Contains(H.Brain[0]) || Scout.Contains(H.Brain[1]);
 		const float Row = bScout ? 48.f : 34.f;
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 8.f * S, Y, 524.f * S, (24.f + 2.f * Row) * S);
@@ -1452,7 +1582,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	{
 		const float In = FMath::InterpEaseOut(0.f, 1.f, FMath::Clamp((float)Tc / 0.4f, 0.f, 1.f), 3.f);
 		const float Out = FMath::InterpEaseIn(0.f, 1.f, FMath::Clamp(((float)Tc - 4.5f) / 0.5f, 0.f, 1.f), 3.f);
-		const float W = 200.f * S, X = Canvas->ClipX - W * (In - Out) - 8.f * S, Y = Top;	// top right, beside the panel, under the menu button
+		const float W = 200.f * S, X = Canvas->ClipX - W * (In - Out) - 8.f * S, Y = PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S;	// right, under the panel and the momentum bar
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.75f), X, Y, W, 120.f * S);
 		Text(FString::Printf(TEXT("ROUND %d CARDS"), H.ScoredRound), X + W * 0.5f, Y + 8.f * S, FColor::White, 1.1f * S, true);
 		for (int32 j = 0; j < 3; ++j)
@@ -1464,14 +1594,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		}
 	}
 
-	// the result, while both athletes hold where it ended
-	if (!H.Result.IsEmpty())
-	{
-		const bool KO = H.Result.Contains(TEXT("KO"));
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 0, Top + 278.f * S, Canvas->ClipX, 70.f * S);	// below the panel and the momentum bar
-		Text(KO ? TEXT("KNOCKOUT") : TEXT("DECISION"), Cx, Top + 284.f * S, KO ? FColor(250, 80, 60) : Gold, 1.6f * S, true, Big);
-		Text(H.Result, Cx, Top + 320.f * S, FColor::White, 1.2f * S, true);
-	}
+	// the result: the Slate result card (BuildUi), with REMATCH
 
 	// live slow motion: say so, so nobody thinks the stream stalled
 	if (H.SlowMo < 1.f) Text(TEXT("SLOW MOTION"), Cx, Top + 4.f * S, Gold, 1.1f * S, true);
@@ -1491,7 +1614,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && Commentary.Num())
 	{
 		const TArray<FString>& Lines = Commentary;
-		const float Y = Bot - 168.f * S - Lines.Num() * 20.f * S;	// above the head-g and condition panels
+		const float Y = Bot - 108.f * S - Lines.Num() * 20.f * S;	// above the X-ray lines and the telemetry strips
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), 16.f * S, Y - 6.f * S, 508.f * S, (Lines.Num() * 20.f + 10.f) * S);
 		for (int32 i = 0; i < Lines.Num(); ++i) Text(Lines[i], Cx, Y + i * 20.f * S, FColor::White, 1.1f * S, true);
 	}
@@ -1619,7 +1742,7 @@ void ASlapHUD::DrawXRay(const FSlapHud& H)
 		Algo::Sort(Order, [&](int32 L, int32 R) { return H.Focus[a][L] > H.Focus[a][R]; });
 		FString Row = FString::Printf(TEXT("%s REACTS TO "), a ? TEXT("BLUE") : TEXT("RED"));
 		for (int32 k = 0; k < 3 && H.Focus[a][Order[k]] > 0.f; ++k) Row += FString::Printf(TEXT(" %s %d%%"), GroupName[Order[k]], FMath::RoundToInt(100.f * H.Focus[a][Order[k]]));
-		const float Ry = Bot - (bShowTelemetry ? 150.f : 60.f) * S + 22.f * S * a;
+		const float Ry = Bot - (bShowTelemetry ? 100.f : 60.f) * S + 22.f * S * a;	// above the telemetry strips
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Ry - 2.f * S, 380.f * S, 20.f * S);
 		Text(Row, 16.f * S, Ry, TeamColor[a], S);
 	}

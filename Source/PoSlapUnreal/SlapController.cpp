@@ -1086,7 +1086,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		const FVector Dir = MjUtils::MjToUEPosition(Travel).GetSafeNormal();
 		SetHud([&](FSlapHud& H)
 		{
-			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.bPalm ? TEXT("Clean palm") : TEXT("Hit");
+			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.Speed >= 8.0 ? (Turn.bPalm ? TEXT("Clean palm") : TEXT("Clean hit")) : (Turn.bPalm ? TEXT("Palm") : TEXT("Hit"));	// clean = the L2 8 m/s line; every hit scores
 			++H.StrikeSeq; H.StrikePos = Pos; H.StrikeDir = Dir; H.StrikeDefender = 1 - Turn.Striker;
 		});
 		break;

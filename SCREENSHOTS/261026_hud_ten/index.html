@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD Ten Options</title>
+<style>
+  :root { --bg: #f6f6f8; --fg: #1b1b20; --dim: #5d606b; --card: #fff; --line: #dcdde3; --ok: #1f8f45; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #141418; --fg: #ececf0; --dim: #a3a6b1; --card: #1d1d23; --line: #2e2f37; --ok: #5fd68a; } }
+  :root[data-theme="dark"] { --bg: #141418; --fg: #ececf0; --dim: #a3a6b1; --card: #1d1d23; --line: #2e2f37; --ok: #5fd68a; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 16px; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 17px; margin: 28px 0 8px; }
+  p, li { color: var(--dim); } code { font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; font-size: 14px; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  figure { margin: 0; background: var(--card); border: 1px solid var(--line); padding: 8px; }
+  figure img { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13px; color: var(--dim); margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+<h1>HUD: the ten options (261026)</h1>
+<p>Mobile portrait, zero scroll. These change only what is drawn: the match, the brains and the physics are untouched. One exception: the hit label (#3) also changes in the browser viewer (<code>Web/app.js</code>).</p>
+
+<h2>What changed</h2>
+<table>
+<tr><th>#</th><th>Option</th><th>Done as</th></tr>
+<tr><td>1</td><td>Momentum bar under the panel</td><td>Hangs off the panel's measured bottom. The tale of the tape, the replay line and the judges' slide-in card follow it, so the empty band over the crowd is gone.</td></tr>
+<tr><td>2</td><td>Bottom-centre menu grip</td><td>A 120×44 grip between the BL and BR corners opens or closes the sheet. TR stays the spec's menu button.</td></tr>
+<tr><td>3</td><td>Hit label</td><td>"Clean palm" / "Clean hit" at or above 8 m/s (the L2 line), otherwise "Palm" / "Hit". Every hit still scores. Same rule in Unreal and on the web.</td></tr>
+<tr><td>4</td><td>Win/loss card</td><td>A Slate card while the result holds: KNOCKOUT or DECISION, the result, judges, series, plus REMATCH and MENU buttons. It replaces the canvas banner.</td></tr>
+<tr><td>5</td><td>Live telemetry + replay in one place</td><td>An <b>x1/4</b> badge beside REPLAY on the MATCH tab sets the replay pace (1/2 or 1/4). The view badges already sat on that tab.</td></tr>
+<tr><td>6</td><td>Slim bottom panels</td><td>HEAD G and STAMINA/NECK are now 48 px strips (were about 100 px), so the feet stay visible.</td></tr>
+<tr><td>7</td><td>Gauge without the word</td><td>The "PALM" label is gone: just the number and the 8 m/s tick. ABOUT calls it GAUGE.</td></tr>
+<tr><td>8</td><td>Shorter scoreboard</td><td>3 lines: <code>R1/3 BLUE CLOCK 28.4s</code>, the touch, and <code>J 0:0 0:0 0:0  SERIES 0-0</code>. Was 6 lines.</td></tr>
+<tr><td>9</td><td>Notch / nav-bar test</td><td><code>-SlapSafeZone=&lt;top&gt;+&lt;bottom&gt;</code> fakes the insets. <code>-SlapLayoutTest</code> now also fails any corner anchor or the grip that sits outside them. The Slate layer pads from the same insets the canvas reads each frame, because <code>SSafeZone</code> kept a stale margin in the editor binary.</td></tr>
+<tr><td>10</td><td>Gestures</td><td>On the arena, a sideways swipe steps through the presets (none → TEL → TEL+SCI → XRAY) and a double tap replays.</td></tr>
+</table>
+
+<h2>Checks</h2>
+<table>
+<tr><th>Check</th><th>Result</th></tr>
+<tr><td><code>-SlapLayoutTest</code> 540×960, 412×915</td><td class="ok">0 fails</td></tr>
+<tr><td><code>-SlapLayoutTest -SlapSafeZone</code> 360×800 (insets T40 B28 px), 540×1350 (T54 B40 px)</td><td class="ok">0 fails, 0 anchors outside the safe zone</td></tr>
+<tr><td><code>-SlapUiTest</code>: grip, badges, tabs, replay, brain pick, START, X, double tap, then REMATCH on the result card into the next match</td><td class="ok">PASS, 0 of 13 clicks wrong</td></tr>
+</table>
+<p>Not covered by an automated check: the swipe (the UI test does a double tap, not a swipe). With the fake insets on desktop the engine also shrinks the canvas, so the canvas panels scale down slightly (see the notch shot).</p>
+
+<h2>Before / after</h2>
+<div class="grid">
+<figure><img src="before_hud_annotated.png" alt="HUD before"><figcaption>Before: 6-line panel, dead band, tall bottom panels.</figcaption></figure>
+<figure><img src="after_hud_annotated.png" alt="HUD after"><figcaption>After: 3 lines, bar under the panel, strips, grip.</figcaption></figure>
+<figure><img src="after_result_annotated.png" alt="Result card"><figcaption>Match over: result card with REMATCH; judges' card under the bar.</figcaption></figure>
+<figure><img src="before_menu0_annotated.png" alt="MATCH tab before"><figcaption>MATCH tab before.</figcaption></figure>
+<figure><img src="after_menu0_annotated.png" alt="MATCH tab after"><figcaption>MATCH tab after: x1/4 pace badge, grip.</figcaption></figure>
+<figure><img src="after_menu2_annotated.png" alt="ABOUT tab after"><figcaption>ABOUT: gesture line, GAUGE row.</figcaption></figure>
+<figure><img src="after_notch_annotated.png" alt="Fake notch"><figcaption><code>-SlapSafeZone=0.05+0.035</code>: corners and grip inside the insets.</figcaption></figure>
+</div>
+</main>
+</body>
+</html>

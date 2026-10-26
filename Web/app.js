@@ -35,7 +35,7 @@ function onEvent(e) {
       $("strike").textContent = ""; $("call").textContent = ""; break;
     case "strike":
       $("strike").textContent = `${e.speed.toFixed(1)} m/s · ${e.part.replace("_r", "")}`;
-      banner(e.palm ? "Clean palm" : "Hit", `${e.speed.toFixed(1)} m/s${e.palm ? "" : " · not the palm"}`, 1.4, e.palm ? "var(--gold)" : "");
+      banner(e.speed >= 8 ? (e.palm ? "Clean palm" : "Clean hit") : (e.palm ? "Palm" : "Hit"), `${e.speed.toFixed(1)} m/s${e.palm ? "" : " · not the palm"}`, 1.4, e.palm ? "var(--gold)" : "");
       if (e.pos) flash(e.pos); break;   // (Unreal's strike line has no contact point)
     case "faint": banner("Out cold!", `${e.athlete} passes out`, 2, "var(--gold)"); $("call").textContent = `${e.athlete} passes out`; break;
     case "knockdown": $("call").textContent = `${e.athlete} down (${e.part})`; break;
