@@ -1,5 +1,22 @@
 [
- {"name": "Grandpa Red", "card": "grandpa", "brain": "models/brains/grandpa_final_vs_kim.onnx"},
- {"name": "Grandpa Blue", "card": "grandpa", "brain": "models/brains/grandpa_final.onnx"},
- {"name": "Kim", "card": "kim", "brain": "models/brains/kim_final_vs_grandpa.onnx"}
- ]
+ {
+  "name": "Grandpa Red",
+  "card": "grandpa",
+  "brain": "models/brains/grandpa_final_vs_kim.onnx"
+ },
+ {
+  "name": "Grandpa Blue",
+  "card": "grandpa",
+  "brain": "models/brains/grandpa_final.onnx"
+ },
+ {
+  "name": "Kim",
+  "card": "kim",
+  "brain": "models/brains/kim_final_vs_grandpa.onnx"
+ },
+ {
+  "name": "Grandpa Challenger",
+  "card": "grandpa",
+  "brain": "models/brains/grandpa_challenger_vs_kim.onnx"
+ }
+]

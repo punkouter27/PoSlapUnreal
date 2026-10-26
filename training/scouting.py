@@ -2,7 +2,7 @@
 
     .venv/Scripts/python.exe scouting.py            -> models/league.json (Unreal's tale of the tape, the web page's tape)
 
-A match counts when its match_start names both brains (match.py and USlapController log them from 2026-10-26); older
+A match counts once (exact replays, e.g. a looping Unreal test run, are skipped) when its match_start names both brains (match.py and USlapController log them from 2026-10-26); older
 tournament matches are credited through Logs/Tournament/*/results.jsonl and roster.json. Elo in log order, K 24 from
 1500; a brain against itself moves nobody's rating. Per brain, as striker: KO rate per landed strike, clean-palm rate,
 mean palm speed at the touch, self-falls per turn struck, mean HIC (Unreal's "impact" lines); as defender: strikes
@@ -35,7 +35,7 @@ def main():
     elo = defaultdict(lambda: START)
     st = defaultdict(lambda: defaultdict(float))
     logs = sorted((ROOT / "Logs" / "Gameplay").glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime)
-    counted = 0
+    counted, seen = 0, set()
     for log in logs:
         try:
             ev = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -46,6 +46,10 @@ def main():
         brains = (start or {}).get("brains") or known.get(log.name)
         if not (start and result and brains) or result["how"] == "blow-up":
             continue
+        replay = json.dumps([brains] + [e for e in ev if e["type"] not in ("frame", "match_start")], sort_keys=True)
+        if replay in seen:   # the sim is deterministic: a test run that loops replays one match; count it once
+            continue
+        seen.add(replay)
         counted += 1
         for e in ev:
             if e["type"] == "turn_end":
