@@ -22,6 +22,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Algo/Accumulate.h"
 #include "NNEModelData.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -52,7 +53,10 @@
 namespace
 {
 	constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
-	constexpr double KOShot = 4.0;		// s of crane after a KO (USlapController::PostMatchHold)
+	FString CommentaryFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt"); }	// Scripts/commentator.py writes it
+	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r");
+	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired");
+	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
 	const FColor TeamColor[2] = { FColor(235, 70, 60), FColor(70, 130, 240) };
 	const FColor Gold(255, 220, 120), Grey(200, 200, 200);
 	constexpr float TopBar = 56.f, BottomBar = 40.f;	// Slate units: the corner anchors' rows (BuildUi)
@@ -130,7 +134,7 @@ void ASlapHUD::BeginPlay()
 			Truss[k] = Lit;
 		}
 	}
-	CommentaryStamp = IFileManager::Get().GetTimeStamp(*(FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt")));	// only lines from now on
+	CommentaryStamp = IFileManager::Get().GetTimeStamp(*CommentaryFile());	// only lines from now on
 	UE_LOG(LogTemp, Log, TEXT("SlapHUD: spray %s, sounds slap %d crowd %d/%d bell %d, lights key %d rims %d/%d truss %d"), Spray ? TEXT("yes") : TEXT("MISSING"),
 		SlapSound != nullptr, CrowdReact != nullptr, CrowdLoop != nullptr, Bell != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num());
 }
@@ -140,18 +144,21 @@ void ASlapHUD::DrawHUD()
 	Super::DrawHUD();
 
 	APlayerController* PC = GetOwningPlayerController();	// view through the level's (portrait) camera
-	TActorIterator<ACameraActor> Camera(GetWorld());
-	if (PC && Camera && PC->GetViewTarget() != *Camera)
+	if (!Camera.IsValid())
 	{
-		PC->SetViewTarget(*Camera);
+		TActorIterator<ACameraActor> It(GetWorld());
+		if (It) Camera = *It;
+	}
+	if (PC && Camera.IsValid() && PC->GetViewTarget() != Camera.Get())
+	{
+		PC->SetViewTarget(Camera.Get());
 		UE_LOG(LogTemp, Log, TEXT("SlapHUD: viewing through %s at %s"), *Camera->GetName(), *Camera->GetActorLocation().ToString());
 	}
 
 	Frames.Add(GetWorld()->GetDeltaSeconds());	// performance pass: average fps every 10 s in the log
 	if (Frames.Num() > 1 && GetWorld()->GetRealTimeSeconds() - FpsSince >= 10.0)
 	{
-		double Sum = 0.0, Worst = 0.0;
-		for (float F : Frames) { Sum += F; Worst = FMath::Max<double>(Worst, F); }
+		const double Sum = Algo::Accumulate(Frames, 0.0), Worst = FMath::Max(Frames);
 		UE_LOG(LogTemp, Log, TEXT("SlapHUD: %.1f fps average, worst frame %.1f ms (%d frames)"), Frames.Num() / Sum, Worst * 1000.0, Frames.Num());
 		WorstMs = Worst * 1000.0;
 		Frames.Reset();
@@ -176,24 +183,33 @@ void ASlapHUD::DrawHUD()
 	{
 		for (TObjectIterator<USlapController> It; It; ++It)
 		{
-			if (!It->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) && It->GetHud().Match > 0) { Controller = *It; break; }
+			if (It->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject)) continue;
+			It->GetHud(Last);
+			if (Last.Match > 0) { Controller = *It; break; }
 		}
 	}
-	FSlapHud H = Controller.IsValid() ? Controller->GetHud() : FSlapHud();
+	if (Controller.IsValid())
+	{
+		Controller->GetHud(Last);
+		KOShot = Controller->PostMatchHold;
+	}
+	else Last = FSlapHud();
+	FSlapHud& H = Last;	// -SlapFxTest's fakes below show in the menu too: only that check sees them
+	CacheAthletes();
 	const int32 FxDef = Team(H.Defender);
 	if (FxTestAt >= 0.f && H.Match > 0 && Body[FxDef].IsValid() && GetWorld()->GetTimeSeconds() >= FxTestAt)	// -SlapFxTest
 	{
 		H.StrikeSeq = -1;
 		H.StrikeDefender = FxDef;
 		H.Speed = 9.0;
-		H.StrikePos = Body[FxDef]->GetBoneTransformByName(TEXT("head"), EBoneSpaces::WorldSpace).GetLocation() + FVector(FxDef ? -9.f : 9.f, -5.f, -4.f);	// the cheek toward the striker
+		H.StrikePos = Body[FxDef]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace).GetLocation() + FVector(FxDef ? -9.f : 9.f, -5.f, -4.f);	// the cheek toward the striker
 		H.StrikeDir = FVector(0.f, 1.f, 0.f);
 		H.Neck[FxDef] = 0.6;
 		H.Stamina[0] = H.Stamina[1] = 0.75;
 		if (GetWorld()->GetTimeSeconds() >= FxTestAt + 1.5f) H.KOSeq = -1;
 	}
 	if (H.Match > 0) Cues(H);
-	if (Camera) Direct(*Camera, H);
+	if (Camera.IsValid()) Direct(Camera.Get(), H);
 	if (H.Match > 0)
 	{
 		if (bShowTelemetry) DrawTelemetry(H);
@@ -246,13 +262,19 @@ void ASlapHUD::BuildUi()
 		PC->SetInputMode(FInputModeGameAndUI().SetHideCursorDuringCapture(false));
 	}
 	IAssetRegistry& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-	AR.ScanPathsSynchronous({ TEXT("/Game/Brains") });
-	AR.GetAssetsByPath(FName(TEXT("/Game/Brains")), Brains, true);
-	Brains.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UNNEModelData::StaticClass()->GetClassPathName(); });
+	auto Find = [&AR](const TCHAR* Path, UClass* Class, bool bRecursive, TArray<FAssetData>& Out)
+	{
+		AR.ScanPathsSynchronous({ Path });
+		FARFilter F;
+		F.PackagePaths.Add(Path);
+		F.bRecursivePaths = bRecursive;
+		F.ClassPaths.Add(Class->GetClassPathName());
+		AR.GetAssets(F, Out);
+	};
+	Find(TEXT("/Game/Brains"), UNNEModelData::StaticClass(), true, Brains);
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
-	AR.ScanPathsSynchronous({ TEXT("/Game/Levels") });
-	AR.GetAssetsByPath(FName(TEXT("/Game/Levels")), Pairings, false);
-	Pairings.RemoveAll([](const FAssetData& A) { return A.AssetClassPath != UWorld::StaticClass()->GetClassPathName() || !A.AssetName.ToString().StartsWith(TEXT("Arena")); });
+	Find(TEXT("/Game/Levels"), UWorld::StaticClass(), false, Pairings);
+	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("Arena")); });
 	Pairings.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 	const FName Here(*UGameplayStatics::GetCurrentLevelName(this));	// PIE prefix stripped
 	Pairing = HerePairing = Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName == Here; });
@@ -289,11 +311,12 @@ void ASlapHUD::BuildUi()
 		if (Flag == &ASlapHUD::bShowTelemetry) Hit[HitTelemetry] = Box;
 		return Box;
 	};
+	auto DebugVis = [Self] { return Self.IsValid() && Self->bShowDebug ? EVisibility::HitTestInvisible : EVisibility::Collapsed; };
 	auto MatchText = [Self]
 	{
-		const FSlapHud H = Self.IsValid() && Self->Controller.IsValid() ? Self->Controller->GetHud() : FSlapHud();
-		if (H.Match == 0) return FText::FromString(TEXT("Waiting for the first match."));
-		FString T = FString::Printf(TEXT("MATCH %d   ROUND %d / 3   %s strikes\n"), H.Match, H.Round, *H.Striker.ToUpper());
+		if (!Self.IsValid() || Self->Last.Match == 0) return FText::FromString(TEXT("Waiting for the first match."));
+		const FSlapHud& H = Self->Last;
+		FString T = FString::Printf(TEXT("MATCH %d   ROUND %d / %d   %s strikes\n"), H.Match, H.Round, Rounds, *H.Striker.ToUpper());
 		for (int32 a = 0; a < 2; ++a) T += FString::Printf(TEXT("\n%s  %s\n%s  %s\n"), a ? TEXT("BLUE") : TEXT("RED"), *H.Name[a], *H.Tape[a], *H.Brain[a]);
 		T += FString::Printf(TEXT("\nSERIES   RED %d - %d BLUE   (%d drawn)"), H.Wins[0], H.Wins[1], H.Draws);
 		if (!H.Result.IsEmpty()) T += TEXT("\nLast result: ") + H.Result;
@@ -303,7 +326,7 @@ void ASlapHUD::BuildUi()
 	{
 		TArray<int32> Out;
 		if (!Self.IsValid() || !Self->Controller.IsValid()) return Out;
-		const FString Card = Self->Controller->GetHud().Card[a] + TEXT("_");
+		const FString Card = Self->Last.Card[a] + TEXT("_");
 		for (int32 i = 0; i < Self->Brains.Num(); ++i)
 		{
 			if (Self->Brains[i].AssetName.ToString().StartsWith(Card)) Out.Add(i);
@@ -317,7 +340,7 @@ void ASlapHUD::BuildUi()
 		int32& P = Self->Pick[a];
 		if (P == INDEX_NONE)	// from the brain the corner plays now
 		{
-			const FName Now(*Self->Controller->GetHud().Brain[a]);
+			const FName Now(*Self->Last.Brain[a]);
 			P = Self->Brains.IndexOfByPredicate([&](const FAssetData& B) { return B.AssetName == Now; });
 		}
 		const int32 k = F.Find(P);
@@ -336,7 +359,7 @@ void ASlapHUD::BuildUi()
 				if (!Self.IsValid()) return FText();
 				if (Self->Pairing != Self->HerePairing) return FText::FromString(TEXT("level default"));
 				const int32 P = Self->Pick[a];
-				return FText::FromString(P != INDEX_NONE ? Self->Brains[P].AssetName.ToString() : Self->Controller.IsValid() ? Self->Controller->GetHud().Brain[a] : FString());
+				return FText::FromString(P != INDEX_NONE ? Self->Brains[P].AssetName.ToString() : Self->Last.Brain[a]);
 			}), 18, Hi)]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[SAssignNew(a == 0 ? Hit[HitRedNext] : Spare, SButton).OnClicked_Lambda([Step, a] { return Step(a, 1); })[Label(FText::FromString(TEXT(" > ")), 18, White)]];
@@ -398,7 +421,7 @@ void ASlapHUD::BuildUi()
 				+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
 				[
 					SNew(SBox).HeightOverride(TopBar).VAlign(VAlign_Center)
-					.Visibility_Lambda([Self] { return Self.IsValid() && Self->bShowDebug ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+					.Visibility_Lambda(DebugVis)
 					[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(FString::Printf(TEXT("%d FPS"), Self.IsValid() ? FMath::RoundToInt(Self->Fps) : 0)); }), 18,
 						TAttribute<FSlateColor>::CreateLambda([Self] { const float F = Self.IsValid() ? Self->Fps : 0.f; return FSlateColor(F >= 55.f ? FLinearColor(0.35f, 0.9f, 0.45f) : F >= 30.f ? FLinearColor(1.f, 0.8f, 0.2f) : FLinearColor(1.f, 0.3f, 0.25f)); }))]
 				]
@@ -410,12 +433,11 @@ void ASlapHUD::BuildUi()
 				+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
 				[
 					SNew(SBox).HeightOverride(BottomBar).VAlign(VAlign_Center).Padding(FMargin(16.f, 0.f))
-					.Visibility_Lambda([Self] { return Self.IsValid() && Self->bShowDebug ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+					.Visibility_Lambda(DebugVis)
 					[SNew(SBorder).BorderImage(&ScrimBrush).Padding(FMargin(6.f, 2.f))[Label(TAttribute<FText>::CreateLambda([Self]
 					{
 						if (!Self.IsValid()) return FText();
-						const FSlapHud H = Self->Controller.IsValid() ? Self->Controller->GetHud() : FSlapHud();
-						return FText::FromString(FString::Printf(TEXT("M%d R%d  CAM %s  worst %.0f ms"), H.Match, H.Round, ShotName[(int32)Self->Shot], Self->WorstMs));
+						return FText::FromString(FString::Printf(TEXT("M%d R%d  CAM %s  worst %.0f ms"), Self->Last.Match, Self->Last.Round, ShotName[(int32)Self->Shot], Self->WorstMs));
 					}), 14, Dim)]]
 				]
 				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
@@ -613,19 +635,22 @@ void ASlapHUD::Text(const FString& Str, float X, float Y, FColor C, float Scale,
 	Canvas->DrawText(Font, Str, bCentre ? X - W * Scale * 0.5f : X, Y, Scale, Scale);
 }
 
+void ASlapHUD::CacheAthletes()
+{
+	if (Body[0].IsValid() && Body[1].IsValid()) return;	// until both are found (they may spawn after the first frame)
+	Skin.SetNum(2);	// one material instance per athlete: M_Grandpa's ripple (RipplePoint / RippleTime / RippleAmp), wear (FlushPoint / Flush / Tired)
+	for (TActorIterator<ASlapAthleteVisual> It(GetWorld()); It; ++It)
+	{
+		const int32 a = It->BodyPrefix == TEXT("blue_") ? 1 : 0;
+		if (Body[a].IsValid()) continue;
+		Skin[a] = It->Mesh->CreateDynamicMaterialInstance(0);
+		Body[a] = It->Mesh;
+	}
+}
+
 void ASlapHUD::Cues(const FSlapHud& H)
 {
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (Skin.Num() == 0)	// one material instance per athlete: M_Grandpa's ripple (RipplePoint / RippleTime / RippleAmp), wear (FlushPoint / Flush / Tired)
-	{
-		Skin.SetNum(2);
-		for (TActorIterator<ASlapAthleteVisual> It(GetWorld()); It; ++It)
-		{
-			const int32 a = It->BodyPrefix == TEXT("blue_") ? 1 : 0;
-			Skin[a] = It->Mesh->CreateDynamicMaterialInstance(0);
-			Body[a] = It->Mesh;
-		}
-	}
 	HeadG.Add(H.HeadG);
 	if (HeadG.Num() > 120) HeadG.RemoveAt(0);
 
@@ -636,10 +661,11 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		StrikePos = H.StrikePos;
 		StrikeSpeed = H.Speed;
 		Struck = H.StrikeDefender;
-		const float K = FMath::Clamp(H.Speed / CleanSpeed, 0.25, 1.5);
+		StrikeK = FMath::Clamp(H.Speed / CleanSpeed, 0.25, 1.5);
+		const float K = StrikeK;
 		if (Spray) UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, H.StrikePos, FRotationMatrix::MakeFromZ(H.StrikeDir).Rotator(), FVector(0.3f * K));
 		if (SlapSound) UGameplayStatics::PlaySoundAtLocation(this, SlapSound, H.StrikePos, K, FMath::FRandRange(0.92f, 1.08f), 0.f, Ringside);
-		if (Body[Struck].IsValid()) FlushLocal[Struck] = Body[Struck]->GetBoneTransformByName(TEXT("head"), EBoneSpaces::WorldSpace).InverseTransformPosition(H.StrikePos);
+		if (Body[Struck].IsValid()) FlushLocal[Struck] = Body[Struck]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace).InverseTransformPosition(H.StrikePos);
 		if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, 0.3f + 0.5f * K);
 		if (Skin.IsValidIndex(Struck) && Skin[Struck])
 		{
@@ -647,14 +673,14 @@ void ASlapHUD::Cues(const FSlapHud& H)
 			Skin[Struck]->SetScalarParameterValue(TEXT("RippleAmp"), 0.2f * H.Speed);	// cm: 1.6 at a clean 8 m/s
 		}
 	}
-	for (int32 a = 0; a < Skin.Num(); ++a)	// wear: the flush follows the head; neck strength floors at 0.5, stamina at 0.7
+	for (int32 a = 0; a < Skin.Num(); ++a)	// wear: the flush follows the head; 1 at the neck-strength and stamina floors
 	{
 		if (!Skin[a]) continue;
-		Skin[a]->SetScalarParameterValue(TEXT("RippleTime"), a == Struck ? Now - StrikeAt : 100.f);
-		if (Body[a].IsValid()) Skin[a]->SetVectorParameterValue(TEXT("FlushPoint"), FLinearColor(Body[a]->GetBoneTransformByName(TEXT("head"), EBoneSpaces::WorldSpace).TransformPosition(FlushLocal[a])));
+		Skin[a]->SetScalarParameterValue(PRippleTime, a == Struck ? Now - StrikeAt : 100.f);
+		if (Body[a].IsValid()) Skin[a]->SetVectorParameterValue(PFlushPoint, FLinearColor(Body[a]->GetBoneTransformByName(BoneHead, EBoneSpaces::WorldSpace).TransformPosition(FlushLocal[a])));
 		const double Sting = a == Struck ? 0.5 * FMath::Clamp(StrikeSpeed / CleanSpeed, 0.0, 1.5) * FMath::Exp((StrikeAt - Now) / 2.0) : 0.0;
-		Skin[a]->SetScalarParameterValue(TEXT("Flush"), FMath::Clamp((1.0 - H.Neck[a]) / 0.5 + Sting, 0.0, 1.0));
-		Skin[a]->SetScalarParameterValue(TEXT("Tired"), FMath::Clamp((1.0 - H.Stamina[a]) / 0.3, 0.0, 1.0));
+		Skin[a]->SetScalarParameterValue(PFlush, FMath::Clamp((1.0 - H.Neck[a]) / (1.0 - MinNeck) + Sting, 0.0, 1.0));
+		Skin[a]->SetScalarParameterValue(PTired, FMath::Clamp((1.0 - H.Stamina[a]) / (1.0 - MinStamina), 0.0, 1.0));
 	}
 	if (H.KOSeq != SeenKO)
 	{
@@ -681,15 +707,26 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		SeenRound = H.ScoredRound;
 		if (H.ScoredRound > 0) CardAt = Now;
 	}
-	if (Now - CommentaryPoll > 0.5)	// training/commentator.py writes one line per call
+	if (Now - CommentaryPoll > 0.5)	// Scripts/commentator.py writes one line per call
 	{
 		CommentaryPoll = Now;
-		const FString Path = FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt");
+		const FString Path = CommentaryFile();
 		const FDateTime Stamp = IFileManager::Get().GetTimeStamp(*Path);
-		if (Stamp != CommentaryStamp && FFileHelper::LoadFileToString(Commentary, *Path))
+		FString Raw;
+		if (Stamp != CommentaryStamp && FFileHelper::LoadFileToString(Raw, *Path))
 		{
 			CommentaryStamp = Stamp;
 			CommentaryAt = Now;
+			Commentary.Reset();	// wrapped once here, drawn every frame
+			FString Cur;
+			TArray<FString> Words;
+			Raw.TrimStartAndEnd().ParseIntoArrayWS(Words);
+			for (const FString& Wd : Words)
+			{
+				if (Cur.Len() + Wd.Len() > 44) { Commentary.Add(Cur); Cur.Reset(); }
+				Cur += (Cur.IsEmpty() ? TEXT("") : TEXT(" ")) + Wd;
+			}
+			if (!Cur.IsEmpty()) Commentary.Add(Cur);
 		}
 	}
 	Stage(Now);
@@ -700,7 +737,7 @@ void ASlapHUD::Stage(double Now)
 	// a strike flares the key and the striker's rim, scaled by the palm's speed; a KO runs a chase round the truss
 	auto Set = [](FStageLight& Lit, double Gain) { if (ULightComponent* L = Lit.Light.Get()) L->SetIntensity(Lit.Base * Gain); };
 	const double Ts = Now - StrikeAt, Tk = Now - KOAt;
-	const double K = FMath::Clamp(StrikeSpeed / CleanSpeed, 0.25, 1.5);
+	const double K = StrikeK;
 	Set(Key, Ts < 1.0 ? 1.0 + 1.5 * K * FMath::Exp(-8.0 * Ts) : 1.0);
 	for (int32 a = 0; a < 2; ++a) Set(Rim[a], a != Struck && Ts < 1.5 ? 1.0 + 4.0 * K * FMath::Exp(-4.0 * Ts) : 1.0);
 	for (int32 k = 0; k < Truss.Num(); ++k) Set(Truss[k], Tk < KOShot ? 1.0 + 3.0 * FMath::Pow(FMath::Max(0.0, FMath::Sin(10.0 * Tk - 0.8 * k)), 4.0) : 1.0);
@@ -720,14 +757,13 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	}
 	FBox Box(ForceInit);
 	FVector Head[2] = {}, Pelvis[2] = {};
-	for (TActorIterator<ASlapAthleteVisual> It(GetWorld()); It; ++It)
+	for (int32 a = 0; a < 2; ++a)
 	{
-		const int32 a = It->BodyPrefix == TEXT("blue_") ? 1 : 0;
-		Head[a] = It->Mesh->GetBoneLocation(TEXT("head"));
-		Pelvis[a] = It->Mesh->GetBoneLocation(TEXT("pelvis"));
-		for (const TCHAR* Bone : { TEXT("head"), TEXT("pelvis"), TEXT("foot_l"), TEXT("foot_r") })
+		if (!Body[a].IsValid()) continue;
+		Head[a] = Body[a]->GetBoneLocation(BoneHead);
+		Pelvis[a] = Body[a]->GetBoneLocation(BonePelvis);
+		for (const FVector& P : { Head[a], Pelvis[a], Body[a]->GetBoneLocation(BoneFootL), Body[a]->GetBoneLocation(BoneFootR) })
 		{
-			const FVector P = It->Mesh->GetBoneLocation(Bone);
 			if (!P.IsZero()) Box += P;
 		}
 	}
@@ -796,7 +832,7 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	// impact: shake and colour fringe, scaled by the palm's speed
 	UCameraComponent* Comp = Cam->GetCameraComponent();
 	const double Ts = Now - StrikeAt;
-	const float K = FMath::Clamp(StrikeSpeed / CleanSpeed, 0.25, 1.5);
+	const float K = StrikeK;
 	Comp->PostProcessSettings.bOverride_SceneFringeIntensity = true;
 	Comp->PostProcessSettings.SceneFringeIntensity = Ts < 1.0 ? 5.f * K * FMath::Exp(-6.0 * Ts) : 0.f;
 	// KO grade: the picture drains and closes in while the crane runs
@@ -829,7 +865,7 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 	};
 	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Top, 300.f * S, 250.f * S);	// legible over the truss
 	const FColor Tc = TeamColor[Team(H.Striker)];
-	Line(Big, H.bWalkIn ? TEXT("RING WALK-IN") : *FString::Printf(TEXT("ROUND %d / 3"), H.Round), FColor::White, 1.2f);
+	Line(Big, H.bWalkIn ? TEXT("RING WALK-IN") : *FString::Printf(TEXT("ROUND %d / %d"), H.Round, Rounds), FColor::White, 1.2f);
 	Line(Small, H.bWalkIn
 		? *FString::Printf(TEXT("Approaching podium  (%d%%)"), FMath::RoundToInt(100.0 * H.WalkInProgress))
 		: *FString::Printf(TEXT("%s strikes  -  %s %.1f s"), *H.Striker.ToUpper(), H.bStruck ? TEXT("recovery") : TEXT("clock"), FMath::Max(0.0, H.Clock)), Tc, 1.3f);
@@ -907,8 +943,7 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 
 	// the defender's head acceleration, last 2 s
 	const float BX = 16.f * S, BY = Bot - 84.f * S, BW = 230.f * S, BH = 70.f * S;
-	float Peak = 0.f;
-	for (float G : HeadG) Peak = FMath::Max(Peak, G);
+	const float Peak = FMath::Max(HeadG);	// 0 when empty
 	const float Scale = FMath::Max(20.f, Peak);
 	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), BX - 6.f * S, BY - 22.f * S, BW + 12.f * S, BH + 28.f * S);
 	Text(FString::Printf(TEXT("HEAD G  %s  peak %.0f g"), *H.Defender.ToUpper(), Peak), BX, BY - 20.f * S, Grey, S);
@@ -926,7 +961,7 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	{
 		const float Y = FY + 6.f * S + a * 34.f * S;
 		Text(a ? TEXT("BLUE") : TEXT("RED"), FX, Y, TeamColor[a], 1.1f * S);
-		const double Bars[2] = { (H.Stamina[a] - 0.7) / 0.3, (H.Neck[a] - 0.5) / 0.5 };
+		const double Bars[2] = { (H.Stamina[a] - MinStamina) / (1.0 - MinStamina), (H.Neck[a] - MinNeck) / (1.0 - MinNeck) };
 		for (int32 b = 0; b < 2; ++b)
 		{
 			const float X = FX + (64.f + 82.f * b) * S;
@@ -1001,18 +1036,9 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	}
 
 	// commentary, bottom: the latest line for 8 s, wrapped at ~44 characters
-	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && !Commentary.IsEmpty())
+	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && Commentary.Num())
 	{
-		TArray<FString> Lines;
-		FString Cur;
-		TArray<FString> Words;
-		Commentary.TrimStartAndEnd().ParseIntoArrayWS(Words);
-		for (const FString& Wd : Words)
-		{
-			if (Cur.Len() + Wd.Len() > 44) { Lines.Add(Cur); Cur.Reset(); }
-			Cur += (Cur.IsEmpty() ? TEXT("") : TEXT(" ")) + Wd;
-		}
-		if (!Cur.IsEmpty()) Lines.Add(Cur);
+		const TArray<FString>& Lines = Commentary;
 		const float Y = Bot - 168.f * S - Lines.Num() * 20.f * S;	// above the head-g and condition panels
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), 16.f * S, Y - 6.f * S, 508.f * S, (Lines.Num() * 20.f + 10.f) * S);
 		for (int32 i = 0; i < Lines.Num(); ++i) Text(Lines[i], Cx, Y + i * 20.f * S, FColor::White, 1.1f * S, true);

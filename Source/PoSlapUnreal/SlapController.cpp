@@ -24,41 +24,21 @@ namespace
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
 	constexpr int32 NumObs = 148;		// DOCS/BRAIN_IO.md (136 base + 12 extended proprioceptive foot-ground/phase floats)
 	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
-	constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors (brain_cpu.py)
+	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
 
 	TSharedPtr<FJsonObject> LoadJson(const FString& RelPath)
 	{
 		FString Text;
 		TSharedPtr<FJsonObject> Obj;
-		// 1. Try relative to ProjectDir() (source checkout / editor)
-		if (FFileHelper::LoadFileToString(Text, *FPaths::Combine(FPaths::ProjectDir(), RelPath)))
+		// source checkout / editor, then packaged Content/Data/<file> (Android / packaged builds), then Content/<RelPath>
+		for (const FString& Path : { FPaths::Combine(FPaths::ProjectDir(), RelPath),
+			FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Data"), FPaths::GetCleanFilename(RelPath)),
+			FPaths::Combine(FPaths::ProjectContentDir(), RelPath) })
 		{
-			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
+			if (FFileHelper::LoadFileToString(Text, *Path) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj) && Obj) return Obj;
 		}
-		// 2. Try packaged Content/Data/ with clean filename (Android / packaged builds)
-		if (!Obj.IsValid())
-		{
-			const FString CleanName = FPaths::GetCleanFilename(RelPath);
-			const FString DataPath = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Data"), CleanName);
-			if (FFileHelper::LoadFileToString(Text, *DataPath))
-			{
-				FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
-			}
-		}
-		// 3. Try ProjectContentDir() / RelPath
-		if (!Obj.IsValid())
-		{
-			const FString ContentRel = FPaths::Combine(FPaths::ProjectContentDir(), RelPath);
-			if (FFileHelper::LoadFileToString(Text, *ContentRel))
-			{
-				FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj);
-			}
-		}
-		if (!Obj.IsValid())
-		{
-			UE_LOG(LogSlap, Error, TEXT("Could not read %s"), *RelPath);
-		}
-		return Obj;
+		UE_LOG(LogSlap, Error, TEXT("Could not read %s"), *RelPath);
+		return nullptr;
 	}
 
 	/** UE 5.8 has no ONNX runtime on Android: the same brain rebuilt for NNE's basic CPU runtime from the weights
@@ -526,8 +506,14 @@ namespace
 	FString Num(double X, int32 Digits) { return FString::Printf(TEXT("%.*f"), Digits, X); }
 	FString Str(const FString& S) { return TEXT("\"") + S + TEXT("\""); }
 	FString Bool(bool B) { return B ? TEXT("true") : TEXT("false"); }
+	FString CardsJson(const int32 (&C)[3][2]) { return FString::Printf(TEXT("[[%d, %d], [%d, %d], [%d, %d]]"), C[0][0], C[0][1], C[1][0], C[1][1], C[2][0], C[2][1]); }
 
-	constexpr int32 Rounds = 3;
+	// an action in [-1, 1] -> joint target: +-1 reaches the range ends from the stand pose (each side its own scale), times Reach
+	double Target(double Stand, double Lo, double Hi, double Act, double Reach = 1.0)
+	{
+		return FMath::Clamp(Stand + Reach * (Act > 0.0 ? Act * (Hi - Stand) : Act * (Stand - Lo)), Lo, Hi);
+	}
+
 	constexpr double StrikeClock = 30.0, Recovery = 5.0, BoxX = 0.20, BoxY = 0.25;
 	constexpr int64 KickSteps = 2;	// the slap's impact impulse lasts 10 ms (match.py KICK_STEPS)
 	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };	// judges: speed, head, stagger, defence
@@ -539,12 +525,13 @@ void USlapController::SetHud(TFunctionRef<void(FSlapHud&)> Edit)
 	Edit(Hud);
 }
 
-void USlapController::Emit(const FString& Json)
+void USlapController::Emit(FStringView Json)
 {
 	if (!Log) return;
-	FTCHARToUTF8 U(*(Json + TEXT("\n")));
+	FTCHARToUTF8 U(Json.GetData(), Json.Len());
 	Log->Serialize((void*)U.Get(), U.Length());
-	Log->Flush();
+	Log->Serialize((void*)"\n", 1);
+	Log->Flush();	// whole lines only: commentator/clipper tail the file live
 }
 
 FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender) const
@@ -603,28 +590,28 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 	Log = IFileManager::Get().CreateFileWriter(*FPaths::Combine(Dir, FString::Printf(TEXT("match_%s_%d_ue.jsonl"), *FDateTime::Now().ToString(TEXT("%H%M%S")), First)), FILEWRITE_AllowRead);	// commentator/clipper tail it live
 	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}}"), *Str(Athletes[First].Name), Rounds));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
-	const FString Toss = Athletes[First].Name + TEXT(" wins the toss");
-	if (bWalkIn && WalkInHold > 0.0 && Athletes.Num() == 2)
+	if (bWalkIn && HoldSteps(WalkInHold) > 0)
 	{
 		WalkInTotal = WalkInLeft = HoldSteps(WalkInHold);
-		bInTurn = false;
-		StepWalkIn(m, d);
-		SetHud([&](FSlapHud& H)
-		{
-			H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
-			H.Round = 1; H.Striker = Athletes[First].Name; H.Defender = Athletes[1 - First].Name;
-			H.bWalkIn = true; H.WalkInProgress = 0.0;
-			FMemory::Memzero(H.Cards); H.Event = Toss;
-		});
-		return;
+		StepWalkIn(m, d);	// sets the walk-in HUD state
 	}
-	StartTurn(m, d);	// first: a turn clears the last turn's call, the toss is this one's
-	SetHud([&](FSlapHud& H)
+	else StartTurn(m, d);
+	SetHud([&](FSlapHud& H)	// after StartTurn: a turn clears the last turn's call, the toss is this one's
 	{
-		H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0;
-		H.bWalkIn = false; H.WalkInProgress = 1.0;
-		FMemory::Memzero(H.Cards); H.Event = Toss;
+		H.Match = MatchNo; ++H.MatchSeq; H.Result.Reset(); H.ScoredRound = 0; FMemory::Memzero(H.Cards);
+		H.Round = 1; H.Striker = Athletes[First].Name; H.Defender = Athletes[1 - First].Name;
+		H.Event = Athletes[First].Name + TEXT(" wins the toss");
 	});
+}
+
+void USlapController::HudBalance(const mjData* d, FSlapHud& H) const
+{
+	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
+	{
+		const FAthlete& X = Athletes[a];
+		H.Com[a] = MjUtils::MjToUEPosition(d->subtree_com + 3 * X.Pelvis);
+		H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
+	}
 }
 
 void USlapController::StepWalkIn(const mjModel* m, mjData* d)
@@ -639,7 +626,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	const double Env = Prog < 0.85 ? FMath::Sin(PI * S) : 0.0;
 	const double Phase = 2.0 * PI * 1.8 * Prog * WalkInHold;
 	float Obs[NumObs];
-	const bool bRunNet = (WalkInLeft % ControlEvery == 0);
+	const bool bRunNet = StepCount % ControlEvery == 0;	// 50 Hz, also while WalkInLeft holds still (level load)
 	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
 	{
 		FAthlete& A = Athletes[a];
@@ -658,7 +645,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 				for (int32 j = 0; j < A.Act.Num(); ++j)
 				{
 					const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
-					const double Tgt = FMath::Clamp(A.Stand[j] + 0.25 * (Act > 0.0 ? Act * (A.Hi[j] - A.Stand[j]) : Act * (A.Stand[j] - A.Lo[j])), A.Lo[j], A.Hi[j]);
+					const double Tgt = Target(A.Stand[j], A.Lo[j], A.Hi[j], Act, 0.25);
 					d->qpos[A.Qadr[j]] = Tgt;
 					A.Goal[j] = Tgt;
 					A.PrevAction[j] = (float)Act;
@@ -688,19 +675,13 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	{
 		H.bWalkIn = true;
 		H.WalkInProgress = Prog;
-		for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
-		{
-			const FAthlete& X = Athletes[a];
-			H.Com[a] = MjUtils::MjToUEPosition(d->subtree_com + 3 * X.Pelvis);
-			H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
-		}
+		HudBalance(d, H);
 	});
 }
 
 void USlapController::StartTurn(mjModel* m, mjData* d)
 {
 	Turn = FTurn();
-	Turn.Round = Round;
 	Turn.Striker = TurnInRound == 0 ? First : 1 - First;
 	mj_resetData(m, d);	// as brain_cpu.stand(): reset, stand pose, forward (then match.py forwards once more)
 	for (FAthlete& A : Athletes)
@@ -813,8 +794,8 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 	if (!Finite || MaxV > 1e3)
 	{
 		Emit(FString::Printf(TEXT("{\"type\": \"blowup\", \"t\": %s}"), *Num(T, 3)));
-		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"blow-up\", \"winner\": null, \"round\": %d, \"cards\": [[%d, %d], [%d, %d], [%d, %d]]}"),
-			Round, Cards[0][0], Cards[0][1], Cards[1][0], Cards[1][1], Cards[2][0], Cards[2][1]));
+		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"blow-up\", \"winner\": null, \"round\": %d, \"cards\": %s}"),
+			Round, *CardsJson(Cards)));
 		UE_LOG(LogSlap, Error, TEXT("t=%.3f sim blow-up: match abandoned"), T);
 		SetHud([&](FSlapHud& H) { H.Result = TEXT("No contest (simulation blow-up)"); });
 		bInTurn = false;
@@ -848,12 +829,11 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		Turn.Speed = RoundTo(Speed, 2);
 		// the body behind the palm (match.py): the striker's card mass times the hand's velocity, over KickSteps
 		const double* Ci = d->xipos + 3 * D.HeadBody;
-		const double R[3] = { C.pos[0] - Ci[0], C.pos[1] - Ci[1], C.pos[2] - Ci[2] };
+		mjtNum R[3];
+		mju_sub3(R, C.pos, Ci);
 		double* K = Turn.Kick;
 		for (int32 i = 0; i < 3; ++i) K[i] = Travel[i] / m->opt.timestep * (S.StrikeMass / (KickSteps * m->opt.timestep));
-		K[3] = R[1] * K[2] - R[2] * K[1];
-		K[4] = R[2] * K[0] - R[0] * K[2];
-		K[5] = R[0] * K[1] - R[1] * K[0];
+		mju_cross(K + 3, R, K);	// torque = R x force (same expression order as before: bit-identical)
 		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s}"),
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2)));
 		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm)"));
@@ -870,26 +850,24 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 
 void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 {
-	Turn.End = End;
-	const FAthlete& S = Athletes[Turn.Striker];
-	const FAthlete& D = Athletes[1 - Turn.Striker];
+	FAthlete& S = Athletes[Turn.Striker];
+	FAthlete& D = Athletes[1 - Turn.Striker];
 	const bool Touched = Turn.TouchStep >= 0;
 	if (Touched) Turn.bStagger = Dist(d->subtree_com + 3 * D.Pelvis, Turn.Com0, 2) > 0.05;
 	Turn.HeadPeak = RoundTo(Turn.HeadPeak, 2);
 	FString Fouls;
 	for (const TPair<int32, FString>& F : Turn.Fouls) Fouls += (Fouls.IsEmpty() ? TEXT("") : TEXT(", ")) + Str(Athletes[F.Key].Name + TEXT(": ") + F.Value);
 	Emit(FString::Printf(TEXT("{\"type\": \"turn_end\", \"round\": %d, \"striker\": %s, \"touch\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s, \"head_peak\": %s, \"stagger\": %s, \"ko\": %s, \"end\": %s, \"fouls\": [%s]}"),
-		Turn.Round, *Str(S.Name), Touched ? *Num(Turn.TouchStep * m->opt.timestep, 3) : TEXT("null"), Touched ? *Str(Turn.Part) : TEXT("null"),
+		Round, *Str(S.Name), Touched ? *Num(Turn.TouchStep * m->opt.timestep, 3) : TEXT("null"), Touched ? *Str(Turn.Part) : TEXT("null"),
 		*Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(Turn.HeadPeak, 2), *Bool(Turn.bStagger), *Bool(Turn.bKO), *Str(End), *Fouls));
-	UE_LOG(LogSlap, Log, TEXT("round %d, %s's turn over: %s"), Turn.Round, *S.Name, *End);
-	FAthlete& Sm = Athletes[Turn.Striker];	// fatigue and memory (match.py finish(): same order, same arithmetic)
-	FAthlete& Dm = Athletes[1 - Turn.Striker];
-	Sm.Stamina = FMath::Max(MinStamina, Sm.Stamina - Sm.StaminaPerStrike);
+	UE_LOG(LogSlap, Log, TEXT("round %d, %s's turn over: %s"), Round, *S.Name, *End);
+	// fatigue and memory (match.py finish(): same order, same arithmetic)
+	S.Stamina = FMath::Max(MinStamina, S.Stamina - S.StaminaPerStrike);
 	if (Touched)
 	{
-		Dm.Mem[0] = RoundTo(Turn.TouchStep * m->opt.timestep, 3) / 30.0;
-		Dm.Mem[1] = Turn.Speed / 10.0;
-		if (!Turn.bKO) Dm.NeckStrength = FMath::Max(MinNeck, Dm.NeckStrength - Dm.NeckDamage * Turn.HeadPeak);
+		D.Mem[0] = RoundTo(Turn.TouchStep * m->opt.timestep, 3) / 30.0;
+		D.Mem[1] = Turn.Speed / 10.0;
+		if (!Turn.bKO) D.NeckStrength = FMath::Max(MinNeck, D.NeckStrength - D.NeckDamage * Turn.HeadPeak);
 	}
 	FString Cond;
 	for (const FAthlete& A : Athletes) Cond += FString::Printf(TEXT(", %s: [%s, %s]"), *Str(A.Name), *Num(A.Stamina, 3), *Num(A.NeckStrength, 3));
@@ -904,10 +882,9 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	RoundTurns.Add(Turn);
 	bInTurn = false;
 
-	auto CardsJson = [&] { return FString::Printf(TEXT("[[%d, %d], [%d, %d], [%d, %d]]"), Cards[0][0], Cards[0][1], Cards[1][0], Cards[1][1], Cards[2][0], Cards[2][1]); };
 	if (Turn.bKO)
 	{
-		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"KO\", \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(S.Name), Round, *CardsJson()));
+		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"KO\", \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(S.Name), Round, *CardsJson(Cards)));
 		const FString Res = FString::Printf(TEXT("%s wins by KO, round %d"), *S.Name.ToUpper(), Round);
 		SetHud([&](FSlapHud& H) { H.Result = Res; });
 		Round = Rounds + 1;	// match over; the next turn starts a new one
@@ -917,7 +894,7 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	if (++TurnInRound < 2) { HoldLeft = HoldSteps(TurnHold); return; }	// let the crowd see how the turn ended
 	int32 Pts[3][2];
 	Score(Pts);
-	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson()));
+	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson(Cards)));
 	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Cards, sizeof(Cards)); FMemory::Memcpy(H.RoundCards, Pts, sizeof(Pts)); H.ScoredRound = Round; });
 	RoundTurns.Reset();
 	TurnInRound = 0;
@@ -932,7 +909,7 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	if (Wins[Top] == 3) How = TEXT("unanimous decision");
 	else if (Wins[Top] == 2) How = Wins[1 - Top] == 1 ? TEXT("split decision") : TEXT("majority decision");
 	const bool Draw = How == TEXT("draw");
-	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Top].Name), Rounds, *CardsJson()));
+	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Top].Name), Rounds, *CardsJson(Cards)));
 	const FString Res = Draw ? FString(TEXT("Draw")) : FString::Printf(TEXT("%s wins by %s"), *Athletes[Top].Name.ToUpper(), *How);
 	SetHud([&](FSlapHud& H) { H.Result = Res; });
 	EndMatch(Draw ? -1 : Top);
@@ -1035,9 +1012,8 @@ void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 	Watcher.BiasWX = WB[0]; Watcher.BiasWY = WB[1]; Watcher.BiasWZ = WB[2];
 	// project the world bias into the chest frame (the neck hinges ARE its Z/Y/X) and clamp to the joint range
 	const double* Xm = d->xmat + 9 * Watcher.Chest;
-	const double Rx[3] = { Xm[0] * WB[0] + Xm[3] * WB[1] + Xm[6] * WB[2],	// R^T * bias
-						   Xm[1] * WB[0] + Xm[4] * WB[1] + Xm[7] * WB[2],
-						   Xm[2] * WB[0] + Xm[5] * WB[1] + Xm[8] * WB[2] };
+	mjtNum Rx[3];
+	mju_mulMatTVec3(Rx, Xm, WB);	// R^T * bias
 	const double Want[2] = { FMath::Atan2(Rx[1], Rx[0]),
 							 -FMath::Asin(FMath::Clamp(Rx[2], -1.0, 1.0)) };
 	const int32 Idx[2] = { Watcher.YawIdx, Watcher.PitchIdx };
@@ -1074,9 +1050,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		{
 			const double Step = A.MaxStep[j] * A.Stamina;	// fatigue: a tired athlete moves slower
 			const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
-			// a = +-1 reaches the range ends from the stand pose (each side its own scale)
-			const double Tgt = FMath::Clamp(A.Stand[j] + (Act > 0.0 ? Act * (A.Hi[j] - A.Stand[j]) : Act * (A.Stand[j] - A.Lo[j])), A.Lo[j], A.Hi[j]);
-			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - Step, A.Goal[j] + Step);
+			A.Goal[j] = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
 		A.Value = A.NumOut > 1 ? Value : 0.f;
@@ -1094,11 +1068,10 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		{
 			H.HandDist = HandDist;
 			H.HeadG = HeadG;
+			HudBalance(d, H);
 			for (int32 a = 0; a < 2; ++a)
 			{
 				const FAthlete& X = Athletes[a];
-				H.Com[a] = MjUtils::MjToUEPosition(d->subtree_com + 3 * X.Pelvis);
-				H.Feet[a] = 0.5 * (MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[0]) + MjUtils::MjToUEPosition(d->geom_xpos + 3 * X.Feet[1]));
 				H.Stamina[a] = X.Stamina;
 				H.Neck[a] = X.NeckStrength;
 				H.Value[a] = X.Value;
@@ -1108,17 +1081,18 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 	}
 	if (Match && Turn.Step % 20 == 0)	// gameplay log: both athletes' pelvis, head, actions at 10 Hz
 	{
-		FString Line = FString::Printf(TEXT("{\"type\": \"frame\", \"t\": %s"), *Num(T, 3));
+		TStringBuilder<2048> Line;	// on the stack: this runs on the physics thread
+		Line.Appendf(TEXT("{\"type\": \"frame\", \"t\": %.3f"), T);
 		for (const FAthlete& A : Athletes)
 		{
 			const double* P = d->xpos + 3 * A.Pelvis;
 			const double* H = d->geom_xpos + 3 * A.Head;
-			FString Acts;
-			for (float V : A.PrevAction) Acts += (Acts.IsEmpty() ? TEXT("") : TEXT(", ")) + Num(V, 2);
-			Line += FString::Printf(TEXT(", %s: {\"pelvis\": [%s, %s, %s], \"head\": [%s, %s, %s], \"action\": [%s]}"), *Str(A.Name),
-				*Num(P[0], 3), *Num(P[1], 3), *Num(P[2], 3), *Num(H[0], 3), *Num(H[1], 3), *Num(H[2], 3), *Acts);
+			Line.Appendf(TEXT(", \"%s\": {\"pelvis\": [%.3f, %.3f, %.3f], \"head\": [%.3f, %.3f, %.3f], \"action\": ["), *A.Name, P[0], P[1], P[2], H[0], H[1], H[2]);
+			for (int32 j = 0; j < A.PrevAction.Num(); ++j) Line.Appendf(TEXT("%s%.2f"), j ? TEXT(", ") : TEXT(""), (double)A.PrevAction[j]);
+			Line << TEXT("]}");
 		}
-		Emit(Line + TEXT("}"));
+		Line << TEXT('}');
+		Emit(Line);
 		const double Left = Turn.TouchStep < 0 ? StrikeClock - T : Recovery - (Turn.Step - Turn.TouchStep) * m->opt.timestep;
 		SetHud([&](FSlapHud& Hd) { Hd.Clock = Left; });
 	}

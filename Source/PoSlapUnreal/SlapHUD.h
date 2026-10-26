@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetData.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
+#include "SlapController.h"
 #include "SlapHUD.generated.h"
 
 class ACameraActor;
@@ -13,9 +14,7 @@ class UMaterialInstanceDynamic;
 class UNiagaraSystem;
 class USoundAttenuation;
 class USoundBase;
-class USlapController;
 class SWidget;
-struct FSlapHud;
 
 /**
  * The broadcast: match panel + telemetry (palm-speed gauge, head-g trace, balance rings, fatigue, judges' slide-in card,
@@ -53,6 +52,10 @@ private:
 	void UiTest(const FSlapHud& H);
 
 	TWeakObjectPtr<USlapController> Controller;
+	FSlapHud Last;	// this frame's match state (DrawHUD); the Slate lambdas read it too
+	double KOShot = 4.0;	// s of crane after a KO: the controller's PostMatchHold
+	TWeakObjectPtr<ACameraActor> Camera;	// the level's (portrait) camera
+	void CacheAthletes();	// Skin and Body, until both athletes are found
 	TArray<float> Frames;
 	double FpsSince = 0.0;
 	float ShotAt = -1.f, FxTestAt = -1.f;
@@ -86,7 +89,8 @@ private:
 	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0;
 	double StrikeAt = -100.0, KOAt = -100.0, TapeAt = -100.0, CardAt = -100.0;
 	FVector StrikePos = FVector::ZeroVector;
-	double StrikeSpeed = 0.0, PeakHand = 0.0;
+	double StrikeSpeed = 0.0;
+	double StrikeK = 0.25;	// the last strike's speed over a clean one, clamped to 0.25-1.5: scales every effect
 	int32 Struck = 0;
 	TArray<float> HeadG;	// the defender's head g, one sample per frame (last ~2 s)
 
@@ -110,8 +114,8 @@ private:
 	float BaseVignette = 0.f;
 	bool bHaveBase = false;
 
-	// commentary (training/commentator.py writes it)
-	FString Commentary;
+	// commentary (Scripts/commentator.py writes it)
+	TArray<FString> Commentary;	// the latest line, wrapped at ~44 characters
 	double CommentaryAt = -100.0, CommentaryPoll = 0.0, TurnAt = 0.0;
 	int32 SeenTurnRound = -1;
 	FString SeenTurnStriker;

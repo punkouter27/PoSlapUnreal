@@ -101,7 +101,7 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 		LastPose.Empty();
 	}
 
-	TArray<FTransform> Pose;
+	Pose.Reset();
 	AAMjManager::GetManager()->PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& S)
 	{
 		if (S.XPos.Num() == 0) return;
@@ -119,21 +119,20 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 	const FReferenceSkeleton& Ref = Mesh->GetSkinnedAsset()->GetRefSkeleton();
 	const FTransform ToComponent = Mesh->GetComponentTransform().Inverse();
 	TArray<FTransform>& Local = Mesh->BoneSpaceTransforms;
-	TArray<FTransform> CS;
-	CS.SetNum(Local.Num());
+	CompSpace.SetNum(Local.Num());
 	for (int32 i = 0; i < Local.Num(); ++i)
 	{
 		const int32 P = Ref.GetParentIndex(i);
 		if (RefToDriven[i] != INDEX_NONE)
 		{
-			CS[i] = Pose[RefToDriven[i]] * ToComponent;
-			Local[i] = P == INDEX_NONE ? CS[i] : CS[i].GetRelativeTransform(CS[P]);
+			CompSpace[i] = Pose[RefToDriven[i]] * ToComponent;
+			Local[i] = P == INDEX_NONE ? CompSpace[i] : CompSpace[i].GetRelativeTransform(CompSpace[P]);
 		}
 		else
 		{
-			CS[i] = P == INDEX_NONE ? Local[i] : Local[i] * CS[P];
+			CompSpace[i] = P == INDEX_NONE ? Local[i] : Local[i] * CompSpace[P];
 		}
 	}
 	Mesh->MarkRefreshTransformDirty();
-	if (!bChecked) LastPose = MoveTemp(Pose);
+	if (!bChecked) Swap(LastPose, Pose);	// both buffers stay allocated
 }

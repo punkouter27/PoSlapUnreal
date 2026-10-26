@@ -10,6 +10,13 @@ class FJsonObject;
 class UNNEModelData;
 namespace UE::NNE { class IModelInstanceCPU; }
 
+/** Match rules the HUD shows too (training/match.py, brain_cpu.py). */
+namespace Slap
+{
+	inline constexpr int32 Rounds = 3;
+	inline constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors
+}
+
 /** What the HUD shows; copied from the physics thread under a lock (USlapController::GetHud). Index 0 = red, 1 = blue. */
 struct FSlapHud
 {
@@ -108,8 +115,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	int32 DefenderRole = -1;
 
-	/** Thread-safe copy of the match state for the HUD. */
-	FSlapHud GetHud() const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); return Hud; }
+	/** Thread-safe copy of the match state for the HUD (into a kept FSlapHud: its strings reuse their buffers). */
+	void GetHud(FSlapHud& Out) const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); Out = Hud; }
 
 	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
 	 *  physics step; the match in progress is abandoned, unscored. */
@@ -143,18 +150,15 @@ private:
 	static constexpr double GazeGain = 1.0;		// the bias OWNS the neck goal pre-touch
 	static constexpr double GazeMaxStep = 0.08;	// rad per decision the bias may walk (deliberate head turn)
 	static constexpr double WatchMaxStep = 0.25;// rad per decision while PLANTED (re-acquiring a snapping head)
-	// NB (2026-10-25 QA): an imposed post-slap POSE hold was tried and rejected - freezing any joints after the
-	// touch fought the brain's own balance and tripled striker self-knockdowns (even barely-there, even arm-only).
-	// The striker stays balanced because the BRAIN keeps full command of the body; the servo only watches.
 	bool bEyeContact = true;					// -SlapEyeContact=0 disables (debug / A-B checks)
 	void ApplyGaze(const mjModel* m, mjData* d);
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
 	struct FTurn
 	{
-		int32 Round = 0, Striker = 0;
+		int32 Striker = 0;
 		int64 Step = 0, TouchStep = -1;			// physics steps into the turn
-		FString Part, End;
+		FString Part;
 		bool bPalm = false, bStagger = false, bKO = false;
 		double Speed = 0.0, HeadPeak = 0.0, Com0[2] = {};
 		TArray<TPair<int32, FString>> Fouls;	// (athlete, why)
@@ -182,7 +186,7 @@ private:
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
 	void EndMatch(int32 Winner);	// series tally, HUD, post-match hold; -1 = draw / no contest
 	void Score(int32 (&Pts)[3][2]);
-	void Emit(const FString& Json);
+	void Emit(FStringView Json);
 	void Decide(const mjModel* m, mjData* d);
 	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);
 
@@ -197,6 +201,7 @@ private:
 	mutable FCriticalSection HudLock;
 	FSlapHud Hud;
 	void SetHud(TFunctionRef<void(FSlapHud&)> Edit);
+	void HudBalance(const mjData* d, FSlapHud& H) const;	// both athletes' centre of mass and sole midpoint
 
 	// live telemetry, physics thread
 	double TelHeadPrev[3] = {}, TelHeadVel[3] = {}, TelHeadG = 0.0;

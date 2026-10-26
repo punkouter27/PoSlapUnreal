@@ -38,4 +38,5 @@ private:
 	TArray<FVector> Scales;	// bone world scale at the rest pose
 	TArray<int32> RefToDriven;	// reference-skeleton index -> driven-bone index, or INDEX_NONE
 	TArray<FTransform> LastPose;	// world pose set last frame, kept only until the self-check runs
+	TArray<FTransform> Pose, CompSpace;	// per-frame scratch (world pose, component space), kept to skip the allocations
 };
