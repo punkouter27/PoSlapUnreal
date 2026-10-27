@@ -158,6 +158,7 @@ private:
 		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130 before the own palm, 136)
 		int32 NumOut = 1;
 		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
+		double Seen[7][3] = {};		// defender: the striker's hand at the last React + 1 decisions (React = 6, the .cpp)
 		bool bFresh = true;
 		double Mem[2] = {}, Stamina = 1.0, NeckStrength = 1.0;
 		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward

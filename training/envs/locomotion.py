@@ -1,4 +1,5 @@
-"""Natural Human Locomotion & Realism Env on MuJoCo Warp (Stages S1-S3): N worlds on GPU.
+"""Walking Env on MuJoCo Warp (Stage S2, the opt-in -SlapWalkBrain walk-in): N worlds on GPU.
+S1 (stand) duplicated L0 and S3 (jog, turn, slopes) trained a skill no match uses: both removed 2026-10-26.
 
 Implements all 10 AI Realism Options:
 1. Anatomical anti-hyperextension limits & inertial PD firmness (zeta = 0.8).
@@ -7,9 +8,9 @@ Implements all 10 AI Realism Options:
 4. Simplified inside-skin collision primitives with parent-child exclusions and zero self-clipping.
 5. Clean proprioceptive body awareness (136-float BRAIN_IO contract + optional 12-float foot/contact/load/phase extension = 148).
 6. Smooth motor control: asymmetric full-range mapping, stamina-scaled velocity rate limiter, optional EMA muscle ramp, 0-20 ms reflex delay.
-7. Natural movement rewards: upright posture, smooth velocity tracking, torque efficiency, and alternating heel-to-toe stride clearance.
+7. Natural movement rewards: upright posture, smooth velocity tracking, torque efficiency, and alternating swing-foot clearance.
 8. Anti-cheat & exploit penalties: second-order action jerk (vibration), arm flailing, leg dragging, asymmetric hop, and non-sole knockdown.
-9. Antagonist co-contraction impedance modulation during shove recovery / stop bracing, plus 3-Stage curriculum (S1 Stand, S2 Walk, S3 Jog/Turn/Stop/Slopes).
+9. Antagonist co-contraction impedance modulation during shove recovery.
 10. Fast multi-instance GPU execution (4,096 worlds, CUDA Graph captured, zero raycasts, zero host syncs per physics step).
 """
 from __future__ import annotations
@@ -32,9 +33,9 @@ HERE = Path(__file__).resolve().parents[1]
 
 
 class LocomotionEnv:
-    def __init__(self, character="grandpa", level="S1", num_envs=4096, seed=0, randomize=True, obs_dim=OBS):
-        if level not in ("S1", "S2", "S3"):
-            raise NotImplementedError(f"{level}: expected S1, S2, or S3 in LocomotionEnv")
+    def __init__(self, character="grandpa", level="S2", num_envs=4096, seed=0, randomize=True, obs_dim=OBS):
+        if level != "S2":
+            raise NotImplementedError(f"{level}: LocomotionEnv is S2 only")
         self.character, self.level, self.cfg, self.N, self.randomize = character, level, LEVELS[level], num_envs, randomize
         self.obs_dim = obs_dim
         dev = self.device = "cuda"
@@ -102,11 +103,12 @@ class LocomotionEnv:
 
         self.floor = m.geom("floor").id
         self.podium = m.geom("podium").id
-        # Park podium far away so athlete has open floor for walking, jogging, turning, and stopping
+        # Park podium far away so athlete has open floor for walking
         self.gpos[:, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=dev)
 
         T = lambda a: wp.to_torch(a)
         self.qpos, self.qvel, self.ctrl = T(self.dw.qpos), T(self.dw.qvel), T(self.dw.ctrl)
+        self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.xpos, self.xfrc, self.com = T(self.dw.xpos), T(self.dw.xfrc_applied), T(self.dw.subtree_com)
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
@@ -150,14 +152,12 @@ class LocomotionEnv:
         self.push_wait, self.push_left, self.push_f = z(N), z(N), z(N, 3)
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
 
-        # Locomotion state (Stages 2 & 3)
+        # Locomotion state
         self.speed_scale = 1.0
         self.v_cmd = z(N)                 # desired forward speed in m/s
         self.yaw_cmd = z(N)               # desired heading yaw in rad
-        self.yaw_rate = z(N)              # desired yaw turn rate in rad/s
         self.gait_phase = z(N)            # [0, 1) cyclic stride clock
-        self.stride_freq = z(N)           # Hz (1.8 walk, 2.5 jog)
-        self.slope_accel = z(N, 3)        # simulated terrain grade acceleration (m/s^2)
+        self.stride_freq = z(N)           # Hz (1.8 walk)
         self.foot_prev = z(N, 2, 3)       # previous step foot positions for velocity / drag check
         self.foot_contact = torch.ones(N, 2, dtype=torch.bool, device=dev)
         self.foot_load = torch.full((N, 2), 0.5, device=dev)
@@ -196,6 +196,7 @@ class LocomotionEnv:
         q = self.q0.repeat(n, 1)
         q[:, self.jq] += self._u((n, self.A), -0.04, 0.04)
         self.qpos[mask], self.qvel[mask] = q, 0.0
+        self.mact[mask] = self.stand[torch.argsort(self.act_id)]   # muscles settled at the stand targets (reset zeroes act)
         self.gpos[mask, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=self.device)
         self.geom_xpos[mask, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=self.device)
         self.mocap[mask, 0] = torch.tensor([50.0, 0.0, 1.0], device=self.device)
@@ -224,27 +225,10 @@ class LocomotionEnv:
         self.lead_swaps[mask], self.last_lead[mask] = 0, 0
         self.dist_walked[mask], self.speed_err_sum[mask], self.com_err[mask] = 0.0, 0.0, 0.0
 
-        if self.level == "S1":
-            self.v_cmd[mask], self.yaw_cmd[mask], self.yaw_rate[mask] = 0.0, 0.0, 0.0
-            self.stride_freq[mask] = 0.0
-            self.slope_accel[mask] = 0.0
-        elif self.level == "S2":
-            lo, hi = self.cfg.get("target_speed", (1.0, 1.4))
-            self.v_cmd[mask] = self._u(n, lo, hi) * self.speed_scale
-            self.yaw_cmd[mask], self.yaw_rate[mask] = 0.0, 0.0
-            self.stride_freq[mask] = 1.8
-            self.slope_accel[mask] = 0.0
-        else:  # S3: Jog, turn, smooth stop, and uneven slopes (+/- 8 deg)
-            lo, hi = self.cfg.get("target_speed", (2.0, 3.2))
-            self.v_cmd[mask] = self._u(n, lo, hi) * self.speed_scale
-            self.yaw_cmd[mask] = 0.0
-            self.yaw_rate[mask] = self._u(n, -0.6, 0.6)
-            self.stride_freq[mask] = 2.4
-            max_deg = float(self.cfg.get("max_slope_deg", 8.0))
-            pitch = self._u(n, -max_deg, max_deg) * (math.pi / 180.0)
-            roll = self._u(n, -max_deg * 0.5, max_deg * 0.5) * (math.pi / 180.0)
-            self.slope_accel[mask] = torch.stack([9.81 * torch.sin(pitch), 9.81 * torch.sin(roll), torch.zeros_like(pitch)], -1)
-
+        lo, hi = self.cfg.get("target_speed", (1.0, 1.4))
+        self.v_cmd[mask] = self._u(n, lo, hi) * self.speed_scale
+        self.yaw_cmd[mask] = 0.0
+        self.stride_freq[mask] = 1.8
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.foot_prev[mask] = self.geom_xpos[mask][:, self.feet]
@@ -269,12 +253,6 @@ class LocomotionEnv:
             self.push_left -= dt
             # Option 9: Antagonist co-contraction impedance boost during active shove recovery
             self.co_contract = torch.where(on, torch.full_like(self.co_contract, 1.20), torch.ones_like(self.co_contract))
-
-        # Stage 3 simulated terrain slope grade forces on torso/pelvis
-        if self.level == "S3":
-            f_slope = self.slope_accel * (self.total_weight_n / 9.81)
-            self.xfrc[:, self.pelvis, :3] += 0.5 * f_slope
-            self.xfrc[:, self.chest, :3] += 0.5 * f_slope
 
     def _update_foot_contacts(self):
         n = self.nacon[0]
@@ -310,7 +288,7 @@ class LocomotionEnv:
         self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
 
         # Option 9: Antagonist co-contraction impedance modulation (0.90 relaxed stride -> 1.25 braced shove/turn)
-        base_cc = 0.90 if self.level in ("S2", "S3") else 1.00
+        base_cc = 0.90
         shove_on = (self.push_left > 0) if (self.randomize and self.push_scale > 0 and self.cfg.get("pushes")) else torch.zeros_like(effort, dtype=torch.bool)
         self.co_contract = torch.where(shove_on, torch.full_like(effort, 1.25), base_cc + 0.30 * effort).clamp(0.85, 1.30)
         self.gain[..., 0] = self.gain0[:, 0] * self.co_contract[:, None]
@@ -340,11 +318,6 @@ class LocomotionEnv:
         # Advance gait clock and heading command
         active_walk = self.v_cmd > 0.1
         self.gait_phase = torch.where(active_walk, (self.gait_phase + self.stride_freq * 0.02) % 1.0, torch.zeros_like(self.gait_phase))
-        if self.level == "S3":
-            # Smooth stop in the final 200 steps (4.0 s)
-            stopping = self.t >= (self.T - 200)
-            self.v_cmd = torch.where(stopping, (self.v_cmd - 0.04).clamp(min=0.0), self.v_cmd)
-            self.yaw_cmd = torch.where(stopping, self.yaw_cmd, self.yaw_cmd + self.yaw_rate * 0.02)
 
         done = fell | (self.t >= self.T)
         timeout = done & ~fell
@@ -392,42 +365,33 @@ class LocomotionEnv:
         self.speed_err_sum += v_err
         self.dist_walked += v_head[:, 0].clamp(min=0.0) * 0.02
 
-        if self.level == "S1":
-            posture = torch.exp(-((q[:, self.jq] - self.stand) ** 2).sum(-1) / 1.0)
-            com_bal = torch.exp(-(self.com_err ** 2) / 0.005)
-            d_box = (feet_pos[:, :, :2] - self.foot0).abs()
-            anchor = torch.exp(-(d_box ** 2).sum((-1, -2)) / 0.005)
-            r = (1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture
-                 + 0.3 * facing + 0.5 * anchor + 0.3 * com_bal
-                 - 0.01 * smooth - 0.005 * jerk - 0.02 * arm_flail - 0.20 * leg_drag)
-        else:
-            # Option 7: Alternating heel-to-toe stride & natural locomotion reward
-            phi = 2.0 * math.pi * self.gait_phase
-            swing_l = (torch.sin(phi) > 0).float()
-            swing_r = 1.0 - swing_l
-            clear_l = (feet_pos[:, 0, 2] - 0.03).clamp(0.0, 0.08) / 0.06
-            clear_r = (feet_pos[:, 1, 2] - 0.03).clamp(0.0, 0.08) / 0.06
-            stride_clear = swing_l * clear_l + swing_r * clear_r
-            stance_match = (1.0 - swing_l) * self.foot_contact[:, 0].float() + (1.0 - swing_r) * self.foot_contact[:, 1].float()
+        # Option 7: alternating swing-foot clearance (the foot is one rigid box: no heel-to-toe roll)
+        phi = 2.0 * math.pi * self.gait_phase
+        swing_l = (torch.sin(phi) > 0).float()
+        swing_r = 1.0 - swing_l
+        clear_l = (feet_pos[:, 0, 2] - 0.03).clamp(0.0, 0.08) / 0.06
+        clear_r = (feet_pos[:, 1, 2] - 0.03).clamp(0.0, 0.08) / 0.06
+        stride_clear = swing_l * clear_l + swing_r * clear_r
+        stance_match = (1.0 - swing_l) * self.foot_contact[:, 0].float() + (1.0 - swing_r) * self.foot_contact[:, 1].float()
 
-            # Track alternating lead foot in heading frame to prevent one-leg dragging/hopping
-            rel_l = self._heading(feet_pos[:, 0] - self.xpos[:, self.pelvis], c, s)
-            rel_r = self._heading(feet_pos[:, 1] - self.xpos[:, self.pelvis], c, s)
-            lead = torch.where(rel_l[:, 0] > rel_r[:, 0] + 0.04, torch.ones_like( self.last_lead),
-                               torch.where(rel_r[:, 0] > rel_l[:, 0] + 0.04, -torch.ones_like(self.last_lead), self.last_lead))
-            swapped = (lead != 0) & (self.last_lead != 0) & (lead != self.last_lead)
-            self.lead_swaps += swapped.long()
-            self.last_lead = torch.where(lead != 0, lead, self.last_lead)
+        # Track alternating lead foot in heading frame to prevent one-leg dragging/hopping
+        rel_l = self._heading(feet_pos[:, 0] - self.xpos[:, self.pelvis], c, s)
+        rel_r = self._heading(feet_pos[:, 1] - self.xpos[:, self.pelvis], c, s)
+        lead = torch.where(rel_l[:, 0] > rel_r[:, 0] + 0.04, torch.ones_like( self.last_lead),
+                           torch.where(rel_r[:, 0] > rel_l[:, 0] + 0.04, -torch.ones_like(self.last_lead), self.last_lead))
+        swapped = (lead != 0) & (self.last_lead != 0) & (lead != self.last_lead)
+        self.lead_swaps += swapped.long()
+        self.last_lead = torch.where(lead != 0, lead, self.last_lead)
 
-            moving = (self.v_cmd > 0.1).float()
-            # 2026-10-26: standing paid ~2.2 a step and a 1.2 m/s miss cost only 1.2, so the S2 "graduates" stood still
-            # (0.15 m in 20 s). A wide kernel pays partial speed, and forward progress pays linearly up to the command
-            vel_rew = 2.0 * torch.exp(-(v_err ** 2) / 1.0)
-            progress = 1.5 * (v_head[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0) * moving
-            gait_rew = moving * (0.4 * stride_clear + 0.4 * stance_match) + (1.0 - moving) * (0.8 * torch.exp(-(self.com_err ** 2) / 0.005))
-            r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
-                 + vel_rew + progress + gait_rew
-                 - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag)
+        moving = (self.v_cmd > 0.1).float()
+        # 2026-10-26: standing paid ~2.2 a step and a 1.2 m/s miss cost only 1.2, so the S2 "graduates" stood still
+        # (0.15 m in 20 s). A wide kernel pays partial speed, and forward progress pays linearly up to the command
+        vel_rew = 2.0 * torch.exp(-(v_err ** 2) / 1.0)
+        progress = 1.5 * (v_head[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0) * moving
+        gait_rew = moving * (0.4 * stride_clear + 0.4 * stance_match) + (1.0 - moving) * (0.8 * torch.exp(-(self.com_err ** 2) / 0.005))
+        r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
+             + vel_rew + progress + gait_rew
+             - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag)
 
         return torch.where(fell, torch.full_like(r, -25.0), r)
 
@@ -442,17 +406,11 @@ class LocomotionEnv:
         role = torch.zeros(self.N, device=self.device)
         clock = 1.0 - self.t.float() / self.T
 
-        if self.level == "S1":
-            b = torch.zeros_like(q[:, 0:3])
-            b[:, 0], b[:, 1] = self.q0[0] - q[:, 0], self.q0[1] - q[:, 1]
-            target_h = self._heading(b, c, s)
-            aux_h = torch.zeros_like(target_h)
-        else:
-            # Target vector in heading frame encodes velocity command along desired yaw
-            dyaw = self.yaw_cmd - yaw
-            target_h = torch.stack([self.v_cmd * torch.cos(dyaw), self.v_cmd * torch.sin(dyaw), torch.zeros_like(self.v_cmd)], -1)
-            phi = 2.0 * math.pi * self.gait_phase
-            aux_h = torch.stack([torch.sin(phi), torch.cos(phi), self.v_cmd / 3.0], -1)
+        # Target vector in heading frame encodes velocity command along desired yaw
+        dyaw = self.yaw_cmd - yaw
+        target_h = torch.stack([self.v_cmd * torch.cos(dyaw), self.v_cmd * torch.sin(dyaw), torch.zeros_like(self.v_cmd)], -1)
+        phi = 2.0 * math.pi * self.gait_phase
+        aux_h = torch.stack([torch.sin(phi), torch.cos(phi), self.v_cmd / 3.0], -1)
 
         cur = torch.cat([target_h, aux_h], -1)
         self.hist = torch.where(self.fresh[:, None, None], cur[:, None].expand(-1, 16, -1), torch.cat([self.hist[:, 1:], cur[:, None]], 1))

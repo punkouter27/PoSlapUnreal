@@ -53,20 +53,10 @@ LEVELS = {
         model="arena", seconds=None, pushes=False, role=None,
         check=dict(matches=100, max_blowups=0),
     ),
-    # 3-Stage Natural Human Locomotion & Realism Milestones (training/envs/locomotion.py)
-    "S1": dict(  # Stage 1: Stand upright and recover balance from randomized shoves (150-300 N)
-        model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.6,
-        reward_target={0: 2400.0},
-        check={0: dict(episodes=100, min_no_fall=0.95, min_absorbed=0.95)},
-    ),
-    "S2": dict(  # Stage 2: Take steady, natural alternating heel-to-toe steps and walk at 1.0-1.4 m/s
+    # Walking (training/envs/locomotion.py): the opt-in -SlapWalkBrain walk-in. S1 (= L0) and S3 (jog) removed 2026-10-26
+    "S2": dict(  # Stage 2: Take steady, alternating steps (swing-foot clearance) and walk at 1.0-1.4 m/s
         model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(1.0, 1.4),
         reward_target={0: 1800.0},
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6)},   # pace: walked / commanded distance
-    ),
-    "S3": dict(  # Stage 3: Jog (2.0-3.2 m/s), turn smoothly, stop smoothly, and handle +/- 8 deg uneven slopes
-        model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(2.0, 3.2), max_slope_deg=8.0,
-        reward_target={0: 1600.0},
-        check={0: dict(episodes=100, min_no_fall=0.92, min_pace=0.6)},
     ),
 }

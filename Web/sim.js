@@ -4,6 +4,7 @@
 
 export const OBS = 136;                    // DOCS/BRAIN_IO.md
 const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
+const REACT = 6;                           // the defender sees the striker's hand 6 decisions (0.12 s) late
 const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
 export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
 const BOX = [0.20, 0.25], KICK_STEPS = 2;
@@ -128,6 +129,8 @@ export class Match {
     const { mj, m, d } = this;
     mj.mj_resetData(m, d);
     for (const x of this.sides) x.order.forEach((n, i) => { d.qpos[x.qa[i]] = x.standPose[i]; });
+    for (let a = 0; a < m.nu; a++)   // brain_cpu.settle_muscles: each muscle's filter state at its joint's angle
+      if (m.actuator_actadr[a] >= 0) d.act[m.actuator_actadr[a]] = d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
     mj.mj_forward(m, d);
   }
 
@@ -145,7 +148,7 @@ export class Match {
     const S = this.sides[this.s], D = this.sides[1 - this.s];
     this.handPrev = v3(d.geom_xpos, S.hand); this.headPrev = v3(d.geom_xpos, D.head);
     this.rec = { round: this.round, striker: S.name, touch: null, part: null, palm: false, speed: 0, head_peak: 0, stagger: false, fouls: [], ko: false, end: null };
-    this.touchK = null; this.com0 = null; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
+    this.touchK = null; this.com0 = null; this.seen = []; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
     this.faints = [];
     this.sides.forEach((x, i) => {
       const k0 = faintStep(x.card, this.seed, this.round, this.s, i, this.dt);
@@ -204,7 +207,9 @@ export class Match {
       mj.mj_kinematics(m, d);
       const clock = 1 - t / STRIKE_CLOCK, hd = v3(d.geom_xpos, D.head);
       // one brain at a time: the browser's ONNX Runtime refuses a second run while one is in flight
-      const dObs = this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), v3(d.geom_xpos, S.hand)) : D.obs(d, 0);
+      const h = v3(d.geom_xpos, S.hand);   // the striker's hand at the last REACT + 1 decisions: the defender sees the oldest
+      this.seen = (this.seen.length ? this.seen : Array(REACT).fill(h)).slice(-REACT).concat([h]);
+      const dObs = this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), this.seen[0]) : D.obs(d, 0);
       const aS = await S.policy(S.obs(d, 1, clock, hd)), aD = await D.policy(dObs);
       S.decide(aS); D.decide(aD);
       this.clock = STRIKE_CLOCK - t;

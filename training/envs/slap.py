@@ -27,7 +27,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
+from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -99,6 +99,7 @@ class SlapEnv:
         T = lambda a: wp.to_torch(a)
         self.qpos, self.qvel, self.ctrl = T(self.dw.qpos), T(self.dw.qvel), T(self.dw.ctrl)
         self.xpos, self.xfrc, self.com = T(self.dw.xpos), T(self.dw.xfrc_applied), T(self.dw.subtree_com)
+        self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.con_frame, self.mocap = T(self.dw.contact.frame), T(self.dw.mocap_pos)
@@ -210,6 +211,7 @@ class SlapEnv:
         q = self.q0.repeat(n, 1)
         q[:, self.jq] += self._u((n, self.A), -0.05, 0.05)          # never the same start twice
         self.qpos[mask], self.qvel[mask] = q, 0.0
+        self.mact[mask] = self.stand[torch.argsort(self.act_id)]   # muscles settled at the stand targets (reset zeroes act)
         if self.randomize:
             self.friction[mask, self.floor, 0] = self._u(n, 0.6, 1.2)
             self.friction[mask, self.feet[0], 0] = self._u(n, 0.6, 1.2)
@@ -472,9 +474,10 @@ class SlapEnv:
     def _heading(self, v, c, s):
         return torch.stack([c * v[:, 0] + s * v[:, 1], -s * v[:, 0] + c * v[:, 1], v[:, 2]], -1)
 
-    def opp_hand(self):
-        """Absorb: the scripted opponent's right hand: rest -> wound up (0.6-0.15 s before) -> our cheek -> rest (0.5 s)."""
-        t = (self.t - self.t_hit).float()[:, None] / 50.0
+    def opp_hand(self, late=0):
+        """Absorb: the scripted opponent's right hand: rest -> wound up (0.6-0.15 s before) -> our cheek -> rest (0.5 s);
+        as it was `late` decisions ago."""
+        t = (self.t - late - self.t_hit).float()[:, None] / 50.0
         cheek = self.head0 + self.slap_r
         wind = self.hrest + ((t + 0.6) / 0.45).clamp(0, 1) * (self.hwind - self.hrest)
         swing = self.hwind + ((t + 0.15) / 0.15).clamp(0, 1) * (cheek - self.hwind)
@@ -492,7 +495,7 @@ class SlapEnv:
         tgt = torch.where((self.role == 1)[:, None], self.mocap[:, 0], self.tbase)   # strike: target; absorb: opponent head
         box = torch.where((self.role == 0)[:, None], b, tgt - q[:, 0:3])
         clock = torch.where(self.role != 0, 1.0 - self.t.float() / self.T, torch.zeros_like(role))
-        hand = torch.where((self.role == -1)[:, None], self.opp_hand() - q[:, 0:3], torch.zeros_like(b))
+        hand = torch.where((self.role == -1)[:, None], self.opp_hand(REACT) - q[:, 0:3], torch.zeros_like(b))
         cur = torch.cat([self._heading(box, c, s), self._heading(hand, c, s)], -1)
         self.hist = torch.where(self.fresh[:, None, None], cur[:, None].expand(-1, 16, -1), torch.cat([self.hist[:, 1:], cur[:, None]], 1))
         self.fresh[:] = False

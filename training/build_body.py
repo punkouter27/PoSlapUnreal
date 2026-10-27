@@ -52,6 +52,8 @@ FREE = {"neck", "upperarm", "forearm", "hand"}   # carry nothing below them: the
                                                  # inertia shows): damping only raised to ZETA, never lowered
 JOINT_SEG = {jn: sg for sg, js in JOINTS.items() for jn, *_ in js}
 ARM_ARMATURE = 0.005   # arm joints; the default 0.02 was 49-84 % of wrist/shoulder inertia and slowed the whip
+MUSCLE_TC = 0.035      # s: muscle activation time constant (human 30-40 ms); <position timeconst> = filterexact, so
+                       # every engine (Warp, URLab, WASM) ramps the motor toward the brain's target instead of snapping
 ADULT_JOINT_SPEED = 12.0  # rad/s, scaled by card speed; enforced by the env, recorded here per joint
 SEG_SPEED = {"upperarm": 20.0, "forearm": 25.0, "hand": 25.0}   # rad/s: a strike's arm outruns its trunk and legs
                                                                 # (throwing peaks: trunk ~15, elbow ~40)
@@ -258,8 +260,12 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
             if inertia:   # minus the joint's own damping (0.5, <default>)
                 aim = max(0.0, 2 * ZETA * math.sqrt(kp * inertia[jn + side]) - 0.5)
                 kv = aim if seg(n) in FREE else max(kv, aim)
+            vmax = SEG_SPEED.get(seg(n), ADULT_JOINT_SPEED) * card["speed"]
+            kv = max(kv, tq * st / vmax)   # force-velocity: a saturated motor's force falls to 0 at the card's top speed
+            # ponytail: linear force-velocity; Hill's hyperbola is steeper (~40 % force at 1/4 speed): needs a per-step
+            # forcerange(qvel) in all three engines
             acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kv)}" '
-                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}"/>')
+                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}" timeconst="{fmt(MUSCLE_TC)}"/>')
         for gg in g["geoms"]:
             out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"/>'))
         if n == "head":
@@ -422,6 +428,7 @@ def balance_and_drop(xml, stand, card):
           f"({'OK' if abs(off[0]) < 0.04 and abs(off[1]) < 0.02 else 'OFF-CENTRE'})")
     for j in range(m.nu):
         d.ctrl[j] = d.qpos[m.jnt_qposadr[m.actuator_trnid[j, 0]]]
+    d.act[:] = d.ctrl   # muscles start settled at the stance (MUSCLE_TC filter state), as every engine's reset
     up, peak = 0.0, 0.0
     for i in range(int(3.0 / m.opt.timestep)):
         mujoco.mj_step(m, d)
@@ -433,6 +440,36 @@ def balance_and_drop(xml, stand, card):
     print(f"A11 drop test (PD holding stance, 3 s): no blow-up, peak joint speed {peak:.1f}, "
           f"upright for {up:.2f} s, pelvis z {d.qpos[2]:.3f} m")
     return m, off, up
+
+
+SHOULDER_BACK_DEG, SHOULDER_ACROSS_DEG = 60, 50   # human shoulder cone: the upper arm at most 60 deg behind the chest's
+# frontal plane (extension / horizontal abduction) and 50 deg across its midline. ponytail: direction only, twist ignored
+
+
+def shoulder_cone(xml, stand, card, n=4000):
+    """A13: no corner or sample of the shoulder's hinge box (swing x raise x twist) points the upper arm outside the human
+    cone (2026-10-26: the three hinges at 0.8-0.85 flexibility reach 42 deg behind, 28 across: no penalty needed)."""
+    m = mujoco.MjModel.from_xml_string(xml)
+    d = mujoco.MjData(m)
+    set_pose(m, d, stand_pose(stand, card))
+    rng = np.random.default_rng(0)
+    js = [m.joint(f"shoulder_{k}_l") for k in ("swing", "raise", "twist")]
+    corners = np.array(np.meshgrid(*[j.range for j in js])).T.reshape(-1, 3)
+    ua, fa, chest = m.body("upperarm_l").id, m.body("forearm_l").id, m.body("chest").id
+    back, across = math.sin(math.radians(SHOULDER_BACK_DEG)), math.sin(math.radians(SHOULDER_ACROSS_DEG))
+    behind = over = 0.0
+    for q in list(corners) + [[rng.uniform(*j.range) for j in js] for _ in range(n)]:
+        for j, x in zip(js, q):
+            d.qpos[j.qposadr[0]] = x
+        mujoco.mj_kinematics(m, d)
+        v = d.xmat[chest].reshape(3, 3).T @ (d.xpos[fa] - d.xpos[ua])
+        v /= np.linalg.norm(v)
+        behind, over = max(behind, -v[0]), max(over, -v[1])   # left arm: across the midline = -Y
+    behind, over = math.degrees(math.asin(max(0.0, behind))), math.degrees(math.asin(max(0.0, over)))
+    print(f"A13 shoulder cone: upper arm at most {behind:.0f} deg behind (limit {SHOULDER_BACK_DEG}), "
+          f"{over:.0f} deg across (limit {SHOULDER_ACROSS_DEG})")
+    if behind > SHOULDER_BACK_DEG or over > SHOULDER_ACROSS_DEG:
+        sys.exit("A13 FAIL: shoulder ranges reach past a human shoulder")
 
 
 GAP = 0.85   # pelvis to pelvis (PRD 0.85-1.0 m; shortest so a lean reaches)
@@ -464,6 +501,7 @@ def main():
             root = root - [0, 0, sole_gap(solo, stand, card) - 0.001]
             solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
             print(f"style stance: root lowered to {root[2]:.3f} m, soles {sole_gap(solo, stand, card) * 1000:.1f} mm")
+        shoulder_cone(solo, stand, card)
         inertia = joint_inertia(solo, stand, card)   # second pass: damping from each joint's own load
         solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target)
         (out / f"{card['name']}_solo.xml").write_text(solo)

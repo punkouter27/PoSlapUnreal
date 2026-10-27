@@ -1,7 +1,7 @@
 {
  "mujoco": "3.10.0",
  "model": "matt_solo.xml",
- "sha256": "ddabb49b1e2e4fa51caf78db35cc0449b1b8519906f161709b41fa8568fecbb3",
+ "sha256": "582c1035fa8e1669116483f4723015299bad3cea78fa11cfe8dc62ebc9d9c4bc",
  "option": {
   "timestep": 0.005,
   "integrator": 3,
@@ -305,12 +305,12 @@
  },
  "root_height_m": 0.9615765715608033,
  "geom_scale": {
+  "belly": 0.7350918906249998,
   "forearm_r": 0.8145062499999999,
-  "pelvis": 0.95,
   "hand_r": 0.6634204312890623,
   "thigh_r": 0.6634204312890623,
-  "belly": 0.7350918906249998,
   "forearm_l": 0.8573749999999999,
+  "pelvis": 0.95,
   "hand_l": 0.7737809374999999,
   "thigh_l": 0.7737809374999999
  },

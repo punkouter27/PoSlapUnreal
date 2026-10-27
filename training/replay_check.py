@@ -14,6 +14,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from brain_cpu import settle_muscles
+
 HERE = Path(__file__).parent
 SECONDS, CONTROL_EVERY = 5.0, 4  # 50 Hz brain over 200 Hz physics
 
@@ -25,6 +27,7 @@ def stand(m, d, fp):
         for j, rad in fp["stand_pose_rad"].items():
             if name.endswith(j):
                 d.qpos[m.jnt_qposadr[i]] = rad
+    settle_muscles(m, d)
     mujoco.mj_forward(m, d)
 
 

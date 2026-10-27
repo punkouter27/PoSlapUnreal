@@ -23,7 +23,7 @@ Older brains read the first 108 (before memory) or 130 (before the own palm); bo
 | 100 | role: +1 strike, −1 defend, 0 none | |
 | 101 | turn clock remaining (1 → 0 over 30 s) | |
 | 102–104 | role ≠ 0: target − own pelvis (opponent **head geom centre**; L2: the `target` mocap sphere, placed where that head is). **Role 0: own foot-box centre − pelvis** (box centre = the athlete's start pelvis x, y; z = 0). Heading frame | m |
-| 105–107 | opponent `hand_r` − own pelvis, heading frame. **0 when role = 0** or no opponent; Unreal keeps it 0 for the striker too (L2 trained alone) | m |
+| 105–107 | opponent `hand_r` **as it was 6 decisions (0.12 s) ago** (`REACT`: visual reaction; from 2026-10-26) − own pelvis now, heading frame. At a turn's first decision = the current hand. **0 when role = 0** or no opponent; Unreal keeps it 0 for the striker too (L2 trained alone) | m |
 | 108–125 | **memory:** inputs 102–107 as they were 5, 10 and 15 decisions ago (0.1, 0.2, 0.3 s; 6 each). At a turn's first decision all three = the current 102–107 | m |
 | 126–127 | **memory:** the opponent's last strike this match: touch time / 30 s, palm speed / 10 (both 0 until he has struck; reset each match) | |
 | 128 | own **stamina**: 1 fresh, − card `stamina_per_strike` per turn struck, floor 0.7. Scales the action rule's speed limit | |
@@ -45,4 +45,5 @@ the range ends (until 2026-10-22 `stand + a · ½(hi − lo)`, which left up to 
 right shoulder raise above +4°);
 then rate-limit per joint: `|target − previous target| ≤ max_joint_speed_rad_s[j] × 0.02 × stamina` (a list in joint
 order; older fingerprints hold one number for every joint).
-`ctrl = target` (position actuators) for the next 4 physics steps.
+`ctrl = target` (position actuators) for the next 4 physics steps. The actuators filter it (`timeconst` 35 ms,
+`build_body.MUSCLE_TC`: muscle activation), so every reset sets each actuator's `act` to its joint's angle (`settle_muscles`).

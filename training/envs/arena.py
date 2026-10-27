@@ -18,7 +18,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
+from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
 from envs.slap import DECIM, WAIT, quat_mat
 from levels import LEVELS
 
@@ -100,6 +100,10 @@ class ArenaEnv:
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.con_frame = T(self.dw.contact.frame)
         self.xfrc, self.xipos = T(self.dw.xfrc_applied), T(self.dw.xipos)
+        self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
+        self.act0 = torch.zeros(m.nu, device=dev)
+        for k in range(2):
+            self.act0[self.act_id[k]] = self.stand[k]
         # geom -> athlete (0 red, 1 blue, -1 world); knockdown = a non-foot geom of an athlete on floor or podium
         owner = [-1] * m.ngeom
         for g in range(m.ngeom):
@@ -139,6 +143,7 @@ class ArenaEnv:
         self.force_striker = None   # exams: None = coin toss
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
+        self.hand_seen = z(W, REACT + 1, 2, 3)   # both right hands, oldest first: the defender sees [:, 0] (0.12 s late)
 
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
         with wp.ScopedCapture() as c:
@@ -174,6 +179,7 @@ class ArenaEnv:
         for k in range(2):
             q[:, self.jq[k]] += self._u((n, self.A), -0.05, 0.05)
         self.qpos[mask], self.qvel[mask] = q, 0.0
+        self.mact[mask] = self.act0   # muscles settled at the stand targets (reset zeroes act)
         self.kick_left[mask] = 0
         if self.randomize:
             self.friction[mask, self.floor, 0] = self._u(n, 0.6, 1.2)
@@ -382,6 +388,8 @@ class ArenaEnv:
         clock = (1.0 - self.t.float() / self.T)[:, None].expand(-1, 2)
         head, hand = self.geom_xpos[:, self.head_g], self.geom_xpos[:, self.hand_g]
         fresh = self.fresh.repeat_interleave(2)
+        self.hand_seen = torch.where(self.fresh[:, None, None, None], hand[:, None].expand(-1, REACT + 1, -1, -1),
+                                     torch.cat([self.hand_seen[:, 1:], hand[:, None]], 1))
         self.fresh[:] = False
         rows = []
         for k in range(2):
@@ -391,7 +399,7 @@ class ArenaEnv:
             c, s = torch.cos(yaw), torch.sin(yaw)
             hd = lambda x: torch.stack([c * x[:, 0] + s * x[:, 1], -s * x[:, 0] + c * x[:, 1], x[:, 2]], -1)
             pel = self.xpos[:, self.pelvis[k]]
-            opp_hand = torch.where((role[:, k] < 0)[:, None], hand[:, 1 - k] - pel, torch.zeros_like(pel))
+            opp_hand = torch.where((role[:, k] < 0)[:, None], self.hand_seen[:, 0, 1 - k] - pel, torch.zeros_like(pel))
             cur = torch.cat([hd(head[:, 1 - k] - pel), hd(opp_hand)], -1)
             rows.append(torch.cat([
                 q[:, self.jq[k]] - self.stand[k],

@@ -6,7 +6,7 @@
     "physics_hz": 200,
     "physics_dt_s": 0.005,
     "brain_reflex_hz": 50,
-    "brain_decision_dt_s": 0.020,
+    "brain_decision_dt_s": 0.02,
     "decimation_substeps": 4,
     "multi_instance_gpu": {
       "backend": "MuJoCo Warp (CUDA Graph captured)",
@@ -17,7 +17,11 @@
     }
   },
   "ppo_hyperparameters": {
-    "network_architecture": [512, 256, 128],
+    "network_architecture": [
+      512,
+      256,
+      128
+    ],
     "activation": "ELU",
     "steps_per_env": 32,
     "minibatches": 4,
@@ -29,7 +33,7 @@
     "clip_param": 0.2,
     "entropy_coef": 0.001,
     "init_action_std": 0.25,
-    "max_action_std_cap": 0.30,
+    "max_action_std_cap": 0.3,
     "obs_clip": 5.0
   },
   "natural_movement_rewards": {
@@ -49,8 +53,8 @@
     "action_smoothness_l2_penalty": -0.01,
     "action_jerk_vibration_penalty": -0.02,
     "arm_flailing_angular_vel_penalty": -0.05,
-    "leg_dragging_swing_contact_penalty": -0.50,
-    "asymmetric_gait_hop_penalty": -0.30,
+    "leg_dragging_swing_contact_penalty": -0.5,
+    "asymmetric_gait_hop_penalty": -0.3,
     "podium_or_non_sole_graze_penalty": -2.0,
     "footbox_exit_foul_penalty": -60.0,
     "missed_wild_swing_whiff_penalty": -50.0,
@@ -62,57 +66,89 @@
   },
   "step_by_step_learning_milestones": {
     "locomotion_foundation_stages": {
-      "Stage_1_Stand_And_Push_Recovery": {
-        "maps_to_level": "L0 / L1",
-        "goal": "Stand upright with balanced posture and recover COM over planted feet under randomized 150-300 N torso/head shoves.",
-        "duration_s": 30.0,
-        "push_force_n": [150.0, 300.0],
-        "push_duration_s": [0.1, 0.2],
-        "graduation_gate": {
-          "consecutive_episodes": 100,
-          "min_no_fall_rate": 0.95,
-          "min_in_box_rate": 0.95,
-          "min_mean_return": 2400.0,
-          "zero_nan_gradients": true
-        }
-      },
       "Stage_2_Steady_Natural_Walk": {
         "maps_to_level": "L1_Walk",
-        "goal": "Take steady, natural alternating heel-to-toe steps and walk at a comfortable pace (1.0-1.4 m/s) with calm upper body and zero leg dragging.",
-        "target_speed_m_s": [1.0, 1.4],
+        "goal": "Take steady, alternating steps with swing-foot clearance and walk at a comfortable pace (1.0-1.4 m/s) with calm upper body and zero leg dragging.",
+        "target_speed_m_s": [
+          1.0,
+          1.4
+        ],
         "stride_frequency_hz": 1.8,
         "min_swing_foot_clearance_m": 0.06,
         "graduation_gate": {
           "consecutive_episodes": 100,
           "min_no_fall_rate": 0.95,
           "max_speed_tracking_error_m_s": 0.15,
-          "min_stride_symmetry": 0.90,
-          "zero_nan_gradients": true
-        }
-      },
-      "Stage_3_Jog_Turn_Stop_And_Slopes": {
-        "maps_to_level": "L1_Agile",
-        "goal": "Jog (2.5-3.5 m/s), execute smooth yaw turns, stop smoothly into planted guard stance, and handle uneven terrain or slight slopes (+/- 5 to 8 deg).",
-        "target_speed_m_s": [0.0, 3.5],
-        "yaw_turn_rate_rad_s": [-1.5, 1.5],
-        "terrain_slope_deg": [-8.0, 8.0],
-        "terrain_heightfield_amplitude_m": 0.03,
-        "graduation_gate": {
-          "consecutive_episodes": 100,
-          "min_no_fall_rate": 0.92,
-          "smooth_stop_com_settled_m": 0.05,
+          "min_stride_symmetry": 0.9,
           "zero_nan_gradients": true
         }
       }
     },
     "arena_combat_skill_ladder": {
-      "L0_Stand": { "roles": { "0": 1.0 }, "reward_target": { "0": 2400.0 }, "min_no_fall": 0.95 },
-      "L1_Guard_Hold": { "roles": { "0": 1.0 }, "reward_target": { "0": 2500.0 }, "min_no_fall": 0.95, "min_in_box": 0.95 },
-      "L2_Strike_Target": { "roles": { "1": 0.7, "0": 0.3 }, "reward_target": { "1": 100.0, "0": 2500.0 }, "min_hit_8ms": 0.90, "min_no_fall": 0.90, "min_in_box": 0.90 },
-      "L3_Impact_Absorb": { "roles": { "-1": 0.6, "1": 0.4 }, "reward_target": { "-1": 800.0, "1": 100.0 }, "slap_impulse_ns": 15.0, "min_absorbed_5cm_5s": 0.90 },
-      "L4_Arena_Self_Play": { "roles": { "1": 0.5, "-1": 0.5 }, "reward_target": { "1": 100.0, "-1": 300.0 }, "ko_rate_range": [0.10, 0.40], "max_self_fall": 0.05 },
-      "L5_Full_Match_Parity": { "matches": 100, "max_blowups": 0, "unreal_live_parity_cm": 0.0 }
+      "L0_Stand": {
+        "roles": {
+          "0": 1.0
+        },
+        "reward_target": {
+          "0": 2400.0
+        },
+        "min_no_fall": 0.95
+      },
+      "L1_Guard_Hold": {
+        "roles": {
+          "0": 1.0
+        },
+        "reward_target": {
+          "0": 2500.0
+        },
+        "min_no_fall": 0.95,
+        "min_in_box": 0.95
+      },
+      "L2_Strike_Target": {
+        "roles": {
+          "1": 0.7,
+          "0": 0.3
+        },
+        "reward_target": {
+          "1": 100.0,
+          "0": 2500.0
+        },
+        "min_hit_8ms": 0.9,
+        "min_no_fall": 0.9,
+        "min_in_box": 0.9
+      },
+      "L3_Impact_Absorb": {
+        "roles": {
+          "-1": 0.6,
+          "1": 0.4
+        },
+        "reward_target": {
+          "-1": 800.0,
+          "1": 100.0
+        },
+        "slap_impulse_ns": 15.0,
+        "min_absorbed_5cm_5s": 0.9
+      },
+      "L4_Arena_Self_Play": {
+        "roles": {
+          "1": 0.5,
+          "-1": 0.5
+        },
+        "reward_target": {
+          "1": 100.0,
+          "-1": 300.0
+        },
+        "ko_rate_range": [
+          0.1,
+          0.4
+        ],
+        "max_self_fall": 0.05
+      },
+      "L5_Full_Match_Parity": {
+        "matches": 100,
+        "max_blowups": 0,
+        "unreal_live_parity_cm": 0.0
+      }
     }
   }
 }
-

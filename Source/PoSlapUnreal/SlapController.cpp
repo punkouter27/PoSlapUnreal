@@ -25,6 +25,13 @@ namespace
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
 	constexpr int32 NumObs = 148;		// DOCS/BRAIN_IO.md (136 base + 12 extended proprioceptive foot-ground/phase floats)
 	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
+	constexpr int32 React = 6;	// the defender sees the striker's hand 6 decisions (0.12 s) late (brain_cpu.REACT)
+
+	void SettleMuscles(const mjModel* m, mjData* d)	// brain_cpu.settle_muscles: each muscle's filter state at its joint's angle
+	{
+		for (int32 a = 0; a < m->nu; ++a)
+			if (m->actuator_actadr[a] >= 0) d->act[m->actuator_actadr[a]] = d->qpos[m->jnt_qposadr[m->actuator_trnid[2 * a]]];
+	}
 	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
 
 	TSharedPtr<FJsonObject> LoadJson(const FString& RelPath)
@@ -224,6 +231,7 @@ void USlapController::StartFromRecordedPose(const mjModel* m, mjData* d) const	/
 {
 	mj_resetData(m, d);
 	for (const TPair<int32, double>& Q : ReplayQ0) d->qpos[Q.Key] = Q.Value;
+	SettleMuscles(m, d);
 	mj_forward(m, d);
 }
 
@@ -782,6 +790,7 @@ void USlapController::PlaceWalkers(const mjModel* m, mjData* d)
 		}
 		for (int32 k = 0; k < 6; ++k) d->qvel[A.RootV + k] = 0.0;
 	}
+	SettleMuscles(m, d);
 	mj_forward(m, d);
 }
 
@@ -939,6 +948,7 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	PrevHandDist = -1.0;
 	Ttc = 99.0;
 	DangerNow[0] = DangerNow[1] = 0.0;
+	SettleMuscles(m, d);
 	mj_forward(m, d);
 	mj_forward(m, d);
 	for (int32 a = 0; a < 2 && Athletes.Num() == 2; ++a)	// eye contact: world gaze biases start on the eye line
@@ -1629,10 +1639,17 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 		const double* P = d->geom_xpos + 3 * Opp->Head;	// the opponent's head centre - pelvis
 		const double Rel[3] = { P[0] - Pelvis[0], P[1] - Pelvis[1], P[2] - Pelvis[2] };
 		Heading(Rel, O + 12 + N);
-		if (Role < 0.f)	// defender: the striker's right hand - pelvis
+		if (Role < 0.f)	// defender: the striker's right hand as it was React decisions ago - pelvis
 		{
 			const double* H = d->geom_xpos + 3 * Opp->Hand;
-			const double Rh[3] = { H[0] - Pelvis[0], H[1] - Pelvis[1], H[2] - Pelvis[2] };
+			if (A.bFresh)
+				for (double* Row : A.Seen) FMemory::Memcpy(Row, H, 3 * sizeof(double));
+			else
+			{
+				FMemory::Memmove(A.Seen[0], A.Seen[1], React * 3 * sizeof(double));
+				FMemory::Memcpy(A.Seen[React], H, 3 * sizeof(double));
+			}
+			const double Rh[3] = { A.Seen[0][0] - Pelvis[0], A.Seen[0][1] - Pelvis[1], A.Seen[0][2] - Pelvis[2] };
 			Heading(Rh, O + 15 + N);
 		}
 	}

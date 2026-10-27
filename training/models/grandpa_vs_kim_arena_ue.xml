@@ -181,65 +181,65 @@
     </body>
   </worldbody>
   <actuator>
-    <position name="red_waist_twist" joint="red_waist_twist" kp="171.42857360839844" kv="20.033842086791992" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-60.0 60.0" />
-    <position name="red_waist_flex" joint="red_waist_flex" kp="285.71429443359375" kv="57.50813674926758" ctrlrange="-0.296705961227417 0.8901179432868958" forcerange="-100.0 100.0" />
-    <position name="red_waist_side" joint="red_waist_side" kp="228.57142639160156" kv="53.880279541015625" ctrlrange="-0.4450589716434479 0.4450589716434479" forcerange="-80.0 80.0" />
-    <position name="red_neck_turn" joint="red_neck_turn" kp="57.14285659790039" kv="2.213649272918701" ctrlrange="-1.0384708642959595 1.0384708642959595" forcerange="-20.0 20.0" />
-    <position name="red_neck_nod" joint="red_neck_nod" kp="57.14285659790039" kv="5.031841278076172" ctrlrange="-0.593411922454834 0.7417649030685425" forcerange="-20.0 20.0" />
-    <position name="red_neck_tilt" joint="red_neck_tilt" kp="57.14285659790039" kv="4.870304107666016" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-20.0 20.0" />
-    <position name="red_shoulder_swing_l" joint="red_shoulder_swing_l" kp="128.57142639160156" kv="2.394449234008789" ctrlrange="-1.9285888671875 0.593411922454834" forcerange="-45.0 45.0" />
-    <position name="red_shoulder_raise_l" joint="red_shoulder_raise_l" kp="128.57142639160156" kv="11.11333179473877" ctrlrange="-1.4093533754348755 1.186823844909668" forcerange="-45.0 45.0" />
-    <position name="red_shoulder_twist_l" joint="red_shoulder_twist_l" kp="85.71428680419922" kv="1.8753118515014648" ctrlrange="-1.186823844909668 1.186823844909668" forcerange="-30.0 30.0" />
-    <position name="red_elbow_l" joint="red_elbow_l" kp="100.0" kv="3.872152328491211" ctrlrange="0.0 2.076941728591919" forcerange="-35.0 35.0" />
-    <position name="red_wrist_flex_l" joint="red_wrist_flex_l" kp="28.571428298950195" kv="0.3677041232585907" ctrlrange="-0.8901179432868958 1.0384708642959595" forcerange="-10.0 10.0" />
-    <position name="red_wrist_dev_l" joint="red_wrist_dev_l" kp="21.428571701049805" kv="0.25446251034736633" ctrlrange="-0.37088245153427124 0.37088245153427124" forcerange="-7.5 7.5" />
-    <position name="red_shoulder_swing_r" joint="red_shoulder_swing_r" kp="128.57142639160156" kv="2.394449234008789" ctrlrange="-1.9285888671875 0.593411922454834" forcerange="-45.0 45.0" />
-    <position name="red_shoulder_raise_r" joint="red_shoulder_raise_r" kp="128.57142639160156" kv="11.11333179473877" ctrlrange="-1.4093533754348755 1.186823844909668" forcerange="-45.0 45.0" />
-    <position name="red_shoulder_twist_r" joint="red_shoulder_twist_r" kp="85.71428680419922" kv="1.8753118515014648" ctrlrange="-1.186823844909668 1.186823844909668" forcerange="-30.0 30.0" />
-    <position name="red_elbow_r" joint="red_elbow_r" kp="100.0" kv="3.872152328491211" ctrlrange="0.0 2.076941728591919" forcerange="-35.0 35.0" />
-    <position name="red_wrist_flex_r" joint="red_wrist_flex_r" kp="28.571428298950195" kv="0.3677041232585907" ctrlrange="-0.8901179432868958 1.0384708642959595" forcerange="-10.0 10.0" />
-    <position name="red_wrist_dev_r" joint="red_wrist_dev_r" kp="21.428571701049805" kv="0.25446251034736633" ctrlrange="-0.37088245153427124 0.37088245153427124" forcerange="-7.5 7.5" />
-    <position name="red_hip_flex_l" joint="red_hip_flex_l" kp="314.28570556640625" kv="46.86530685424805" ctrlrange="-0.296705961227417 1.631882905960083" forcerange="-110.0 110.0" />
-    <position name="red_hip_abd_l" joint="red_hip_abd_l" kp="228.57142639160156" kv="39.93229675292969" ctrlrange="-0.37088245153427124 0.593411922454834" forcerange="-80.0 80.0" />
-    <position name="red_hip_rot_l" joint="red_hip_rot_l" kp="142.85714721679688" kv="7.142857074737549" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-50.0 50.0" />
-    <position name="red_knee_l" joint="red_knee_l" kp="314.28570556640625" kv="17.647716522216797" ctrlrange="0.0 2.076941728591919" forcerange="-110.0 110.0" />
-    <position name="red_ankle_flex_l" joint="red_ankle_flex_l" kp="257.1428527832031" kv="12.857142448425293" ctrlrange="-0.6675884127616882 0.296705961227417" forcerange="-90.0 90.0" />
-    <position name="red_ankle_roll_l" joint="red_ankle_roll_l" kp="85.71428680419922" kv="4.285714149475098" ctrlrange="-0.296705961227417 0.296705961227417" forcerange="-30.0 30.0" />
-    <position name="red_hip_flex_r" joint="red_hip_flex_r" kp="314.28570556640625" kv="46.86530685424805" ctrlrange="-0.296705961227417 1.631882905960083" forcerange="-110.0 110.0" />
-    <position name="red_hip_abd_r" joint="red_hip_abd_r" kp="228.57142639160156" kv="39.93229675292969" ctrlrange="-0.37088245153427124 0.593411922454834" forcerange="-80.0 80.0" />
-    <position name="red_hip_rot_r" joint="red_hip_rot_r" kp="142.85714721679688" kv="7.142857074737549" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-50.0 50.0" />
-    <position name="red_knee_r" joint="red_knee_r" kp="314.28570556640625" kv="17.647716522216797" ctrlrange="0.0 2.076941728591919" forcerange="-110.0 110.0" />
-    <position name="red_ankle_flex_r" joint="red_ankle_flex_r" kp="257.1428527832031" kv="12.857142448425293" ctrlrange="-0.6675884127616882 0.296705961227417" forcerange="-90.0 90.0" />
-    <position name="red_ankle_roll_r" joint="red_ankle_roll_r" kp="85.71428680419922" kv="4.285714149475098" ctrlrange="-0.296705961227417 0.296705961227417" forcerange="-30.0 30.0" />
-    <position name="blue_waist_twist" joint="blue_waist_twist" kp="205.7142791748047" kv="20.2294979095459" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-72.0 72.0" />
-    <position name="blue_waist_flex" joint="blue_waist_flex" kp="342.8571472167969" kv="54.36531448364258" ctrlrange="-0.3490658402442932 1.0471975803375244" forcerange="-120.0 120.0" />
-    <position name="blue_waist_side" joint="blue_waist_side" kp="274.28570556640625" kv="51.1575813293457" ctrlrange="-0.5235987901687622 0.5235987901687622" forcerange="-96.0 96.0" />
-    <position name="blue_neck_turn" joint="blue_neck_turn" kp="58.28571319580078" kv="2.1916606426239014" ctrlrange="-1.2217304706573486 1.2217304706573486" forcerange="-20.399999618530273 20.399999618530273" />
-    <position name="blue_neck_nod" joint="blue_neck_nod" kp="58.28571319580078" kv="4.605556964874268" ctrlrange="-0.6981316804885864 0.8726646304130554" forcerange="-20.399999618530273 20.399999618530273" />
-    <position name="blue_neck_tilt" joint="blue_neck_tilt" kp="58.28571319580078" kv="4.3686933517456055" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-20.399999618530273 20.399999618530273" />
-    <position name="blue_shoulder_swing_l" joint="blue_shoulder_swing_l" kp="154.2857208251953" kv="5.952287197113037" ctrlrange="-2.268928050994873 0.6981316804885864" forcerange="-54.0 54.0" />
-    <position name="blue_shoulder_raise_l" joint="blue_shoulder_raise_l" kp="154.2857208251953" kv="5.3723273277282715" ctrlrange="-1.6580628156661987 1.3962633609771729" forcerange="-54.0 54.0" />
-    <position name="blue_shoulder_twist_l" joint="blue_shoulder_twist_l" kp="102.85713958740234" kv="2.67295503616333" ctrlrange="-1.3962633609771729 1.3962633609771729" forcerange="-36.0 36.0" />
-    <position name="blue_elbow_l" joint="blue_elbow_l" kp="120.0" kv="2.8518805503845215" ctrlrange="0.0 2.4434609413146973" forcerange="-42.0 42.0" />
-    <position name="blue_wrist_flex_l" joint="blue_wrist_flex_l" kp="34.28571319580078" kv="0.37563109397888184" ctrlrange="-1.0471975803375244 1.2217304706573486" forcerange="-12.0 12.0" />
-    <position name="blue_wrist_dev_l" joint="blue_wrist_dev_l" kp="25.714284896850586" kv="0.26647964119911194" ctrlrange="-0.4363323152065277 0.4363323152065277" forcerange="-9.0 9.0" />
-    <position name="blue_shoulder_swing_r" joint="blue_shoulder_swing_r" kp="154.2857208251953" kv="3.5506491661071777" ctrlrange="-2.268928050994873 0.6981316804885864" forcerange="-54.0 54.0" />
-    <position name="blue_shoulder_raise_r" joint="blue_shoulder_raise_r" kp="154.2857208251953" kv="5.771092891693115" ctrlrange="-1.6580628156661987 1.3962633609771729" forcerange="-54.0 54.0" />
-    <position name="blue_shoulder_twist_r" joint="blue_shoulder_twist_r" kp="102.85713958740234" kv="2.6997578144073486" ctrlrange="-1.3962633609771729 1.3962633609771729" forcerange="-36.0 36.0" />
-    <position name="blue_elbow_r" joint="blue_elbow_r" kp="120.0" kv="2.8518805503845215" ctrlrange="0.0 2.4434609413146973" forcerange="-42.0 42.0" />
-    <position name="blue_wrist_flex_r" joint="blue_wrist_flex_r" kp="34.28571319580078" kv="0.37563109397888184" ctrlrange="-1.0471975803375244 1.2217304706573486" forcerange="-12.0 12.0" />
-    <position name="blue_wrist_dev_r" joint="blue_wrist_dev_r" kp="25.714284896850586" kv="0.26647964119911194" ctrlrange="-0.4363323152065277 0.4363323152065277" forcerange="-9.0 9.0" />
-    <position name="blue_hip_flex_l" joint="blue_hip_flex_l" kp="377.1428527832031" kv="36.70021438598633" ctrlrange="-0.3490658402442932 1.919862151145935" forcerange="-132.0 132.0" />
-    <position name="blue_hip_abd_l" joint="blue_hip_abd_l" kp="274.28570556640625" kv="31.093517303466797" ctrlrange="-0.4363323152065277 0.6981316804885864" forcerange="-96.0 96.0" />
-    <position name="blue_hip_rot_l" joint="blue_hip_rot_l" kp="171.42857360839844" kv="8.571428298950195" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-60.0 60.0" />
-    <position name="blue_knee_l" joint="blue_knee_l" kp="377.1428527832031" kv="18.85714340209961" ctrlrange="0.0 2.4434609413146973" forcerange="-132.0 132.0" />
-    <position name="blue_ankle_flex_l" joint="blue_ankle_flex_l" kp="308.5714416503906" kv="15.428571701049805" ctrlrange="-0.7853981852531433 0.3490658402442932" forcerange="-108.0 108.0" />
-    <position name="blue_ankle_roll_l" joint="blue_ankle_roll_l" kp="102.85713958740234" kv="5.142857074737549" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-36.0 36.0" />
-    <position name="blue_hip_flex_r" joint="blue_hip_flex_r" kp="377.1428527832031" kv="36.70021438598633" ctrlrange="-0.3490658402442932 1.919862151145935" forcerange="-132.0 132.0" />
-    <position name="blue_hip_abd_r" joint="blue_hip_abd_r" kp="274.28570556640625" kv="31.093517303466797" ctrlrange="-0.4363323152065277 0.6981316804885864" forcerange="-96.0 96.0" />
-    <position name="blue_hip_rot_r" joint="blue_hip_rot_r" kp="171.42857360839844" kv="8.571428298950195" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-60.0 60.0" />
-    <position name="blue_knee_r" joint="blue_knee_r" kp="377.1428527832031" kv="18.85714340209961" ctrlrange="0.0 2.4434609413146973" forcerange="-132.0 132.0" />
-    <position name="blue_ankle_flex_r" joint="blue_ankle_flex_r" kp="308.5714416503906" kv="15.428571701049805" ctrlrange="-0.7853981852531433 0.3490658402442932" forcerange="-108.0 108.0" />
-    <position name="blue_ankle_roll_r" joint="blue_ankle_roll_r" kp="102.85713958740234" kv="5.142857074737549" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-36.0 36.0" />
+    <position name="red_waist_twist" joint="red_waist_twist" kp="171.42857360839844" kv="20.033842086791992" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-60.0 60.0" timeconst="0.03500000014901161" />
+    <position name="red_waist_flex" joint="red_waist_flex" kp="285.71429443359375" kv="57.50813674926758" ctrlrange="-0.296705961227417 0.8901179432868958" forcerange="-100.0 100.0" timeconst="0.03500000014901161" />
+    <position name="red_waist_side" joint="red_waist_side" kp="228.57142639160156" kv="53.880279541015625" ctrlrange="-0.4450589716434479 0.4450589716434479" forcerange="-80.0 80.0" timeconst="0.03500000014901161" />
+    <position name="red_neck_turn" joint="red_neck_turn" kp="57.14285659790039" kv="2.222222328186035" ctrlrange="-1.0384708642959595 1.0384708642959595" forcerange="-20.0 20.0" timeconst="0.03500000014901161" />
+    <position name="red_neck_nod" joint="red_neck_nod" kp="57.14285659790039" kv="5.031841278076172" ctrlrange="-0.593411922454834 0.7417649030685425" forcerange="-20.0 20.0" timeconst="0.03500000014901161" />
+    <position name="red_neck_tilt" joint="red_neck_tilt" kp="57.14285659790039" kv="4.870304107666016" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-20.0 20.0" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_swing_l" joint="red_shoulder_swing_l" kp="128.57142639160156" kv="3.0" ctrlrange="-1.9285888671875 0.593411922454834" forcerange="-45.0 45.0" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_raise_l" joint="red_shoulder_raise_l" kp="128.57142639160156" kv="11.11333179473877" ctrlrange="-1.4093533754348755 1.186823844909668" forcerange="-45.0 45.0" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_twist_l" joint="red_shoulder_twist_l" kp="85.71428680419922" kv="2.0" ctrlrange="-1.186823844909668 1.186823844909668" forcerange="-30.0 30.0" timeconst="0.03500000014901161" />
+    <position name="red_elbow_l" joint="red_elbow_l" kp="100.0" kv="3.872152328491211" ctrlrange="0.0 2.076941728591919" forcerange="-35.0 35.0" timeconst="0.03500000014901161" />
+    <position name="red_wrist_flex_l" joint="red_wrist_flex_l" kp="28.571428298950195" kv="0.5333333611488342" ctrlrange="-0.8901179432868958 1.0384708642959595" forcerange="-10.0 10.0" timeconst="0.03500000014901161" />
+    <position name="red_wrist_dev_l" joint="red_wrist_dev_l" kp="21.428571701049805" kv="0.4000000059604645" ctrlrange="-0.37088245153427124 0.37088245153427124" forcerange="-7.5 7.5" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_swing_r" joint="red_shoulder_swing_r" kp="128.57142639160156" kv="3.0" ctrlrange="-1.9285888671875 0.593411922454834" forcerange="-45.0 45.0" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_raise_r" joint="red_shoulder_raise_r" kp="128.57142639160156" kv="11.11333179473877" ctrlrange="-1.4093533754348755 1.186823844909668" forcerange="-45.0 45.0" timeconst="0.03500000014901161" />
+    <position name="red_shoulder_twist_r" joint="red_shoulder_twist_r" kp="85.71428680419922" kv="2.0" ctrlrange="-1.186823844909668 1.186823844909668" forcerange="-30.0 30.0" timeconst="0.03500000014901161" />
+    <position name="red_elbow_r" joint="red_elbow_r" kp="100.0" kv="3.872152328491211" ctrlrange="0.0 2.076941728591919" forcerange="-35.0 35.0" timeconst="0.03500000014901161" />
+    <position name="red_wrist_flex_r" joint="red_wrist_flex_r" kp="28.571428298950195" kv="0.5333333611488342" ctrlrange="-0.8901179432868958 1.0384708642959595" forcerange="-10.0 10.0" timeconst="0.03500000014901161" />
+    <position name="red_wrist_dev_r" joint="red_wrist_dev_r" kp="21.428571701049805" kv="0.4000000059604645" ctrlrange="-0.37088245153427124 0.37088245153427124" forcerange="-7.5 7.5" timeconst="0.03500000014901161" />
+    <position name="red_hip_flex_l" joint="red_hip_flex_l" kp="314.28570556640625" kv="46.86530685424805" ctrlrange="-0.296705961227417 1.631882905960083" forcerange="-110.0 110.0" timeconst="0.03500000014901161" />
+    <position name="red_hip_abd_l" joint="red_hip_abd_l" kp="228.57142639160156" kv="39.93229675292969" ctrlrange="-0.37088245153427124 0.593411922454834" forcerange="-80.0 80.0" timeconst="0.03500000014901161" />
+    <position name="red_hip_rot_l" joint="red_hip_rot_l" kp="142.85714721679688" kv="7.142857074737549" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-50.0 50.0" timeconst="0.03500000014901161" />
+    <position name="red_knee_l" joint="red_knee_l" kp="314.28570556640625" kv="17.647716522216797" ctrlrange="0.0 2.076941728591919" forcerange="-110.0 110.0" timeconst="0.03500000014901161" />
+    <position name="red_ankle_flex_l" joint="red_ankle_flex_l" kp="257.1428527832031" kv="12.857142448425293" ctrlrange="-0.6675884127616882 0.296705961227417" forcerange="-90.0 90.0" timeconst="0.03500000014901161" />
+    <position name="red_ankle_roll_l" joint="red_ankle_roll_l" kp="85.71428680419922" kv="4.285714149475098" ctrlrange="-0.296705961227417 0.296705961227417" forcerange="-30.0 30.0" timeconst="0.03500000014901161" />
+    <position name="red_hip_flex_r" joint="red_hip_flex_r" kp="314.28570556640625" kv="46.86530685424805" ctrlrange="-0.296705961227417 1.631882905960083" forcerange="-110.0 110.0" timeconst="0.03500000014901161" />
+    <position name="red_hip_abd_r" joint="red_hip_abd_r" kp="228.57142639160156" kv="39.93229675292969" ctrlrange="-0.37088245153427124 0.593411922454834" forcerange="-80.0 80.0" timeconst="0.03500000014901161" />
+    <position name="red_hip_rot_r" joint="red_hip_rot_r" kp="142.85714721679688" kv="7.142857074737549" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-50.0 50.0" timeconst="0.03500000014901161" />
+    <position name="red_knee_r" joint="red_knee_r" kp="314.28570556640625" kv="17.647716522216797" ctrlrange="0.0 2.076941728591919" forcerange="-110.0 110.0" timeconst="0.03500000014901161" />
+    <position name="red_ankle_flex_r" joint="red_ankle_flex_r" kp="257.1428527832031" kv="12.857142448425293" ctrlrange="-0.6675884127616882 0.296705961227417" forcerange="-90.0 90.0" timeconst="0.03500000014901161" />
+    <position name="red_ankle_roll_r" joint="red_ankle_roll_r" kp="85.71428680419922" kv="4.285714149475098" ctrlrange="-0.296705961227417 0.296705961227417" forcerange="-30.0 30.0" timeconst="0.03500000014901161" />
+    <position name="blue_waist_twist" joint="blue_waist_twist" kp="205.7142791748047" kv="20.2294979095459" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-72.0 72.0" timeconst="0.03500000014901161" />
+    <position name="blue_waist_flex" joint="blue_waist_flex" kp="342.8571472167969" kv="54.36531448364258" ctrlrange="-0.3490658402442932 1.0471975803375244" forcerange="-120.0 120.0" timeconst="0.03500000014901161" />
+    <position name="blue_waist_side" joint="blue_waist_side" kp="274.28570556640625" kv="51.1575813293457" ctrlrange="-0.5235987901687622 0.5235987901687622" forcerange="-96.0 96.0" timeconst="0.03500000014901161" />
+    <position name="blue_neck_turn" joint="blue_neck_turn" kp="58.28571319580078" kv="2.1916606426239014" ctrlrange="-1.2217304706573486 1.2217304706573486" forcerange="-20.399999618530273 20.399999618530273" timeconst="0.03500000014901161" />
+    <position name="blue_neck_nod" joint="blue_neck_nod" kp="58.28571319580078" kv="4.605556964874268" ctrlrange="-0.6981316804885864 0.8726646304130554" forcerange="-20.399999618530273 20.399999618530273" timeconst="0.03500000014901161" />
+    <position name="blue_neck_tilt" joint="blue_neck_tilt" kp="58.28571319580078" kv="4.3686933517456055" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-20.399999618530273 20.399999618530273" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_swing_l" joint="blue_shoulder_swing_l" kp="154.2857208251953" kv="5.952287197113037" ctrlrange="-2.268928050994873 0.6981316804885864" forcerange="-54.0 54.0" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_raise_l" joint="blue_shoulder_raise_l" kp="154.2857208251953" kv="5.3723273277282715" ctrlrange="-1.6580628156661987 1.3962633609771729" forcerange="-54.0 54.0" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_twist_l" joint="blue_shoulder_twist_l" kp="102.85713958740234" kv="2.67295503616333" ctrlrange="-1.3962633609771729 1.3962633609771729" forcerange="-36.0 36.0" timeconst="0.03500000014901161" />
+    <position name="blue_elbow_l" joint="blue_elbow_l" kp="120.0" kv="2.8518805503845215" ctrlrange="0.0 2.4434609413146973" forcerange="-42.0 42.0" timeconst="0.03500000014901161" />
+    <position name="blue_wrist_flex_l" joint="blue_wrist_flex_l" kp="34.28571319580078" kv="0.5052631497383118" ctrlrange="-1.0471975803375244 1.2217304706573486" forcerange="-12.0 12.0" timeconst="0.03500000014901161" />
+    <position name="blue_wrist_dev_l" joint="blue_wrist_dev_l" kp="25.714284896850586" kv="0.378947377204895" ctrlrange="-0.4363323152065277 0.4363323152065277" forcerange="-9.0 9.0" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_swing_r" joint="blue_shoulder_swing_r" kp="154.2857208251953" kv="3.5506491661071777" ctrlrange="-2.268928050994873 0.6981316804885864" forcerange="-54.0 54.0" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_raise_r" joint="blue_shoulder_raise_r" kp="154.2857208251953" kv="5.771092891693115" ctrlrange="-1.6580628156661987 1.3962633609771729" forcerange="-54.0 54.0" timeconst="0.03500000014901161" />
+    <position name="blue_shoulder_twist_r" joint="blue_shoulder_twist_r" kp="102.85713958740234" kv="2.6997578144073486" ctrlrange="-1.3962633609771729 1.3962633609771729" forcerange="-36.0 36.0" timeconst="0.03500000014901161" />
+    <position name="blue_elbow_r" joint="blue_elbow_r" kp="120.0" kv="2.8518805503845215" ctrlrange="0.0 2.4434609413146973" forcerange="-42.0 42.0" timeconst="0.03500000014901161" />
+    <position name="blue_wrist_flex_r" joint="blue_wrist_flex_r" kp="34.28571319580078" kv="0.5052631497383118" ctrlrange="-1.0471975803375244 1.2217304706573486" forcerange="-12.0 12.0" timeconst="0.03500000014901161" />
+    <position name="blue_wrist_dev_r" joint="blue_wrist_dev_r" kp="25.714284896850586" kv="0.378947377204895" ctrlrange="-0.4363323152065277 0.4363323152065277" forcerange="-9.0 9.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_flex_l" joint="blue_hip_flex_l" kp="377.1428527832031" kv="36.70021438598633" ctrlrange="-0.3490658402442932 1.919862151145935" forcerange="-132.0 132.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_abd_l" joint="blue_hip_abd_l" kp="274.28570556640625" kv="31.093517303466797" ctrlrange="-0.4363323152065277 0.6981316804885864" forcerange="-96.0 96.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_rot_l" joint="blue_hip_rot_l" kp="171.42857360839844" kv="8.571428298950195" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-60.0 60.0" timeconst="0.03500000014901161" />
+    <position name="blue_knee_l" joint="blue_knee_l" kp="377.1428527832031" kv="18.85714340209961" ctrlrange="0.0 2.4434609413146973" forcerange="-132.0 132.0" timeconst="0.03500000014901161" />
+    <position name="blue_ankle_flex_l" joint="blue_ankle_flex_l" kp="308.5714416503906" kv="15.428571701049805" ctrlrange="-0.7853981852531433 0.3490658402442932" forcerange="-108.0 108.0" timeconst="0.03500000014901161" />
+    <position name="blue_ankle_roll_l" joint="blue_ankle_roll_l" kp="102.85713958740234" kv="5.142857074737549" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-36.0 36.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_flex_r" joint="blue_hip_flex_r" kp="377.1428527832031" kv="36.70021438598633" ctrlrange="-0.3490658402442932 1.919862151145935" forcerange="-132.0 132.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_abd_r" joint="blue_hip_abd_r" kp="274.28570556640625" kv="31.093517303466797" ctrlrange="-0.4363323152065277 0.6981316804885864" forcerange="-96.0 96.0" timeconst="0.03500000014901161" />
+    <position name="blue_hip_rot_r" joint="blue_hip_rot_r" kp="171.42857360839844" kv="8.571428298950195" ctrlrange="-0.6981316804885864 0.6981316804885864" forcerange="-60.0 60.0" timeconst="0.03500000014901161" />
+    <position name="blue_knee_r" joint="blue_knee_r" kp="377.1428527832031" kv="18.85714340209961" ctrlrange="0.0 2.4434609413146973" forcerange="-132.0 132.0" timeconst="0.03500000014901161" />
+    <position name="blue_ankle_flex_r" joint="blue_ankle_flex_r" kp="308.5714416503906" kv="15.428571701049805" ctrlrange="-0.7853981852531433 0.3490658402442932" forcerange="-108.0 108.0" timeconst="0.03500000014901161" />
+    <position name="blue_ankle_roll_r" joint="blue_ankle_roll_r" kp="102.85713958740234" kv="5.142857074737549" ctrlrange="-0.3490658402442932 0.3490658402442932" forcerange="-36.0 36.0" timeconst="0.03500000014901161" />
   </actuator>
 </mujoco>

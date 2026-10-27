@@ -125,3 +125,17 @@ The HUD is a canvas layer (540 × 960 reference) plus a Slate layer (1080-wide r
 - [x] F6 A failed level load no longer bricks the menu: `Travel()` checks the package exists first, and a level that does not open within 6 s gives the menu back (before, `bTravelling` stayed true and every control was dead)
 - [x] F7 Regression: `-SlapUiTest` PASS (10 of 10 clicks, a match ended and the next began)
 - [ ] F8 Phone run with a real safe area (notch, gesture bar): the desktop runs report a zero bottom inset, so the notch case is unproven — part of E5
+
+## Phase G — Realism round 2 (user 2026-10-26: "do all" of a new top 10)
+
+- [x] G1 Muscle ramp: every motor is `<position timeconst="0.035">` (filterexact, `build_body.MUSCLE_TC`), so Warp, URLab and WASM all ramp instead of snapping; every reset seeds `act` = joint angle (`brain_cpu.settle_muscles`, Unreal `SettleMuscles`, `sim.js stand()`). Warp vs CPU 5e-7 after 20 steps; URLab's `.mjb` carries it (60 actuators, dynprm 0.035)
+- [x] G2 Matt in the realism check: `verify_realism.py` builds every `roster.json` card (A8–A13)
+- [x] G3 Reaction delay: inputs 105–107 = the striker's hand 6 decisions (0.12 s) ago (`REACT`), all engines + envs (`DOCS/BRAIN_IO.md`)
+- [x] G4 Force-velocity (linear): actuator `kv` ≥ F0 / card top speed (Matt failed on 9 joints, Grandpa on 2). Hill's hyperbola left as a `ponytail:` note
+- [x] G5 `realism_stats.py` over `match.py`'s new `realism` / `head` events (compare skips both): hand speed, head g and rad/s², kinetic chain (trunk-twist peak before shoulder-swing peak in the last 0.5 s), jerk, foot shift
+- [x] G6 Softer hand/face contact: not needed — MuJoCo's default `solref` is already 0.02 s
+- [x] G7 Head readout: peak g / rad/s² per strike (first runs 23–49 g, 1.6–3.3k rad/s², none past concussion range)
+- [x] G8 Shoulder cone: A13 measures the hinge box (40–42° behind, 22–28° across, limits 60/50): already inside, so a hard build check, no reward term
+- [x] G9 "Heel-to-toe" reward is alternating swing-foot clearance (works with a box foot): relabelled
+- [x] G10 S1 (= L0) and S3 (jog/turn/slopes) removed; S2 stays for the opt-in `-SlapWalkBrain`
+- Checks: verify_realism PASS; `node Web/check.mjs gg|kk|gk` turns end; `match.py compare` PASS gg (8/8, fresh `.mjb`) and gk (5/5 against the brains Unreal holds). **Every brain is now stale** (physics + inputs changed): retrain before trusting matches. Found: Unreal's `grandpa_final_vs_kim` / `kim_final_vs_grandpa` assets predate the 10-26 04:10 spar `.onnx` (never re-imported). URLab's `LocalUnrealRoboticsLab.ini` pointed at the pre-move folder: fixed locally

@@ -13,6 +13,7 @@ import numpy as np
 HERE = Path(__file__).parent
 OBS = 136                          # DOCS/BRAIN_IO.md (108 before memory and fatigue, 130 before the own palm; older brains read their first n)
 LAGS = (5, 10, 15)                 # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
+REACT = 6                          # the defender sees the opponent's hand 6 decisions (0.12 s) late: human visual reaction
 MIN_STAMINA, MIN_NECK = 0.7, 0.5   # fatigue floors (the card sets how fast an athlete gets there)
 
 
@@ -83,12 +84,20 @@ class Athlete:
         self.prev = a.astype(np.float32)
 
 
+def settle_muscles(m, d):
+    """Every muscle's filter state (build_body MUSCLE_TC) = its joint's angle: a reset (act = 0) starts it settled, not
+    pulling toward 0 rad. Unreal (SettleMuscles) and Web/sim.js do the same after each reset."""
+    a = np.flatnonzero(m.actuator_actadr >= 0)
+    d.act[m.actuator_actadr[a]] = d.qpos[m.jnt_qposadr[m.actuator_trnid[a, 0]]]
+
+
 def stand(m, d, fp):
     mujoco.mj_resetData(m, d)
     for i in range(m.njnt):
         for j, rad in fp["stand_pose_rad"].items():
             if m.joint(i).name.endswith(j):
                 d.qpos[m.jnt_qposadr[i]] = rad
+    settle_muscles(m, d)
     mujoco.mj_forward(m, d)
 
 
@@ -160,7 +169,7 @@ def video(policy, out, character="grandpa", seconds=6.0, size=(360, 480), role=0
     def obs(a, d, k):
         if role == 0:
             return a.obs(d)
-        return a.obs(d, role, 1 - k * 0.005 / 30, opp_head, opp_hand(k * 0.005, head0) if role == -1 else None)
+        return a.obs(d, role, 1 - k * 0.005 / 30, opp_head, opp_hand(k * 0.005 - REACT * 0.02, head0) if role == -1 else None)   # seen 0.12 s late
     d = rollout(m, fp, policy, seconds=seconds, on_step=grab, obs=obs, setup=setup)
     frames[0].save(out, save_all=True, append_images=frames[1:], duration=40, loop=0)
     return float(d.qpos[2])

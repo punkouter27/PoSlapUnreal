@@ -1,4 +1,4 @@
-"""Verify all 10 AI Realism Options across configs, body builder, S1-S3 locomotion envs, L0-L4 combat envs, and L5 match log.
+"""Verify the AI realism options across configs, body builder (every roster card), the S2 walking env, L0-L4 combat envs, L5 match log.
 
     .venv/Scripts/python.exe verify_realism.py
 """
@@ -25,26 +25,24 @@ def main():
     assert j_cfg["anthropometric_mass_distribution_pct"]["total_pct"] == 100.0
     assert s_cfg["proprioception_observation_space"]["base_dimension"] == 136
     assert s_cfg["proprioception_observation_space"]["extended_locomotion_dimension"] == 148
-    assert "Stage_1_Stand_And_Push_Recovery" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
     assert "Stage_2_Steady_Natural_Walk" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
-    assert "Stage_3_Jog_Turn_Stop_And_Slopes" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
     print("  [PASS] All 3 realism configuration files verified.")
 
     print("\n=== [2/5] Verifying Body Mechanics, Joint Limits, Self-Collision & COM (Options 1, 2, 4) ===")
-    res = subprocess.run(
-        [sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / "grandpa.json"), "--blue", str(HERE / "characters" / "kim.json")],
-        capture_output=True, text=True, check=True,
-    )
-    for line in res.stdout.strip().splitlines():
-        print("  " + line)
-    assert "A9 realism limits: knee/elbow anti-hyperextension OK" in res.stdout
-    assert "swing & stride arcs" in res.stdout
-    print("  [PASS] Grandpa & Kim passed A8 rig, A9 anti-hyperextension, A10 swing/stride self-collision, A11 COM balance, A12 fingerprint.")
+    cards = list(dict.fromkeys(r["card"] for r in json.loads((HERE / "roster.json").read_text())))   # every roster athlete
+    for card in cards:
+        res = subprocess.run([sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / f"{card}.json")],
+                             capture_output=True, text=True, check=True)
+        for line in res.stdout.strip().splitlines():
+            print("  " + line)
+        assert "A9 realism limits: knee/elbow anti-hyperextension OK" in res.stdout
+        assert "swing & stride arcs" in res.stdout and "A13 shoulder cone" in res.stdout
+        print(f"  [PASS] {card}: A8 rig, A9 anti-hyperextension, A10 self-collision, A11 COM balance, A12 fingerprint, A13 shoulder cone.")
 
-    print("\n=== [3/5] Verifying S1-S3 Locomotion & Proprioception Envs on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
+    print("\n=== [3/5] Verifying the S2 Walking & Proprioception Env on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
     from envs.locomotion import LocomotionEnv
 
-    for stage in ("S1", "S2", "S3"):
+    for stage in ("S2",):
         env136 = LocomotionEnv("grandpa", level=stage, num_envs=256, seed=42, obs_dim=136)
         obs = env136.observe()
         assert obs.shape == (256, 136), f"Expected (256, 136), got {obs.shape}"

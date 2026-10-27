@@ -19,7 +19,7 @@ or fatigue has to land in all three, or the parity checks below break:
 | Unreal (URLab + NNE) | `Source/PoSlapUnreal/SlapController.cpp` (`USlapController`, a URLab `MjArticulationController`) | Game. Runs on URLab's physics thread; `SlapHUD.cpp` draws the HUD, menu and build stamp |
 | Browser (MuJoCo WASM + onnxruntime-web) | `Web/sim.js`, `Web/loader.js` | Spectator site, auto-deployed to Azure on push to `master` |
 
-Training envs (`training/envs/locomotion.py` S1–S3, `slap.py` L0–L3, `arena.py` L4) run on GPU via `mujoco-warp`
+Training envs (`training/envs/locomotion.py` S2 (walk-in), `slap.py` L0–L3, `arena.py` L4) run on GPU via `mujoco-warp`
 and build the same 136-dim observation. `OBS`, `LAGS` and the fatigue floors are constants duplicated in each file.
 
 **Body pipeline:** character card `training/characters/<name>.json` + Blender skeleton `<name>_skeleton.json`

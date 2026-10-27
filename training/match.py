@@ -25,12 +25,13 @@ Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, t
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
 import argparse, json, math, os, random, re, sys, time
+from collections import deque
 from pathlib import Path
 
 import mujoco
 import numpy as np
 
-from brain_cpu import MIN_NECK, MIN_STAMINA, Athlete, card, onnx_policy
+from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, onnx_policy, settle_muscles
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -103,6 +104,7 @@ def stand_both(m, d, sides):
             i = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, s.prefix + j)
             if i >= 0:
                 d.qpos[m.jnt_qposadr[i]] = rad
+    settle_muscles(m, d)
     mujoco.mj_forward(m, d)
 
 
@@ -227,6 +229,13 @@ class Match:
         rec = dict(round=rnd, striker=S.name, touch=None, part=None, palm=False, speed=0.0, head_peak=0.0, stagger=False,
                    fouls=[], ko=False, end=None)
         touch_k, com0 = None, None
+        seen = []   # the striker's hand at the last REACT + 1 decisions: the defender sees the oldest (0.12 s late)
+        vh_prev, w_prev, head_g, head_alpha = np.zeros(3), np.zeros(3), 0.0, 0.0   # head readout (the "head" event)
+        # realism readout (the "realism" event, realism_stats.py): action jerk, kinetic chain (the trunk's twist should
+        # peak before the shoulder's swing), foot slide
+        rz = rec["_rz"] = dict(jerk=0.0, n=0, swing=deque(maxlen=100), slide=0.0)   # swing: the last 0.5 s before the touch
+        pa = {id(x): [x.a.prev.copy()] * 2 for x in self.sides}
+        iw, ish = S.a.va[S.a.order.index("waist_twist")], S.a.va[S.a.order.index("shoulder_swing_r")]
         kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
         self.emit(type="turn_start", round=rnd, striker=S.name, defender=D.name)
         faints = [(x, k0, k0 + int(round(x.card.get("faint_seconds", 2.0) / m.opt.timestep)))
@@ -254,6 +263,7 @@ class Match:
                         return self.finish(rec, S, D, com0)
                 for x in self.sides:
                     off = np.abs(np.array([d.geom_xpos[f][:2] for f in x.feet]) - feet0[id(x)])
+                    rz["slide"] = max(rz["slide"], float(np.linalg.norm(off, axis=1).max()))
                     if (off[:, 0] > BOX[0]).any() or (off[:, 1] > BOX[1]).any():
                         rec["fouls"].append((x.name, "out of the box"))
                         rec["end"] = "out of the box"
@@ -272,9 +282,15 @@ class Match:
                 hs, hd = d.geom_xpos[S.head].copy(), d.geom_xpos[D.head].copy()
                 S.a.decide(S.policy(S.a.obs(d, 1.0, clock, hd)))
                 if DEFENDER_ROLE < 0:
-                    D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, d.geom_xpos[S.hand].copy())))
+                    seen = (seen or [d.geom_xpos[S.hand].copy()] * REACT)[-REACT:] + [d.geom_xpos[S.hand].copy()]
+                    D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, seen[0])))
                 else:
                     D.a.decide(D.policy(D.a.obs(d)))
+                for x in self.sides:
+                    p1, p2 = pa[id(x)]
+                    rz["jerk"] += float(((x.a.prev - 2 * p1 + p2) ** 2).sum())
+                    rz["n"] += 1
+                    pa[id(x)] = [x.a.prev.copy(), p1]
                 if GAZE_ON:
                     if touch_k is None:
                         self.gaze_apply(D, m, d)   # eye contact until the slap lands (then he braces for it)
@@ -299,9 +315,15 @@ class Match:
             vel = (hand - hand_prev) / m.opt.timestep
             hand_prev = hand
             head = d.geom_xpos[D.head].copy()
+            if touch_k is None:
+                rz["swing"].append((k, abs(d.qvel[iw]), abs(d.qvel[ish])))
+            vh, w = (head - head_prev) / m.opt.timestep, d.cvel[D.head_body][:3].copy()   # head velocity, angular (world)
             if touch_k is not None:
                 rec["head_peak"] = max(rec["head_peak"], dist(head, head_prev) / m.opt.timestep)
-            head_prev = head
+                head_g = max(head_g, dist(vh, vh_prev) / m.opt.timestep / 9.81)
+                head_alpha = max(head_alpha, dist(w, w_prev) / m.opt.timestep)
+                rec["_head"] = (head_g, head_alpha)
+            head_prev, vh_prev, w_prev = head, vh, w
             if touch_k is None:
                 for c in d.contact[:d.ncon]:
                     if D.head in (c.geom[0], c.geom[1]):
@@ -324,6 +346,14 @@ class Match:
         if com0 is not None:
             rec["stagger"] = dist(self.d.subtree_com[D.a.pelvis][:2], com0) > 0.05
         rec["head_peak"] = round(rec["head_peak"], 2)
+        if "_head" in rec:   # readout only (Python): peak linear g and rotational rad/s^2 after the touch, 5 ms differences.
+            g, al = rec.pop("_head")   # concussion is usually put at ~70-100 g / ~4500-6000 rad/s^2 (football studies)
+            self.emit(type="head", t=rec["touch"], athlete=D.name, peak_g=round(g, 1), peak_rad_s2=round(al))
+        rz = rec.pop("_rz")
+        self.emit(type="realism", striker=S.name, touched=rec["touch"] is not None, jerk=round(rz["jerk"] / max(1, rz["n"]), 4),
+                  chain_ms=round((max(rz["swing"], key=lambda r: r[2])[0] - max(rz["swing"], key=lambda r: r[1])[0])
+                                 * self.m.opt.timestep * 1000) if rec["touch"] is not None and rz["swing"] else None,
+                  slide_m=round(rz["slide"], 3))
         self.emit(type="turn_end", **{k: v for k, v in rec.items() if k != "fouls"}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
         S.a.stamina = max(MIN_STAMINA, S.a.stamina - S.card["stamina_per_strike"])
         if rec["touch"] is not None:
