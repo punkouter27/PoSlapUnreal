@@ -167,6 +167,7 @@ private:
 		double FaintChance = 0.0, FaintSeconds = 2.0, FaintStrength = 0.05;	// card: fainting (match.py faint_step)
 		TArray<double> FrAll;	// every motor's own forcerange (lo, hi per motor): a faint slackens them all
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
+		TArray<double> Vmax;	// the same per second: Hill's top speed (ApplyHill)
 		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
 		int32 HipL = -1, HipR = -1, KneeL = -1, KneeR = -1, AnkleL = -1, AnkleR = -1, ShSwingL = -1, ShSwingR = -1;
 		int32 WaistTwist = -1, ElbowR = -1;	// kinetic chain links
@@ -277,6 +278,8 @@ private:
 	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
+	void ApplyHill(mjModel* m, const mjData* d);	// Hill's force-velocity cap for the coming step (FrSaved: the uncapped forceranges)
+	TArray<mjtNum> FrSaved;
 	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs, const float* Cmd = nullptr) const;	// Cmd: inputs 102-107 (the walking brain's command)
 	void WriteQposDump(const mjModel* m, const FString& RelPath);
 

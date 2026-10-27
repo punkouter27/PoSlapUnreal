@@ -19,7 +19,7 @@ import torch
 import warp as wp
 
 from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
-from envs.slap import DECIM, WAIT, quat_mat
+from envs.slap import DECIM, WAIT, hill, quat_mat
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -66,7 +66,9 @@ class ArenaEnv:
         rng = t([fp["ctrl_range_rad"] for fp in fps])                                             # (2, A, 2)
         self.lo, self.hi = rng[..., 0], rng[..., 1]
         per_joint = lambda v: v if isinstance(v, list) else [v] * len(order)   # a scalar in older fingerprints
-        self.max_step = t([per_joint(fp["max_joint_speed_rad_s"]) for fp in fps]) * 0.02   # per joint
+        vmax = t([per_joint(fp["max_joint_speed_rad_s"]) for fp in fps])   # (2, A): Hill's top speed per joint
+        self.max_step = vmax * 0.02   # per joint
+        self.h_act, self.h_dof, self.h_vmax = self.act_id.flatten(), self.jv.flatten(), vmax.flatten()
         # per agent row (row 2w + k is corner k): the action rule's bounds
         rows = lambda x: x.repeat(num_envs, 1)
         self.stand_n, self.lo_n, self.hi_n, self.ms_n = rows(self.stand), rows(self.lo), rows(self.hi), rows(self.max_step)
@@ -232,7 +234,10 @@ class ArenaEnv:
             self.xfrc[:, self.head_b] = 0.0
             self.xfrc[self.wid, self.head_b[1 - self.striker]] = self.kick * (self.kick_left > 0)[:, None]
             self.kick_left = (self.kick_left - 1).clamp(min=0)
+            fr = self.frange[:, self.h_act].clone()   # muscles: Hill's force-velocity cap for this step only
+            self.frange[:, self.h_act] = hill(fr, self.qvel[:, self.h_dof], self.h_vmax)
             wp.capture_launch(self.g_step)
+            self.frange[:, self.h_act] = fr
             self._strike_check()
         wp.capture_launch(self.g_kin)
 

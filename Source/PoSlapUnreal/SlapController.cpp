@@ -25,6 +25,7 @@ namespace
 	constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
 	constexpr int32 NumObs = 148;		// DOCS/BRAIN_IO.md (136 base + 12 extended proprioceptive foot-ground/phase floats)
 	constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
+	constexpr double HillK = 0.25;	// Hill's force-velocity curvature (brain_cpu.HILL_K)
 	constexpr int32 React = 6;	// the defender sees the striker's hand 6 decisions (0.12 s) late (brain_cpu.REACT)
 
 	void SettleMuscles(const mjModel* m, mjData* d)	// brain_cpu.settle_muscles: each muscle's filter state at its joint's angle
@@ -175,8 +176,28 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 
 void USlapController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
 {
+	if (FrSaved.Num() == 2 * m->nu) FMemory::Memcpy(m->actuator_forcerange, FrSaved.GetData(), 2 * m->nu * sizeof(mjtNum));	// last step's Hill cap off
 	Mode == ESlapControlMode::Replay ? StepReplay(m, d) : StepPolicy(m, d);
+	ApplyHill(m, d);
 	++StepCount;
+}
+
+void USlapController::ApplyHill(mjModel* m, const mjData* d)
+{
+	// brain_cpu.muscle_step: for this step only, every motor's force capped by its joint's speed (Hill's force-velocity
+	// law: pushing the way the joint turns, F0 (1 - u) / (1 + u / K), u = |speed| / top speed; braking keeps F0).
+	// The forceranges come back at the next step's start, so SetForce (faint, neck damage) keeps owning them.
+	FrSaved.SetNumUninitialized(2 * m->nu);
+	FMemory::Memcpy(FrSaved.GetData(), m->actuator_forcerange, 2 * m->nu * sizeof(mjtNum));
+	for (const FAthlete& A : Athletes)
+		for (int32 j = 0; j < A.Act.Num() && j < A.Vmax.Num(); ++j)
+		{
+			const double V = d->qvel[A.Vadr[j]];
+			const double U = std::min(std::abs(V) / A.Vmax[j], 1.0);
+			const double H = (1.0 - U) / (1.0 + U / HillK);
+			if (V < 0.0) m->actuator_forcerange[2 * A.Act[j]] *= H;
+			else if (V > 0.0) m->actuator_forcerange[2 * A.Act[j] + 1] *= H;
+		}
 }
 
 // ---------------------------------------------------------------- replay (matching check)
@@ -292,7 +313,10 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		const TArray<TSharedPtr<FJsonValue>>* Speeds;	// per joint, joint order (a single number in older fingerprints)
 		const bool bPerJoint = Fp.TryGetArrayField(TEXT("max_joint_speed_rad_s"), Speeds);
 		for (int32 j = 0; j < Order.Num(); ++j)
-			A.MaxStep.Add((bPerJoint ? (*Speeds)[j]->AsNumber() : Fp.GetNumberField(TEXT("max_joint_speed_rad_s"))) * 0.02);
+		{
+			A.Vmax.Add(bPerJoint ? (*Speeds)[j]->AsNumber() : Fp.GetNumberField(TEXT("max_joint_speed_rad_s")));	// Hill's top speed
+			A.MaxStep.Add(A.Vmax.Last() * 0.02);
+		}
 		A.Prefix = BodyName.LeftChop(6);
 		A.Name = A.Prefix.LeftChop(1);
 		A.Name = A.Name.Mid(A.Name.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1);	// "Arena_red" -> "red"

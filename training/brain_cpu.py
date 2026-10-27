@@ -14,6 +14,7 @@ HERE = Path(__file__).parent
 OBS = 136                          # DOCS/BRAIN_IO.md (108 before memory and fatigue, 130 before the own palm; older brains read their first n)
 LAGS = (5, 10, 15)                 # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
 REACT = 6                          # the defender sees the opponent's hand 6 decisions (0.12 s) late: human visual reaction
+HILL_K = 0.25                      # Hill's force-velocity curvature (a / F0, human muscle ~0.25): see hill()
 MIN_STAMINA, MIN_NECK = 0.7, 0.5   # fatigue floors (the card sets how fast an athlete gets there)
 
 
@@ -35,7 +36,8 @@ class Athlete:
         self.box = m.qpos0[self.rq:self.rq + 2].copy()   # foot-box centre = start pelvis x, y
         self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
         self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
-        self.max_step = np.asarray(fp["max_joint_speed_rad_s"]) * 0.02   # per joint (a scalar in older fingerprints)
+        self.vmax = np.broadcast_to(np.asarray(fp["max_joint_speed_rad_s"], float), (len(self.order),))   # per joint
+        self.max_step = self.vmax * 0.02   # (a scalar in older fingerprints)
         self.neck = np.array([a for a, n in zip(self.act, self.order) if n.startswith("neck")])
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
         self.hist = []                       # inputs 102-107 of earlier decisions this turn (memory)
@@ -84,6 +86,35 @@ class Athlete:
         self.prev = a.astype(np.float32)
 
 
+def hill(fr, v, vmax):
+    """Hill's force-velocity law on each motor's forcerange (lo, hi): pushing the way the joint already turns, a muscle
+    has F0 (1 - u) / (1 + u / HILL_K) at u = |speed| / top speed (0 at the top speed); braking it keeps F0.
+    The same arithmetic per step in envs (torch), Unreal (ApplyHill) and Web/sim.js (hill)."""
+    u = np.minimum(np.abs(v) / vmax, 1.0)
+    h = (1.0 - u) / (1.0 + u / HILL_K)
+    out = fr.copy()
+    out[:, 0] *= np.where(v < 0, h, 1.0)
+    out[:, 1] *= np.where(v > 0, h, 1.0)
+    return out
+
+
+def muscle_vmax(m, athletes):
+    """Top speed per actuator (rad/s, the fingerprint's max_joint_speed_rad_s); inf (no curve) for anything else."""
+    v = np.full(m.nu, np.inf)
+    for a in athletes:
+        v[a.act] = a.vmax
+    return v
+
+
+def muscle_step(m, d, vmax):
+    """mj_step with every motor's force capped by its joint's speed (hill), then the forceranges back as they were:
+    the faint / neck-damage code keeps owning them."""
+    fr = m.actuator_forcerange.copy()
+    m.actuator_forcerange[:] = hill(fr, d.qvel[m.jnt_dofadr[m.actuator_trnid[:, 0]]], vmax)
+    mujoco.mj_step(m, d)
+    m.actuator_forcerange[:] = fr
+
+
 def settle_muscles(m, d):
     """Every muscle's filter state (build_body MUSCLE_TC) = its joint's angle: a reset (act = 0) starts it settled, not
     pulling toward 0 rad. Unreal (SettleMuscles) and Web/sim.js do the same after each reset."""
@@ -114,6 +145,7 @@ def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, 
     stand(m, d, fp)
     ath = [Athlete(m, fp, p) for p in prefixes]
     obs = obs or (lambda a, d, k: a.obs(d))
+    vmax = muscle_vmax(m, ath)
     if setup:
         setup(d)
     for k in range(int(seconds / m.opt.timestep)):
@@ -125,7 +157,7 @@ def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, 
             d.ctrl[a.act] = a.goal
         if on_step:
             on_step(k, d)
-        mujoco.mj_step(m, d)
+        muscle_step(m, d, vmax)
     return d
 
 

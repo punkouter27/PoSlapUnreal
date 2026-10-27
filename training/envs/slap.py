@@ -27,7 +27,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
+from brain_cpu import HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -35,6 +35,14 @@ DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
 LEAN = float(os.environ.get("SLAP_LEAN", "1.0"))   # how far a braced defender leans in (see reset), stepped up by hand
 SETTLE = 250        # brain steps (5 s) a strike episode runs on after the touch: the match's recovery window; he stays up, slaps once
 WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
+
+
+def hill(fr, v, vmax):
+    """brain_cpu.hill on (N, A, 2) forceranges, joint speeds v (N, A), top speeds vmax (A,)."""
+    u = (v.abs() / vmax).clamp(max=1.0)
+    h = (1.0 - u) / (1.0 + u / HILL_K)
+    one = torch.ones_like(h)
+    return fr * torch.stack([torch.where(v < 0, h, one), torch.where(v > 0, h, one)], -1)
 
 
 def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
@@ -69,7 +77,8 @@ class SlapEnv:
         self.stand = torch.tensor([fp["stand_pose_rad"].get(n, 0.0) for n in order], device=dev)
         rng = torch.tensor(fp["ctrl_range_rad"], device=dev)   # listed in joint order
         self.lo, self.hi = rng[:, 0], rng[:, 1]
-        self.max_step = torch.tensor(fp["max_joint_speed_rad_s"], device=dev) * 0.02   # per joint (scalar in older fingerprints)
+        self.vmax = torch.tensor(fp["max_joint_speed_rad_s"], device=dev).expand(self.A)   # per joint (Hill's top speed)
+        self.max_step = self.vmax * 0.02
         self.T = 1500   # 30 s turn clock, every role
 
         d0 = mujoco.MjData(m)
@@ -312,7 +321,10 @@ class SlapEnv:
         for s in range(DECIM):
             self.ctrl[:, self.act_id] = torch.where((s >= self.delay)[:, None], tgt, old)
             self._forces(0.005, s)
+            fr = self.frange[:, self.act_id].clone()   # muscles: Hill's force-velocity cap for this step only
+            self.frange[:, self.act_id] = hill(fr, self.qvel[:, self.jv], self.vmax)
             wp.capture_launch(self.g_step)
+            self.frange[:, self.act_id] = fr
             self._strike_check()
         # strike: the struck head recoils along the swing (mostly back, away from the striker) and comes back in ~1.5 s,
         # or, 1 in 3 (knocked off balance), keeps going: a 78 kg braced guard's head in match.py with the impact impulse.

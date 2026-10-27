@@ -31,7 +31,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, onnx_policy, settle_muscles
+from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, muscle_step, muscle_vmax, onnx_policy, settle_muscles
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -143,6 +143,7 @@ class Match:
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
         self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
         self.blowup = False
+        self.vmax = muscle_vmax(m, [x.a for x in self.sides])
 
     def emit(self, **k):
         if self.log:
@@ -303,7 +304,7 @@ class Match:
             for x in self.sides:
                 d.ctrl[x.a.act] = x.a.goal
             d.xfrc_applied[D.head_body] = kick if touch_k is not None and k - touch_k < KICK_STEPS else 0.0
-            mujoco.mj_step(m, d)
+            muscle_step(m, d, self.vmax)
             k += 1
             if not np.isfinite(d.qpos).all() or np.abs(d.qvel).max() > 1e3:
                 self.blowup = True

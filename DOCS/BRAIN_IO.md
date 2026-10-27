@@ -47,3 +47,5 @@ then rate-limit per joint: `|target − previous target| ≤ max_joint_speed_rad
 order; older fingerprints hold one number for every joint).
 `ctrl = target` (position actuators) for the next 4 physics steps. The actuators filter it (`timeconst` 35 ms,
 `build_body.MUSCLE_TC`: muscle activation), so every reset sets each actuator's `act` to its joint's angle (`settle_muscles`).
+Every physics step each motor's `forcerange` is capped by Hill's force-velocity law on its joint's speed
+(`brain_cpu.hill`: top speed = `max_joint_speed_rad_s`), then restored after the step.

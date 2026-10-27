@@ -26,7 +26,7 @@ import torch
 import warp as wp
 
 from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
-from envs.slap import DECIM, quat_mat
+from envs.slap import DECIM, hill, quat_mat
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -71,7 +71,8 @@ class LocomotionEnv:
         self.stand = torch.tensor([fp["stand_pose_rad"].get(n, 0.0) for n in order], device=dev)
         rng = torch.tensor(fp["ctrl_range_rad"], device=dev)
         self.lo, self.hi = rng[:, 0], rng[:, 1]
-        self.max_step = torch.tensor(fp["max_joint_speed_rad_s"], device=dev) * 0.02
+        self.vmax = torch.tensor(fp["max_joint_speed_rad_s"], device=dev).expand(self.A)   # Hill's top speed per joint
+        self.max_step = self.vmax * 0.02
         self.T = int(self.cfg.get("seconds", 30.0) * 50)
 
         d0 = mujoco.MjData(m)
@@ -304,7 +305,10 @@ class LocomotionEnv:
         for s in range(DECIM):
             self.ctrl[:, self.act_id] = torch.where((s >= self.delay)[:, None], tgt, old)
             self._forces(0.005)
+            fr = self.frange[:, self.act_id].clone()   # muscles: Hill's force-velocity cap for this step only
+            self.frange[:, self.act_id] = hill(fr, self.qvel[:, self.jv], self.vmax)
             wp.capture_launch(self.g_step)
+            self.frange[:, self.act_id] = fr
         wp.capture_launch(self.g_kin)
         self._update_foot_contacts()
 

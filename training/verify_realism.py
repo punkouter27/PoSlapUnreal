@@ -65,7 +65,17 @@ def main():
     print(f"  [PASS] Extended 148-dim Locomotion Proprioception (Kim S2): shape={tuple(obs148.shape)}, foot contacts & phase clock active.")
 
     print("\n=== [4/5] Verifying SlapEnv (L0-L3) & ArenaEnv (L4) Realism Upgrades ===")
-    from envs.slap import SlapEnv
+    import numpy as np
+    from brain_cpu import hill
+    from envs.slap import SlapEnv, hill as hill_t
+    fr, vmax = np.array([[-10.0, 10.0]] * 5), np.full(5, 8.0)
+    v = np.array([0.0, 2.0, -2.0, 8.0, 20.0])
+    h = hill(fr, v, vmax)
+    assert (h[0] == fr[0]).all() and h[3, 1] == 0 and h[4, 1] == 0 and (h[:, 0][v >= 0] == -10).all()   # rest F0, top speed 0, braking F0
+    assert abs(h[1, 1] - 10 * 0.75 / 2) < 1e-12 and h[2, 0] == -h[1, 1]                                 # 1/4 top speed: 37.5 %
+    ht = hill_t(torch.tensor(fr)[None], torch.tensor(v)[None], torch.tensor(vmax))[0].numpy()
+    assert np.allclose(ht, h), (ht, h)
+    print("  [PASS] Hill force-velocity: F0 at rest, 37.5 % at 1/4 top speed, 0 at top speed, braking untouched; torch == numpy")
     from envs.arena import ArenaEnv
 
     s_env = SlapEnv("grandpa", level="L0", num_envs=128, seed=42)

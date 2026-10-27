@@ -1,7 +1,7 @@
 {
  "mujoco": "3.10.0",
  "model": "grandpa_solo.xml",
- "sha256": "5a3da7066f6f33642222edf1829302a174fe0803a28c1e0de3bf4921f9e65d2e",
+ "sha256": "a8cfed400c0d849002716509c21a1d8f4c000e2e2f9fbc371552fd1f958d56bf",
  "option": {
   "timestep": 0.005,
   "integrator": 3,

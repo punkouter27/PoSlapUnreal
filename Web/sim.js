@@ -4,7 +4,13 @@
 
 export const OBS = 136;                    // DOCS/BRAIN_IO.md
 const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
-const REACT = 6;                           // the defender sees the striker's hand 6 decisions (0.12 s) late
+const REACT = 6;
+const HILL_K = 0.25;                       // Hill's force-velocity curvature (brain_cpu.HILL_K)
+// brain_cpu.hill on actuator a's forcerange: pushing the way the joint already turns, F0 (1 - u) / (1 + u / K), u = |v| / top speed
+const hill = (fr, a, v, vmax) => {
+  const u = Math.min(Math.abs(v) / vmax, 1), h = (1 - u) / (1 + u / HILL_K);
+  if (v < 0) fr[2 * a] *= h; else if (v > 0) fr[2 * a + 1] *= h;
+};                           // the defender sees the striker's hand 6 decisions (0.12 s) late
 const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
 export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
 const BOX = [0.20, 0.25], KICK_STEPS = 2;
@@ -49,7 +55,8 @@ class Athlete {
     this.standPose = this.order.map(n => fp.stand_pose_rad[n] ?? 0);
     this.lo = fp.ctrl_range_rad.map(r => r[0]); this.hi = fp.ctrl_range_rad.map(r => r[1]);
     const s = fp.max_joint_speed_rad_s;
-    this.maxStep = this.order.map((_, i) => (Array.isArray(s) ? s[i] : s) * 0.02);
+    this.vmax = this.order.map((_, i) => (Array.isArray(s) ? s[i] : s));   // Hill's top speed per joint
+    this.maxStep = this.vmax.map(v => v * 0.02);
     this.neck = this.act.filter((_, i) => this.order[i].startsWith("neck"));
     this.fr0 = this.neck.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);
     this.frAll = this.act.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);   // fainting slackens them all
@@ -123,6 +130,13 @@ export class Match {
       return;
     }
     this.startTurn();
+  }
+
+  physicsStep() {   // brain_cpu.muscle_step: every motor's force capped by its joint's speed for this step, then back
+    const { mj, m, d } = this, fr = m.actuator_forcerange, saved = fr.slice();
+    for (const x of this.sides) x.act.forEach((a, i) => hill(fr, a, d.qvel[x.va[i]], x.vmax[i]));
+    mj.mj_step(m, d);
+    fr.set(saved);
   }
 
   stand() {   // brain_cpu.stand(): reset, each corner's stand pose, forward
@@ -217,7 +231,7 @@ export class Match {
     this.applyCtrl();
     for (const x of this.sides) d.xfrc_applied.fill(0, 6 * x.headBody, 6 * x.headBody + 6);
     if (this.touchK !== null && this.k - this.touchK < KICK_STEPS) d.xfrc_applied.set(this.kick, 6 * D.headBody);
-    mj.mj_step(m, d);
+    this.physicsStep();
     this.k++;
     if (!d.qpos.every(Number.isFinite)) { rec.end = "blow-up"; this.emit({ type: "blowup" }); this.phase = "over"; return; }
     const hand = v3(d.geom_xpos, S.hand), speed = dist(hand, this.handPrev) / dt;
@@ -313,7 +327,7 @@ export class Match {
         if (w.shR >= 0) w.goal[w.shR] = clamp(w.standPose[w.shR] + 0.85, w.lo[w.shR], w.hi[w.shR]);
       }
     }
-    this.applyCtrl(); mj.mj_step(m, d);
+    this.applyCtrl(); this.physicsStep();
     if (--this.holdLeft <= 0) { if (this.phase === "hold") this.startTurn(); else this.newMatch(); }
   }
 

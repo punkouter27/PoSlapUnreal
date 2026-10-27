@@ -260,10 +260,7 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
             if inertia:   # minus the joint's own damping (0.5, <default>)
                 aim = max(0.0, 2 * ZETA * math.sqrt(kp * inertia[jn + side]) - 0.5)
                 kv = aim if seg(n) in FREE else max(kv, aim)
-            vmax = SEG_SPEED.get(seg(n), ADULT_JOINT_SPEED) * card["speed"]
-            kv = max(kv, tq * st / vmax)   # force-velocity: a saturated motor's force falls to 0 at the card's top speed
-            # ponytail: linear force-velocity; Hill's hyperbola is steeper (~40 % force at 1/4 speed): needs a per-step
-            # forcerange(qvel) in all three engines
+            # force-velocity: not here - every engine caps forcerange by Hill's law each step (brain_cpu.hill)
             acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kv)}" '
                         f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}" timeconst="{fmt(MUSCLE_TC)}"/>')
         for gg in g["geoms"]:

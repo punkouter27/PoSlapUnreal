@@ -14,7 +14,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from brain_cpu import settle_muscles
+from brain_cpu import Athlete, muscle_step, muscle_vmax, settle_muscles
 
 HERE = Path(__file__).parent
 SECONDS, CONTROL_EVERY = 5.0, 4  # 50 Hz brain over 200 Hz physics
@@ -35,11 +35,13 @@ def run(m, d, fp, ctrl_names, ctrl):
     """Replay ctrl (per control step, by actuator name) and return qpos per physics step (before each step)."""
     idx = [next(i for i in range(m.nu) if m.actuator(i).name.endswith(n)) for n in ctrl_names]
     stand(m, d, fp)
+    pre = {m.joint(i).name[:-len("root")] for i in range(m.njnt) if m.joint(i).name.endswith("root")}   # each athlete
+    vmax = muscle_vmax(m, [Athlete(m, fp, p) for p in pre])
     out = []
     for k in range(len(ctrl) * CONTROL_EVERY):
         d.ctrl[idx] = ctrl[k // CONTROL_EVERY]
         out.append(d.qpos.copy())
-        mujoco.mj_step(m, d)
+        muscle_step(m, d, vmax)
     return np.array(out)
 
 
