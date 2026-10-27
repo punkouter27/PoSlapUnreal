@@ -1,0 +1,35 @@
+<!doctype html><meta charset="utf-8"><title>Roster-only brain list</title>
+<style>body{font:15px system-ui;max-width:1060px;margin:24px auto;padding:0 16px;background:#14141a;color:#e8e8ee}
+h1{font-size:24px}h2{font-size:18px;margin-top:34px;border-bottom:1px solid #333;padding-bottom:6px}
+.row{display:flex;gap:16px;flex-wrap:wrap}.row figure{flex:1;min-width:300px;margin:0}
+img{width:100%;border:1px solid #3a3a44;display:block}
+figcaption{font-size:13px;color:#a8acb6;padding-top:6px}
+code{font-size:13px;background:#22222c;padding:1px 5px;border-radius:3px}
+li{margin:6px 0}p{line-height:1.55}</style>
+
+<h1>Roster-only brain list (2026-10-27)</h1>
+<p>The menu's brain stepper (MATCH tab) and each roster card's <b>Brains:</b> line used to list every asset in
+<code>/Game/Brains</code>, so ladder and test brains (L0, L2, L4) showed up beside the real athletes. <code>ASlapHUD</code> now
+keeps only the brains named in <code>training/roster.json</code>; a build without <code>training/</code> (Android) keeps every brain.
+The roster's <code>grandpa_challenger_vs_kim</code> was imported into Unreal so the list has it.</p>
+<p>Same build both sides: "before" is the HUD with <code>roster.json</code> moved aside (its fallback path).
+Pairing: <code>L_Arena_grandpa_vs_kim</code> (levels now carry the <code>L_</code> prefix).</p>
+
+<h2>ROSTER tab: Grandpa's card</h2>
+<div class="row">
+<figure><img src="before_menu1.png"><figcaption>Before: "Brains: challenger_vs_kim, final, final_vs_kim, <b>L0, L2, L4</b>"</figcaption></figure>
+<figure><img src="after_menu1.png"><figcaption>After: "Brains: challenger_vs_kim, final, final_vs_kim" (the roster's three Grandpa brains)</figcaption></figure>
+</div>
+
+<h2>MATCH tab: corner brain stepper</h2>
+<div class="row">
+<figure><img src="before_menu0.png"><figcaption>Before: the &lt; &gt; arrows cycle through all six Grandpa brains</figcaption></figure>
+<figure><img src="after_menu0.png"><figcaption>After: they cycle through the three roster brains</figcaption></figure>
+</div>
+
+<h2>Checks</h2>
+<ul>
+<li><code>-SlapUiTest</code> on <code>L_Arena_grandpa_vs_kim</code>: PASS, 0 of 13 clicks wrong; click 10 stepped red to
+<code>grandpa_challenger_vs_kim</code> (needs <code>-WinX/-WinY</code> on this machine: a window opened at Y = -1200 misses every click).</li>
+<li><code>-SlapPairTest</code>: <code>L_Arena</code> → <code>L_Arena_grandpa_vs_kim</code>, brains grandpa_final_vs_kim / kim_final_vs_grandpa.</li>
+</ul>

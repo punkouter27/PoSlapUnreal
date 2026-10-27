@@ -108,12 +108,12 @@ private:
 	int32 RosterSel = 0;
 	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: MATCH tab badges or a swipe
 	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;	// slow motion is an effect, on by default
-	TArray<FAssetData> Brains;	// /Game/Brains, by name; a corner may pick those made for its character ("<card>_...")
+	TArray<FAssetData> Brains;	// /Game/Brains in training/roster.json, by name; a corner may pick those made for its character ("<card>_...")
 	int32 Pick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
-	TArray<FAssetData> Pairings;	// /Game/Levels/Arena*: one level per pairing (build_scene.py SLAP_RED / SLAP_BLUE)
+	TArray<FAssetData> Pairings;	// /Game/Levels/L_Arena*: one level per pairing (build_scene.py SLAP_RED / SLAP_BLUE)
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
 	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
-	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/Arena open the next pairing at 3 s, then log what loaded
+	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/L_Arena open the next pairing at 3 s, then log what loaded
 	enum EHit { HitMenu, HitTabMatch, HitTabRoster, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad, HitRematch, HitCount };
 	bool bQuarter = false;	// the replay runs at 1/4 speed instead of 1/2 (the MATCH tab's x1/4 badge)
 	FVector2D PadDown = FVector2D::ZeroVector;	// where a press on the play area began: a swipe cycles the view presets

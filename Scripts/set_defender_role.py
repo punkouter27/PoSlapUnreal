@@ -3,7 +3,7 @@
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/set_defender_role.py" -unattended
 
 SLAP_DEFENDER_ROLE: -1 (default; brains from L3 on observe the striker's head and hand) or 0 (guard brains before L3).
-SLAP_ARENAS: optional ';' list of arena Blueprints (default: every /Game/Arena/*_arena).
+SLAP_ARENAS: optional ';' list of arena Blueprints (default: every /Game/Arena/BP_*_arena).
 """
 import os
 import unreal

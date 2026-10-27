@@ -336,7 +336,7 @@ void ASlapHUD::DrawHUD()
 	if (bPairTest && H.Match > 0 && GetWorld()->GetTimeSeconds() >= 3.0 && Pairings.IsValidIndex(HerePairing))
 	{
 		bPairTest = false;
-		if (Pairings[HerePairing].AssetName == TEXT("Arena")) Travel((HerePairing + 1) % Pairings.Num());
+		if (Pairings[HerePairing].AssetName == TEXT("L_Arena")) Travel((HerePairing + 1) % Pairings.Num());
 		else
 		{
 			UE_LOG(LogTemp, Log, TEXT("SlapHUD: pair test: in %s, %s vs %s, brains %s / %s"), *Pairings[HerePairing].AssetName.ToString(), *H.Card[0], *H.Card[1], *H.Brain[0], *H.Brain[1]);
@@ -392,8 +392,17 @@ void ASlapHUD::BuildUi()
 	};
 	Find(TEXT("/Game/Brains"), UNNEModelData::StaticClass(), true, Brains);
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
+	// only the roster's brains are offered (training/roster.json); a build without training/ (Android) keeps every brain
+	FString RosterRaw;
+	TArray<TSharedPtr<FJsonValue>> Roster;
+	if (FFileHelper::LoadFileToString(RosterRaw, *(FPaths::ProjectDir() / TEXT("training/roster.json"))) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(RosterRaw), Roster) && Roster.Num())
+	{
+		TSet<FString> Keep;
+		for (const TSharedPtr<FJsonValue>& R : Roster) Keep.Add(FPaths::GetBaseFilename(R->AsObject()->GetStringField(TEXT("brain"))));
+		Brains.RemoveAll([&Keep](const FAssetData& B) { return !Keep.Contains(B.AssetName.ToString()); });
+	}
 	Find(TEXT("/Game/Levels"), UWorld::StaticClass(), false, Pairings);
-	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("Arena")); });
+	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("L_Arena")); });
 	Pairings.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 	const FName Here(*UGameplayStatics::GetCurrentLevelName(this));	// PIE prefix stripped
 	Pairing = HerePairing = Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName == Here; });
@@ -521,9 +530,9 @@ void ASlapHUD::BuildUi()
 		[Label(TAttribute<FText>::CreateLambda([Self]
 		{
 			if (!Self.IsValid() || !Self->Pairings.IsValidIndex(Self->Pairing)) return FText::FromString(TEXT("this level"));
-			// "Arena_kim_vs_grandpa" -> "KIM vs GRANDPA"; plain "Arena" is build_scene.py's default pairing
+			// "L_Arena_kim_vs_grandpa" -> "KIM vs GRANDPA"; plain "L_Arena" is build_scene.py's default pairing
 			const FString N = Self->Pairings[Self->Pairing].AssetName.ToString();
-			const FString P = N == TEXT("Arena") ? TEXT("GRANDPA vs GRANDPA") : N.RightChop(6).ToUpper().Replace(TEXT("_VS_"), TEXT(" vs "));
+			const FString P = N == TEXT("L_Arena") ? TEXT("GRANDPA vs GRANDPA") : N.RightChop(8).ToUpper().Replace(TEXT("_VS_"), TEXT(" vs "));
 			return FText::FromString(Self->Pairing == Self->HerePairing ? P : P + TEXT("  (loads)"));
 		}), 17, Hi)]
 		+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT(">"), [PairStep] { return PairStep(1); }, Spare)];

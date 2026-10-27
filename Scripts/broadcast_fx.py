@@ -179,7 +179,7 @@ def add_crowd():
     (CheerGlow per material: M_PhoneLight's lights, not the people). The glTF import made M_Crowd / M_PhoneLight instances
     of the engine's glTF master, so the nodes go on a copy of that master (/Game/FX/M_CrowdLive) and both are re-parented
     onto it; their own parameter values carry over by name."""
-    insts = [ASSETS.load_asset(f"/Game/Arena/Env/Arena/Materials/{n}") for n in ("M_Crowd", "M_PhoneLight")]
+    insts = [ASSETS.load_asset(f"/Game/Arena/Env/Arena/Materials/{n}") for n in ("MI_Crowd", "MI_PhoneLight")]
     live = ASSETS.load_asset("/Game/FX/M_CrowdLive") if ASSETS.does_asset_exist("/Game/FX/M_CrowdLive") else None
     if live is None:
         master = insts[0].get_editor_property("parent")

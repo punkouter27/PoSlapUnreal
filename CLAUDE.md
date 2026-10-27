@@ -51,7 +51,7 @@ Unreal (use PowerShell, not Git Bash: Git Bash rewrites `/Game/...` env values i
 ```powershell
 UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/Scripts/build_scene.py" -unattended   # SLAP_RED/SLAP_BLUE/SLAP_BRAIN env vars
 UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/Scripts/set_brain.py" -unattended     # swap a brain only
-UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
+UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
 ```
 
 Web: `cd Web && npm ci`, then `python Web/serve.py` (http://localhost:8080/Web/) or `python Web/build.py` → `Web/dist/`.

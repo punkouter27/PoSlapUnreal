@@ -30,3 +30,6 @@ Content/Art/Exports/Kim_rigged.fbm/
 
 # MuJoCo warning log (written next to whatever script ran)
 MUJOCO_LOG.TXT
+
+# URLab writes unused per-import material instances on every arena import
+Content/MuJoCoImports/

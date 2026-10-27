@@ -32,7 +32,13 @@ def import_env(reimport=True):
     t = unreal.AssetImportTask()
     t.filename, t.destination_path, t.automated, t.replace_existing, t.save = os.path.join(PROJ, "Content/Art/Exports/Arena.glb"), ENV, True, True, True
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
-    meshes = [m for m in (ASSETS.load_asset(p) for p in t.imported_object_paths) if isinstance(m, unreal.StaticMesh)]
+    for p in t.imported_object_paths:   # the glTF node names -> UE prefixes (SM_ mesh, MI_ material instance)
+        a = ASSETS.load_asset(p)
+        pre = "SM_" if isinstance(a, unreal.StaticMesh) else "MI_" if isinstance(a, unreal.MaterialInstanceConstant) else ""
+        n = a.get_name()
+        if pre and not n.startswith(pre):
+            ASSETS.rename_loaded_asset(a, f"{a.get_path_name().rsplit('/', 1)[0]}/{pre}{n[2:] if pre == 'MI_' and n.startswith('M_') else n}")
+    meshes = [m for m in (ASSETS.load_asset(p) for p in ASSETS.list_assets(ENV, recursive=True)) if isinstance(m, unreal.StaticMesh)]
     for m in meshes:
         ns = m.get_editor_property("nanite_settings")
         ns.enabled = True
@@ -49,7 +55,7 @@ def aim(frm, to):  # (pitch, yaw, roll) pointing a light's +X from frm to to (UE
 
 def build(spawn, reimport=True):
     for m in import_env(reimport):
-        a = spawn(unreal.StaticMeshActor, f"Env_{m.get_name()}")
+        a = spawn(unreal.StaticMeshActor, f"Env_{m.get_name().removeprefix('SM_')}")   # "Env_Crowd": ASlapHUD finds the crowd by label
         a.static_mesh_component.set_static_mesh(m)
         a.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
         a.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
@@ -119,7 +125,7 @@ def grade(pp):
 if __name__ == "__main__":
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-    les.load_level(__import__("os").environ.get("SLAP_LEVEL", "/Game/Levels/Arena"))   # e.g. /Game/Levels/Arena_grandpa_vs_kim
+    les.load_level(__import__("os").environ.get("SLAP_LEVEL", "/Game/Levels/L_Arena"))   # e.g. /Game/Levels/L_Arena_grandpa_vs_kim
     for a in eas.get_all_level_actors():
         if a.get_actor_label().startswith(LABELS):
             eas.destroy_actor(a)

@@ -59,10 +59,10 @@ UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="Scripts/bu
 ### 3. Launching the Game & Running Matches
 ```powershell
 # Launch standalone portrait match (Grandpa Red vs. Kim Blue)
-UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
+UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
 
 # Run automated UI synthetic interaction test
-UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/Arena -game -SlapUiTest
+UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena -game -SlapUiTest
 ```
 
 ### 4. Deterministic Replay & Parity Verification

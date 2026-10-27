@@ -5,7 +5,7 @@
 TensorBoard starts with the run (http://localhost:6006). A brain is exported to ONNX only on graduation
 (AGENTS.md): mean episode return >= the level's target over 100 consecutive episodes, zero NaN, and the
 level's own exam passed by the deterministic policy. runs/<run>/: latest.pt, telemetry.jsonl, meta.json,
-report.html (runs over 30 min). Runs that never reached 5,000 steps are pruned at start.
+report.html (runs over 30 min). At start, runs older than 24 h are pruned (housekeeping).
 """
 import argparse, copy, json, shutil, socket, subprocess, sys, time
 from collections import deque
@@ -28,22 +28,29 @@ TAG = {0: "guard", 1: "strike", -1: "absorb"}
 
 
 def housekeeping(keep=()):
-    """Clean up failed runs (AGENTS.md): a run failed only if it left a crash.log (train.py on an exception, overnight.py
-    on a non-zero exit) or its meta.json records a non-zero exit code. Never touched: runs in `keep`, and any run with a
-    file written in the last 24 h (still active or just finished). Its runs/<run>.log goes with it.
+    """Clean up runs (AGENTS.md). Never touched: runs in `keep`, any run with a file written in the last 24 h (still
+    active or just finished), and any run a queue stage still to run names (its resume point). Every other run goes:
+    failed ones (a crash.log, or a non-zero exit code in meta.json) and, since 2026-10-27 (user), old finished ones too,
+    whose brain, if it graduated, is already in models/brains. Its runs/<run>.log goes with it.
     (Replaces 'prune under 5,000 steps': 2026-10-22 that rule deleted long crashed runs, one of them mid-resume.)"""
     keep = {Path(k).resolve() for k in keep}
+    pending = ""
+    for q in RUNS.glob("*queue*.json"):
+        try:
+            pending += json.dumps([s for s in json.loads(q.read_text()) if not s.get("done")])
+        except (ValueError, TypeError, AttributeError):
+            pending += q.read_text()   # not a stage list: keep every run it mentions
     for d in RUNS.glob("*"):
-        if not d.is_dir() or d.resolve() in keep:
+        if not d.is_dir() or d.resolve() in keep or f"runs/{d.name}/" in pending or f'"{d.name}"' in pending:
             continue
         files = [f for f in d.rglob("*") if f.is_file()]
-        if not files or time.time() - max(f.stat().st_mtime for f in files) < 24 * 3600:
+        if files and time.time() - max(f.stat().st_mtime for f in files) < 24 * 3600:
             continue
         meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
-        if (d / "crash.log").exists() or meta.get("exit_code", 0) != 0:
-            shutil.rmtree(d, ignore_errors=True)
-            (RUNS / f"{d.name}.log").unlink(missing_ok=True)
-            print(f"removed failed run {d.name}")
+        failed = (d / "crash.log").exists() or meta.get("exit_code", 0) != 0
+        shutil.rmtree(d, ignore_errors=True)
+        (RUNS / f"{d.name}.log").unlink(missing_ok=True)
+        print(f"removed {'failed' if failed else 'old'} run {d.name}")
 
 
 def tensorboard():

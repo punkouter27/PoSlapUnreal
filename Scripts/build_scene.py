@@ -2,8 +2,8 @@
 
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/build_scene.py" -unattended
 
-Pairing (roster): SLAP_RED / SLAP_BLUE = character card names (default grandpa / grandpa -> /Game/Levels/Arena; any other
-pairing -> /Game/Levels/Arena_<red>_vs_<blue>, arena model training/models/<red>_vs_<blue>_arena.xml from build_body.py
+Pairing (roster): SLAP_RED / SLAP_BLUE = character card names (default grandpa / grandpa -> /Game/Levels/L_Arena; any other
+pairing -> /Game/Levels/L_Arena_<red>_vs_<blue>, arena model training/models/<red>_vs_<blue>_arena.xml from build_body.py
 --blue). Brains: SLAP_BRAIN (red) / SLAP_BLUE_BRAIN (blue), an .onnx path to import or a /Game/... asset; blue defaults to red's.
 An athlete's mesh, textures and skin are imported once (Content/Art/Exports/<Name>_rigged.fbx, <Name>_tex/); SLAP_REIMPORT=1 redoes them.
 
@@ -61,6 +61,9 @@ def athlete(card):
     if not REIMPORT and ASSETS.does_asset_exist(mesh_path) and ASSETS.does_asset_exist(skin_path):
         return ASSETS.load_asset(mesh_path), ASSETS.load_asset(skin_path)
     mesh = next(a for a in import_file(f"Content/Art/Exports/{Name}_rigged.fbx", folder, fbx, f"SK_{Name}") if isinstance(a, unreal.SkeletalMesh))
+    for old, new in ((f"SK_{Name}_Skeleton", f"SKEL_{Name}"), ("Material_001", f"MI_{Name}_Default"), ("Material", f"MI_{Name}_Default")):
+        if ASSETS.does_asset_exist(f"{folder}/{old}") and not ASSETS.does_asset_exist(f"{folder}/{new}"):   # the importer's names -> UE prefixes
+            ASSETS.rename_asset(f"{folder}/{old}", f"{folder}/{new}")
     # skin material from the scan's PBR textures (Interchange drops the FBX's texture links)
     tex = {}
     for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
@@ -109,7 +112,7 @@ blue_brain = brain_asset(os.environ["SLAP_BLUE_BRAIN"]) if os.environ.get("SLAP_
 
 # ---- level FIRST: wipe and save it so the old arena Blueprint has no references left (URLab refuses to import
 # over a Blueprint the open level still instantiates, and delete_asset fails on a referenced asset)
-LEVEL = "/Game/Levels/Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/Arena_{PAIR}"
+LEVEL = "/Game/Levels/L_Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/L_Arena_{PAIR}"
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 if ASSETS.does_asset_exist(LEVEL):
@@ -120,10 +123,13 @@ if ASSETS.does_asset_exist(LEVEL):
 else:
     les.new_level(LEVEL)
 
-if ASSETS.does_asset_exist(f"/Game/Arena/{PAIR}_arena"):   # URLab won't overwrite; the MJCF may have changed
-    ASSETS.delete_asset(f"/Game/Arena/{PAIR}_arena")
+BP = f"/Game/Arena/BP_{PAIR}_arena"
+if ASSETS.does_asset_exist(BP):   # URLab won't overwrite; the MJCF may have changed
+    ASSETS.delete_asset(BP)
 arena_bp = next(a for a in import_file(f"training/models/{PAIR}_arena.xml", "/Game/Arena")
                 if isinstance(a, unreal.Blueprint))
+ASSETS.rename_asset(arena_bp.get_path_name().split(".")[0], BP)   # URLab names it after the XML
+arena_bp = ASSETS.load_asset(BP)
 
 # controller component on the arena Blueprint (URLab binds it after compile)
 sub = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
@@ -201,7 +207,7 @@ for team, prefix, card in (("Red", "red_", RED), ("Blue", "blue_", BLUE)):
     v.set_editor_property("body_prefix", prefix)
     mesh = v.get_component_by_class(unreal.PoseableMeshComponent)
     mesh.set_skinned_asset_and_update(body[card][0])
-    mesh.set_material(0, body[card][1])   # the asset's slot keeps the FBX importer's untextured Material_001; override per component
+    mesh.set_material(0, body[card][1])   # the asset's slot keeps the FBX importer's untextured MI_<Name>_Default; override per component
     mesh.set_editor_property("overlay_material", overlay[team])
 
 # arena look: env meshes (Content/Art/Raw/Arena_v2.blend -> Exports/Arena.glb), lights, haze (Scripts/arena_env.py)

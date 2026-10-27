@@ -4,7 +4,7 @@
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/set_brain.py" -unattended
 
 SLAP_DEFENDER_ROLE: -1 (default; brains from L3 on) or 0 (guard brains before L3).
-SLAP_ARENA: the arena Blueprint (default /Game/Arena/grandpa_vs_grandpa_arena; e.g. /Game/Arena/grandpa_vs_kim_arena).
+SLAP_ARENA: the arena Blueprint (default /Game/Arena/BP_grandpa_vs_grandpa_arena; e.g. /Game/Arena/BP_grandpa_vs_kim_arena).
 SLAP_CORNER: red (default, the Brain property) or blue (BlueBrain, plus BlueFingerprint from SLAP_FINGERPRINT if given).
 """
 import os
@@ -19,7 +19,7 @@ t.filename, t.destination_path, t.automated, t.replace_existing, t.save = os.pat
 unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
 brain = ASSETS.load_asset(t.imported_object_paths[0])
 
-arena_bp = ASSETS.load_asset(os.environ.get("SLAP_ARENA", "/Game/Arena/grandpa_vs_grandpa_arena"))
+arena_bp = ASSETS.load_asset(os.environ.get("SLAP_ARENA", "/Game/Arena/BP_grandpa_vs_grandpa_arena"))
 blue = os.environ.get("SLAP_CORNER", "red") == "blue"
 sub = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
 n = 0
