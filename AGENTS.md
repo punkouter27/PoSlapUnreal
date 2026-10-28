@@ -36,3 +36,9 @@
 ### 4. Output Directives
 - **Strategic Direction:** If a code change exceeds 100 lines without pending questions, offer 3 architecture/roadmap questions.
 - **TL;DR:** Append a ~20-word TL;DR to responses exceeding 100 words.
+
+## CI/CD and Azure (same section in every Po repo)
+
+- A push to `master` deploys the web build (`.github/workflows/deploy-web.yml`) to its Azure Static Web App. Nothing is deployed by hand.
+- Tests pass on any machine: no drive-letter, temp-folder or working-directory assumptions, and no live config value hard-coded as an expected result (read it from the same config the app reads).
+- A red run on the default branch gets an ntfy push from the CI watcher in PoPunkouterSoftware. Fix it, or say why it is red.
