@@ -39,6 +39,9 @@ jobs:
       - name: Bundle static site
         run: python Web/build.py
 
+      - name: Test the browser engine (one turn each way, every pairing)
+        run: for p in gg kk gk; do node Web/check.mjs $p; done
+
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
