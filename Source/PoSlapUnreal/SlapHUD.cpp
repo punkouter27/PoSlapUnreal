@@ -67,19 +67,32 @@
 
 namespace
 {
-	constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
 	FString CommentaryFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt"); }	// Scripts/commentator.py writes it
 	FString HypeFile() { return FPaths::ProjectSavedDir() / TEXT("Commentary/hype.json"); }	// Scripts/chat.py writes it
 	const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandL("hand_l"), BoneHandR("hand_r");
 	const FName PRippleTime("RippleTime"), PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired"), PRise("Rise"), PCheer("Cheer"),
 		PPrint("Print"), PPrintU("PrintU"), PPrintV("PrintV");
-	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck;
+	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck, Slap::CleanSpeed;
 	const FColor TeamColor[2] = { FColor(235, 70, 60), FColor(70, 130, 240) };
 	const FColor Gold(255, 220, 120), Grey(200, 200, 200);
 	constexpr float TopBar = 56.f, BottomBar = 40.f;	// Slate units: the corner anchors' rows (BuildUi)
 	const TCHAR* ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO"), TEXT("REPLAY") };
 	int32 Team(const FString& Name) { return Name == TEXT("blue") ? 1 : 0; }
 	template <typename T> T* Load(const TCHAR* Path) { return LoadObject<T>(nullptr, Path, nullptr, LOAD_Quiet | LOAD_NoWarn); }
+	TSharedPtr<FJsonObject> ReadJson(const FString& Path)	// quiet: a missing or bad file = null
+	{
+		FString Raw;
+		TSharedPtr<FJsonObject> J;
+		return FFileHelper::LoadFileToString(Raw, *Path) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) ? J : nullptr;
+	}
+	void Ring(AHUD* Hud, const FVector& C, float R, int32 Sides, const FLinearColor& Col, float Thick)	// screen space
+	{
+		for (int32 k = 0; k < Sides; ++k)
+		{
+			const float A0 = 2.f * PI * k / Sides, A1 = 2.f * PI * (k + 1) / Sides;
+			Hud->DrawLine(C.X + R * FMath::Cos(A0), C.Y + R * FMath::Sin(A0), C.X + R * FMath::Cos(A1), C.Y + R * FMath::Sin(A1), Col, Thick);
+		}
+	}
 }
 
 void ASlapGameMode::StartPlay()
@@ -888,9 +901,8 @@ void ASlapHUD::LoadRoster()
 	};
 	for (const FString& F : Files)
 	{
-		FString Raw;
-		TSharedPtr<FJsonObject> C;
-		if (F.EndsWith(TEXT("_skeleton.json")) || !FFileHelper::LoadFileToString(Raw, *(Dir / F)) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), C) || !C) continue;
+		const TSharedPtr<FJsonObject> C = F.EndsWith(TEXT("_skeleton.json")) ? nullptr : ReadJson(Dir / F);
+		if (!C) continue;
 		const FString Name = C->GetStringField(TEXT("name"));
 		FString Mine;
 		for (const FAssetData& B : Brains)
@@ -1109,7 +1121,7 @@ void ASlapHUD::Text(const FString& Str, float X, float Y, FColor C, float Scale,
 {
 	Font = Font ? Font : GEngine->GetSmallFont();
 	float W = 0, Ht = 0;
-	Canvas->StrLen(Font, Str, W, Ht);
+	if (bCentre) Canvas->StrLen(Font, Str, W, Ht);	// only centring needs the width
 	Canvas->SetDrawColor(C);
 	Canvas->DrawText(Font, Str, bCentre ? X - W * Scale * 0.5f : X, Y, Scale, Scale);
 }
@@ -1272,10 +1284,9 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		}
 		// chat hype: fresh for 15 s after Scripts/chat.py last wrote it
 		const FDateTime HypeStamp = IFileManager::Get().GetTimeStamp(*HypeFile());
-		TSharedPtr<FJsonObject> J;
 		Hype = 0.f;
-		if ((FDateTime::UtcNow() - HypeStamp).GetTotalSeconds() < 15.0 && FFileHelper::LoadFileToString(Raw, *HypeFile())
-			&& FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) && J)
+		const TSharedPtr<FJsonObject> J = (FDateTime::UtcNow() - HypeStamp).GetTotalSeconds() < 15.0 ? ReadJson(HypeFile()) : nullptr;
+		if (J)
 		{
 			Hype = FMath::Clamp((float)J->GetNumberField(TEXT("hype")), 0.f, 1.f);
 			ChatLine = J->GetStringField(TEXT("line"));
@@ -1559,11 +1570,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		const FVector C = Canvas->Project(StrikePos);
 		const float R = (40.f + 140.f * Ts / 0.4f) * S * FMath::Clamp(StrikeSpeed / CleanSpeed, 0.5, 1.5);
 		const FLinearColor Col(1.f, 0.95f, 0.8f, 1.f - Ts / 0.4f);
-		for (int32 k = 0; k < 40 && C.Z > 0; ++k)
-		{
-			const float A0 = 2.f * PI * k / 40.f, A1 = 2.f * PI * (k + 1) / 40.f;
-			DrawLine(C.X + R * FMath::Cos(A0), C.Y + R * FMath::Sin(A0), C.X + R * FMath::Cos(A1), C.Y + R * FMath::Sin(A1), Col, 3.f * S);
-		}
+		if (C.Z > 0) Ring(this, C, R, 40, Col, 3.f * S);
 	}
 	const double Tk = Now - KOAt;
 	if (Tk < 0.3) DrawRect(FLinearColor(0.9f, 0.1f, 0.05f, 0.35f * (1.f - Tk / 0.3f)), 0, 0, Canvas->ClipX, Canvas->ClipY);
@@ -1726,7 +1733,7 @@ void ASlapHUD::DrawXRay(const FSlapHud& H)
 			const int32 P = H.GhostParent[a][i];
 			if (P < 0) continue;
 			const FVector A = Canvas->Project(G[i]), B = Canvas->Project(G[P]);
-			if (A.Z > 0 && B.Z > 0) DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(Team.R, Team.G, Team.B, 0.7f), 3.f * S);
+			if (A.Z > 0 && B.Z > 0) DrawLine(A.X, A.Y, B.X, B.Y, Team.CopyWithNewOpacity(0.7f), 3.f * S);
 		}
 		for (int32 g = 0; g < 10; ++g)
 		{
@@ -1739,11 +1746,7 @@ void ASlapHUD::DrawXRay(const FSlapHud& H)
 				const FVector C = Canvas->Project(Body[On]->GetBoneLocation(Bone));
 				if (C.Z <= 0) continue;
 				const float R = (6.f + 36.f * F) * S;
-				for (int32 k = 0; k < 24; ++k)
-				{
-					const float A0 = 2.f * PI * k / 24.f, A1 = 2.f * PI * (k + 1) / 24.f;
-					DrawLine(C.X + R * FMath::Cos(A0), C.Y + R * FMath::Sin(A0), C.X + R * FMath::Cos(A1), C.Y + R * FMath::Sin(A1), FLinearColor(Team.R, Team.G, Team.B, 0.35f + 0.65f * F), 2.f * S);
-				}
+				Ring(this, C, R, 24, Team.CopyWithNewOpacity(0.35f + 0.65f * F), 2.f * S);
 			}
 		}
 		// the top three, in words, above the bottom panels
@@ -1930,9 +1933,8 @@ void ASlapHUD::Live(const FSlapHud& H)
 void ASlapHUD::LoadLeague()
 {
 	// training/scouting.py: Elo and tendencies per brain from every logged match; a missing file = no scouting line
-	FString Raw;
-	TSharedPtr<FJsonObject> J;
-	if (!FFileHelper::LoadFileToString(Raw, *(FPaths::ProjectDir() / TEXT("training/models/league.json"))) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) || !J) return;
+	const TSharedPtr<FJsonObject> J = ReadJson(FPaths::ProjectDir() / TEXT("training/models/league.json"));
+	if (!J) return;
 	const TSharedPtr<FJsonObject>* League = nullptr;
 	if (!J->TryGetObjectField(TEXT("brains"), League)) return;
 	Scout.Reset();

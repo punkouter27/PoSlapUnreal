@@ -34,6 +34,16 @@ writes weights to `Content/Data/Brains/*.bin` and `USlapController` rebuilds the
 
 ## Commands
 
+First-time setup (from repo root):
+
+```powershell
+git submodule update --init --recursive
+git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
+powershell -ExecutionPolicy Bypass -File Plugins/UnrealRoboticsLab/third_party/build_all.ps1   # MuJoCo, CoACD, ZMQ
+uv venv training/.venv --python 3.11; training/.venv/Scripts/python.exe -m pip install -r training/requirements.txt
+git lfs pull   # brains and Web/assets/*.glb
+```
+
 Python runs from `training/` with its venv (scripts import `envs`, `levels`, `ppo` relative to that folder):
 
 ```powershell

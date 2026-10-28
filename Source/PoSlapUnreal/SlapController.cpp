@@ -607,7 +607,8 @@ namespace
 		return FMath::Clamp(Stand + Reach * (Act > 0.0 ? Act * (Hi - Stand) : Act * (Stand - Lo)), Lo, Hi);
 	}
 
-	constexpr double StrikeClock = 30.0, Recovery = 5.0, BoxX = 0.20, BoxY = 0.25;
+	using Slap::StrikeClock, Slap::Recovery;
+	constexpr double BoxX = 0.20, BoxY = 0.25;
 	constexpr int64 KickSteps = 2;	// the slap's impact impulse lasts 10 ms (match.py KICK_STEPS)
 	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };	// judges: speed, head, stagger, defence
 }
@@ -695,8 +696,8 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 		Brains[0] = Hud.Brain[0];
 		Brains[1] = Hud.Brain[1];
 	}
-	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": 30.0, \"recovery\": 5.0}, \"seed\": %u, \"brains\": {\"red\": %s, \"blue\": %s}}"),
-		*Str(Athletes[First].Name), Rounds, Seed, *Str(Brains[0]), *Str(Brains[1])));
+	Emit(FString::Printf(TEXT("{\"type\": \"match_start\", \"first\": %s, \"rules\": {\"rounds\": %d, \"strike_clock\": %.1f, \"recovery\": %.1f}, \"seed\": %u, \"brains\": {\"red\": %s, \"blue\": %s}}"),
+		*Str(Athletes[First].Name), Rounds, StrikeClock, Recovery, Seed, *Str(Brains[0]), *Str(Brains[1])));
 	UE_LOG(LogSlap, Log, TEXT("match %d: coin toss -> %s strikes first"), MatchNo, *Athletes[First].Name);
 	if (bWalkIn && HoldSteps(WalkInHold) > 0)
 	{
@@ -1120,7 +1121,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		const FVector Dir = MjUtils::MjToUEPosition(Travel).GetSafeNormal();
 		SetHud([&](FSlapHud& H)
 		{
-			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.Speed >= 8.0 ? (Turn.bPalm ? TEXT("Clean palm") : TEXT("Clean hit")) : (Turn.bPalm ? TEXT("Palm") : TEXT("Hit"));	// clean = the L2 8 m/s line; every hit scores
+			H.bStruck = true; H.Speed = Turn.Speed; H.Part = Turn.Part; H.HeadPeak = 0.0; H.Event = Turn.Speed >= Slap::CleanSpeed ? (Turn.bPalm ? TEXT("Clean palm") : TEXT("Clean hit")) : (Turn.bPalm ? TEXT("Palm") : TEXT("Hit"));	// clean = the L2 8 m/s line; every hit scores
 			++H.StrikeSeq; H.StrikePos = Pos; H.StrikeDir = Dir; H.StrikeDefender = 1 - Turn.Striker;
 		});
 		break;

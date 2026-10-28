@@ -15,6 +15,8 @@ namespace Slap
 {
 	inline constexpr int32 Rounds = 3;
 	inline constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors
+	inline constexpr double StrikeClock = 30.0, Recovery = 5.0;	// s: to land the strike; to stay up after it
+	inline constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
 }
 
 /** What the HUD shows; copied from the physics thread under a lock (USlapController::GetHud). Index 0 = red, 1 = blue. */
