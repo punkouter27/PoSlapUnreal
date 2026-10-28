@@ -359,14 +359,27 @@ void ASlapHUD::DrawHUD()
 	if (bShotOnResult && ShotAt < 0.f && !H.Result.IsEmpty()) ShotAt = GetWorld()->GetTimeSeconds() + 0.5f;
 	if (ShotAt >= 0.f && GetWorld()->GetTimeSeconds() >= ShotAt)
 	{
+		const FString ShotFile = FPaths::ProjectSavedDir() / TEXT("Screenshots/slapshot.png");
 		if (!bShotTaken)
 		{
 			bShotTaken = true;
-			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/slapshot.png"), true, false);	// with the Slate layer
+			ShotRequested = FDateTime::UtcNow();
+			IFileManager::Get().Delete(*ShotFile);	// a stale file must not count as this run's shot
+			FScreenshotRequest::RequestScreenshot(ShotFile, true, false);	// with the Slate layer
 		}
-		else if (GetWorld()->GetTimeSeconds() >= ShotAt + 1.f)	// a frame later the file is written
+		else if (IFileManager::Get().FileSize(*ShotFile) > 0)	// quit once the file is on disk (a fixed delay lost the race)
 		{
 			UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+		}
+		else if ((FDateTime::UtcNow() - ShotRequested).GetTotalSeconds() > 5.0)	// a viewport that skipped drawing drops the request: ask again
+		{
+			if (++ShotRetries > 2)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("SlapHUD: -SlapShot: no screenshot after 3 requests (window hidden?), quitting"));
+				UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+			}
+			ShotRequested = FDateTime::UtcNow();
+			FScreenshotRequest::RequestScreenshot(ShotFile, true, false);
 		}
 	}
 }

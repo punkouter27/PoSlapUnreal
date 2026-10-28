@@ -82,6 +82,8 @@ private:
 	TArray<float> Frames;
 	double FpsSince = 0.0;
 	float ShotAt = -1.f, FxTestAt = -1.f;
+	FDateTime ShotRequested;			// when the last -SlapShot screenshot request went out (retried after 5 s)
+	int32 ShotRetries = 0;
 	bool bShotTaken = false, bShotOnResult = false;	// -SlapShotResult: the shot 0.5 s after a match ends (the result card)
 
 	// layout: canvas scale (authored at 540 x 960) and the free rows between the Slate bars, in canvas pixels

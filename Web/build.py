@@ -3,6 +3,7 @@ dist/Web/ holds the page and its libraries, dist/training/ the arena, fingerprin
 """
 import re
 import shutil
+import time
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent
@@ -19,7 +20,8 @@ chars = sorted(set(re.findall(r'char: "(\w+)"', loader)))
 brains = re.findall(r'brain: "(\w+)"', loader)
 xmls = re.findall(r'xml: "([\w.]+)"', loader)
 data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerprint.json" for c in chars] \
-    + [f"training/characters/{c}.json" for c in chars] + [f"training/models/brains/{b}.onnx" for b in brains]
+    + [f"training/characters/{c}.json" for c in chars] + [f"training/models/brains/{b}.onnx" for b in brains] \
+    + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
 for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "assets/arena.glb")] \
@@ -28,6 +30,8 @@ for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "
         + [(ROOT / f, DIST / f) for f in data]:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
+page = DIST / "Web" / "index.html"   # the build stamp (bottom right): the build date
+page.write_text(re.sub(r'<div class="stamp">[^<]*</div>', f'<div class="stamp">{time.strftime("%y%m%d")}</div>', page.read_text(encoding="utf-8")), encoding="utf-8")
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
 (DIST / "staticwebapp.config.json").write_text(

@@ -24,7 +24,8 @@ function banner(big, small = "", seconds = 1.6, color = "") {
   $("banner").classList.add("on"); clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => $("banner").classList.remove("on"), seconds * 1000);
 }
-const corner = n => `<span class="${n}">${n.toUpperCase()}</span>`;
+const NAMES = {};   // corner -> athlete (the card's display name), filled once the match loads
+const corner = n => `<span class="${n}">${n.toUpperCase()}</span>${NAMES[n] ? " " + NAMES[n] : ""}`;
 function onEvent(e) {
   switch (e.type) {
     case "match_start": banner(e.match ? `Match ${e.match}` : "New match", `${e.first} wins the toss`, 2); renderCards([[0, 0], [0, 0], [0, 0]]); break;
@@ -158,6 +159,7 @@ try {
     + (MATCHUPS[MATCHUP].untrained ? `<span class="note">* never trained together: expect falls</span>` : "");
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
+  for (const s of game.match.sides) NAMES[s.name] = s.card.display;
   $("tape").innerHTML = game.match.sides.map((s, i) => {
     const c = s.card, l = league[game.matchup.corners[i].brain];
     const scout = l ? ` · ELO ${Math.round(l.elo)} · KO ${Math.round(100 * l.ko_rate)}%` : "";

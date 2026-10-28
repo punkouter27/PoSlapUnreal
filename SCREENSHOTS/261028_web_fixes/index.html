@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Web Fixes 261028</title>
+<style>:root{--bg:#fcfcfb;--ink:#1f1f1e;--ink2:#5f5e58;--line:#e4e3de}@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--line:#33332f}}
+:root[data-theme=dark]{--bg:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--line:#33332f}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}main{max-width:900px;margin:0 auto;padding:24px 16px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}img{width:100%;border-radius:8px;border:1px solid var(--line)}figcaption{color:var(--ink2);font-size:14px}ol li{margin:6px 0}</style></head><body><main>
+<h1>Web spectator fixes (28 Oct 2026)</h1>
+<div class="pair"><figure><img src="before.png" alt="Before"><figcaption>Before: buttons 31 px tall, the turn line says only "RED", stamp 261025</figcaption></figure>
+<figure><img src="after.png" alt="After"><figcaption>After: 44 px buttons and pairing links, "BLUE GRANDPA strikes", stamp = build date</figcaption></figure></div>
+<ol>
+<li><b>Touch targets:</b> the transport buttons and pairing links are at least 44 × 44 px (they were 31 px tall); the pairing row sits 66 px above the bar on phones so the taller bar doesn't cover it.</li>
+<li><b>Who's who:</b> the turn line names the athlete ("RED GRANDPA strikes"). The roster panel that named them is hidden under 640 px.</li>
+<li><b>Build stamp:</b> <code>Web/build.py</code> writes the build date (it was hard-coded 261025); the dev server shows "dev".</li>
+<li><b>Console clean:</b> an inline favicon and the bundled <code>league.json</code> (scouting line) remove both 404s.</li>
+</ol>
+<h2>Unreal, same pass</h2>
+<figure style="max-width:320px"><img src="unreal_kim_vs_kim_after.png" alt="Kim vs Kim in Unreal"><figcaption>Kim vs Kim now runs kim_L4 (self-play, passed) in both corners: clean palms at 9.3 m/s, both stay up. It ran a Kim-vs-Grandpa brain before.</figcaption></figure>
+</main></body></html>
