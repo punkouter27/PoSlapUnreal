@@ -1151,7 +1151,7 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	S.Stamina = FMath::Max(MinStamina, S.Stamina - S.StaminaPerStrike);
 	if (Touched)
 	{
-		D.Mem[0] = RoundTo(Turn.TouchStep * m->opt.timestep, 3) / 30.0;
+		D.Mem[0] = RoundTo(Turn.TouchStep * m->opt.timestep, 3) / StrikeClock;
 		D.Mem[1] = Turn.Speed / 10.0;
 		if (!Turn.bKO) D.NeckStrength = FMath::Max(MinNeck, D.NeckStrength - D.NeckDamage * Turn.HeadPeak);
 	}

@@ -37,10 +37,11 @@ writes weights to `Content/Data/Brains/*.bin` and `USlapController` rebuilds the
 First-time setup (from repo root):
 
 ```powershell
-git submodule update --init --recursive
+git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab   # not tracked here
 git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
+git -C Plugins/UnrealRoboticsLab submodule update --recursive   # the patch moves MuJoCo's gitlink to 3.10.0
 powershell -ExecutionPolicy Bypass -File Plugins/UnrealRoboticsLab/third_party/build_all.ps1   # MuJoCo, CoACD, ZMQ
-uv venv training/.venv --python 3.11; training/.venv/Scripts/python.exe -m pip install -r training/requirements.txt
+uv venv training/.venv --python 3.11; uv pip install --python training/.venv -r training/requirements.txt   # + torch cu128, trimesh scipy networkx Pillow
 git lfs pull   # brains and Web/assets/*.glb
 ```
 
