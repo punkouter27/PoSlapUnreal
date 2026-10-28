@@ -1,0 +1,1063 @@
+{
+ "steps": [
+  {
+   "step": "textures relinked",
+   "s": 1.2,
+   "images": [
+    [
+     "texture_pbr_20250901",
+     [
+      4096,
+      4096
+     ],
+     "sRGB"
+    ],
+    [
+     "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness",
+     [
+      4096,
+      4096
+     ],
+     "Non-Color"
+    ],
+    [
+     "texture_pbr_20250901_normal",
+     [
+      4096,
+      4096
+     ],
+     "Non-Color"
+    ],
+    [
+     "Viewer Node",
+     [
+      256,
+      256
+     ],
+     ""
+    ]
+   ]
+  },
+  {
+   "step": "skeleton vs simulator",
+   "s": 1.2,
+   "rms_mm": 7.44,
+   "max_mm": 20.37,
+   "worst": "head"
+  },
+  {
+   "step": "ROM metrics (original weights)",
+   "s": 2.3,
+   "worst_dv": [
+    "hip_flex",
+    {
+     "dv": 6.261,
+     "stretch": 2.235,
+     "squash": 0.256
+    }
+   ]
+  },
+  {
+   "step": "root + twist bones, mirrored rolls",
+   "s": 2.3,
+   "bones": 24,
+   "roll_mirror_deg_before": [
+    [
+     "upperarm",
+     8.2
+    ],
+    [
+     "forearm",
+     7.7
+    ],
+    [
+     "hand",
+     23.1
+    ],
+    [
+     "thigh",
+     5.4
+    ],
+    [
+     "shin",
+     1.8
+    ],
+    [
+     "foot",
+     112.1
+    ]
+   ],
+   "roll_mirror_deg_after": [
+    [
+     "upperarm",
+     0.0
+    ],
+    [
+     "forearm",
+     0.0
+    ],
+    [
+     "hand",
+     0.0
+    ],
+    [
+     "thigh",
+     0.0
+    ],
+    [
+     "shin",
+     0.0
+    ],
+    [
+     "foot",
+     0.0
+    ]
+   ]
+  },
+  {
+   "step": "ROM metrics (twist, no smoothing)",
+   "s": 3.5,
+   "worst_dv": [
+    "hip_flex",
+    {
+     "dv": 6.272,
+     "stretch": 2.235,
+     "squash": 0.256
+    }
+   ]
+  },
+  {
+   "step": "ROM metrics (twist + smoothing)",
+   "s": 4.5,
+   "worst_dv": [
+    "hip_flex",
+    {
+     "dv": 6.238,
+     "stretch": 2.514,
+     "squash": 0.271
+    }
+   ]
+  },
+  {
+   "step": "weight variant",
+   "s": 4.6,
+   "original": 1.0104,
+   "twist": 1.0191,
+   "twist_smooth": 1.0688,
+   "kept": "original"
+  },
+  {
+   "step": "weights",
+   "s": 4.6,
+   "max_influences": 4,
+   "hist": {
+    "1": 2678,
+    "2": 3629,
+    "3": 1127,
+    "4": 2550
+   },
+   "unnormalized": 0,
+   "unweighted": 0
+  },
+  {
+   "step": "geometry",
+   "s": 4.6,
+   "verts": 9984,
+   "tris": 20000,
+   "ngons": 0,
+   "quads": 0,
+   "zero_area": 0,
+   "nonmanifold_edges": 0,
+   "loose_verts": 0
+  },
+  {
+   "step": "UV0",
+   "s": 7.0,
+   "coverage_pct": 50.2,
+   "overlap_pct_of_used": 0.04,
+   "texel_density_cv": 0.36,
+   "texel_density_p95_p5": 1.78
+  },
+  {
+   "step": "UV1 lightmap",
+   "s": 9.3,
+   "coverage_pct": 17.3,
+   "overlap_pct_of_used": 0.1,
+   "texel_density_cv": 0.06,
+   "texel_density_p95_p5": 1.2
+  },
+  {
+   "step": "LODs",
+   "s": 10.0,
+   "lods": [
+    {
+     "name": "Grandpa_v2_LOD1",
+     "tris": 10000
+    },
+    {
+     "name": "Grandpa_v2_LOD2",
+     "tris": 5000
+    }
+   ]
+  },
+  {
+   "step": "morph targets",
+   "s": 10.1,
+   "Basis": 9984,
+   "Breathe": 9984,
+   "Jiggle_Belly": 9984
+  },
+  {
+   "step": "AO baked",
+   "s": 24.1,
+   "device": "CPU",
+   "size": 2048
+  },
+  {
+   "step": "textures packed",
+   "s": 28.1,
+   "n": 5,
+   "ao_mean": 0.712
+  },
+  {
+   "step": "collision hulls",
+   "s": 28.6,
+   "n": 17,
+   "max_verts": 41
+  },
+  {
+   "step": "test animations",
+   "s": 31.1,
+   "actions": {
+    "Slap_Sim": 400,
+    "ROM_Test": 540
+   }
+  },
+  {
+   "step": "saved",
+   "s": 31.2,
+   "blend": "C:\\Users\\punko\\Downloads\\CODE_MATT\\PoSlapUnreal\\Content\\Art\\Raw\\Grandpa_v2.blend"
+  },
+  {
+   "step": "exported",
+   "s": 34.5,
+   "Grandpa_v2.fbm": 0.0,
+   "Grandpa_v2.fbx": 3.27,
+   "Grandpa_v2.glb": 18.26,
+   "Grandpa_v2_Collision.fbm": 0.0,
+   "Grandpa_v2_Collision.fbx": 0.5,
+   "Grandpa_v2_LOD1.fbm": 0.0,
+   "Grandpa_v2_LOD1.fbx": 0.89,
+   "Grandpa_v2_LOD2.fbm": 0.0,
+   "Grandpa_v2_LOD2.fbx": 0.51
+  },
+  {
+   "step": "rendered",
+   "s": 425.1,
+   "videos": [
+    "slap.mp4",
+    "rom.mp4"
+   ]
+  },
+  {
+   "step": "verified Grandpa_v2.glb",
+   "s": 425.6,
+   "bones": 18,
+   "root": [
+    "root"
+   ],
+   "verts": 21108,
+   "max_influences": 4,
+   "shape_keys": [
+    "Basis",
+    "Breathe",
+    "Jiggle_Belly"
+   ],
+   "actions": [
+    "ROM_Test",
+    "Slap_Sim"
+   ],
+   "uv_layers": [
+    "UVMap",
+    "UVMap.001"
+   ],
+   "dims_m": [
+    1.434,
+    0.227,
+    1.651
+   ],
+   "mesh_dims_m": [
+    1.705,
+    0.419,
+    1.708
+   ]
+  },
+  {
+   "step": "verified Grandpa_v2.fbx",
+   "s": 426.1,
+   "bones": 18,
+   "root": [
+    "root"
+   ],
+   "verts": 9984,
+   "max_influences": 4,
+   "shape_keys": [
+    "Basis",
+    "Breathe",
+    "Jiggle_Belly"
+   ],
+   "actions": [
+    "Armature|Armature|ROM_Test",
+    "Armature|Armature|Slap_Sim",
+    "Key|Armature|ROM_Test",
+    "Key|Armature|Slap_Sim"
+   ],
+   "uv_layers": [
+    "UVMap",
+    "UVLightmap"
+   ],
+   "dims_m": [
+    1.809,
+    1.181,
+    1.645
+   ],
+   "mesh_dims_m": [
+    1.705,
+    0.419,
+    1.708
+   ]
+  }
+ ],
+ "rom_before": {
+  "waist_twist": {
+   "dv": 1.578,
+   "stretch": 1.525,
+   "squash": 0.654
+  },
+  "waist_flex": {
+   "dv": 3.428,
+   "stretch": 1.511,
+   "squash": 0.494
+  },
+  "waist_side": {
+   "dv": 0.649,
+   "stretch": 1.391,
+   "squash": 0.721
+  },
+  "neck_turn": {
+   "dv": 0.823,
+   "stretch": 1.348,
+   "squash": 0.658
+  },
+  "neck_nod": {
+   "dv": 0.493,
+   "stretch": 1.25,
+   "squash": 0.702
+  },
+  "neck_tilt": {
+   "dv": 0.085,
+   "stretch": 1.2,
+   "squash": 0.802
+  },
+  "shoulder_swing": {
+   "dv": 3.893,
+   "stretch": 1.941,
+   "squash": 0.448
+  },
+  "shoulder_raise": {
+   "dv": 3.184,
+   "stretch": 2.584,
+   "squash": 0.413
+  },
+  "shoulder_twist": {
+   "dv": 4.236,
+   "stretch": 2.445,
+   "squash": 0.551
+  },
+  "elbow": {
+   "dv": 0.284,
+   "stretch": 1.41,
+   "squash": 0.562
+  },
+  "wrist_flex": {
+   "dv": 0.081,
+   "stretch": 1.314,
+   "squash": 0.719
+  },
+  "wrist_dev": {
+   "dv": 0.037,
+   "stretch": 1.125,
+   "squash": 0.847
+  },
+  "hip_flex": {
+   "dv": 6.261,
+   "stretch": 2.235,
+   "squash": 0.256
+  },
+  "hip_abd": {
+   "dv": 0.204,
+   "stretch": 1.88,
+   "squash": 0.648
+  },
+  "hip_rot": {
+   "dv": 1.196,
+   "stretch": 1.684,
+   "squash": 0.513
+  },
+  "knee": {
+   "dv": 1.744,
+   "stretch": 1.581,
+   "squash": 0.383
+  },
+  "ankle_flex": {
+   "dv": 0.288,
+   "stretch": 1.387,
+   "squash": 0.797
+  },
+  "ankle_roll": {
+   "dv": 0.06,
+   "stretch": 1.123,
+   "squash": 0.864
+  }
+ },
+ "roll_mirror": {
+  "before": [
+   [
+    "upperarm",
+    8.2
+   ],
+   [
+    "forearm",
+    7.7
+   ],
+   [
+    "hand",
+    23.1
+   ],
+   [
+    "thigh",
+    5.4
+   ],
+   [
+    "shin",
+    1.8
+   ],
+   [
+    "foot",
+    112.1
+   ]
+  ],
+  "after": [
+   [
+    "upperarm",
+    0.0
+   ],
+   [
+    "forearm",
+    0.0
+   ],
+   [
+    "hand",
+    0.0
+   ],
+   [
+    "thigh",
+    0.0
+   ],
+   [
+    "shin",
+    0.0
+   ],
+   [
+    "foot",
+    0.0
+   ]
+  ]
+ },
+ "rom_twist": {
+  "waist_twist": {
+   "dv": 1.578,
+   "stretch": 1.525,
+   "squash": 0.654
+  },
+  "waist_flex": {
+   "dv": 3.428,
+   "stretch": 1.511,
+   "squash": 0.494
+  },
+  "waist_side": {
+   "dv": 0.649,
+   "stretch": 1.391,
+   "squash": 0.721
+  },
+  "neck_turn": {
+   "dv": 0.823,
+   "stretch": 1.348,
+   "squash": 0.658
+  },
+  "neck_nod": {
+   "dv": 0.493,
+   "stretch": 1.25,
+   "squash": 0.702
+  },
+  "neck_tilt": {
+   "dv": 0.085,
+   "stretch": 1.2,
+   "squash": 0.802
+  },
+  "shoulder_swing": {
+   "dv": 3.919,
+   "stretch": 1.946,
+   "squash": 0.437
+  },
+  "shoulder_raise": {
+   "dv": 3.182,
+   "stretch": 2.584,
+   "squash": 0.413
+  },
+  "shoulder_twist": {
+   "dv": 4.212,
+   "stretch": 2.5,
+   "squash": 0.564
+  },
+  "elbow": {
+   "dv": 0.284,
+   "stretch": 1.41,
+   "squash": 0.562
+  },
+  "wrist_flex": {
+   "dv": 0.081,
+   "stretch": 1.315,
+   "squash": 0.714
+  },
+  "wrist_dev": {
+   "dv": 0.037,
+   "stretch": 1.125,
+   "squash": 0.846
+  },
+  "hip_flex": {
+   "dv": 6.272,
+   "stretch": 2.235,
+   "squash": 0.256
+  },
+  "hip_abd": {
+   "dv": 0.204,
+   "stretch": 1.88,
+   "squash": 0.648
+  },
+  "hip_rot": {
+   "dv": 1.257,
+   "stretch": 1.753,
+   "squash": 0.492
+  },
+  "knee": {
+   "dv": 1.744,
+   "stretch": 1.581,
+   "squash": 0.383
+  },
+  "ankle_flex": {
+   "dv": 0.288,
+   "stretch": 1.387,
+   "squash": 0.797
+  },
+  "ankle_roll": {
+   "dv": 0.06,
+   "stretch": 1.123,
+   "squash": 0.864
+  }
+ },
+ "rom_smooth": {
+  "waist_twist": {
+   "dv": 1.565,
+   "stretch": 1.533,
+   "squash": 0.616
+  },
+  "waist_flex": {
+   "dv": 3.407,
+   "stretch": 1.512,
+   "squash": 0.491
+  },
+  "waist_side": {
+   "dv": 0.653,
+   "stretch": 1.442,
+   "squash": 0.694
+  },
+  "neck_turn": {
+   "dv": 0.826,
+   "stretch": 1.442,
+   "squash": 0.603
+  },
+  "neck_nod": {
+   "dv": 0.496,
+   "stretch": 1.273,
+   "squash": 0.679
+  },
+  "neck_tilt": {
+   "dv": 0.085,
+   "stretch": 1.262,
+   "squash": 0.799
+  },
+  "shoulder_swing": {
+   "dv": 3.924,
+   "stretch": 2.188,
+   "squash": 0.446
+  },
+  "shoulder_raise": {
+   "dv": 3.2,
+   "stretch": 2.442,
+   "squash": 0.436
+  },
+  "shoulder_twist": {
+   "dv": 4.24,
+   "stretch": 2.199,
+   "squash": 0.497
+  },
+  "elbow": {
+   "dv": 0.29,
+   "stretch": 1.466,
+   "squash": 0.517
+  },
+  "wrist_flex": {
+   "dv": 0.092,
+   "stretch": 1.33,
+   "squash": 0.739
+  },
+  "wrist_dev": {
+   "dv": 0.038,
+   "stretch": 1.125,
+   "squash": 0.847
+  },
+  "hip_flex": {
+   "dv": 6.238,
+   "stretch": 2.514,
+   "squash": 0.271
+  },
+  "hip_abd": {
+   "dv": 0.14,
+   "stretch": 1.961,
+   "squash": 0.632
+  },
+  "hip_rot": {
+   "dv": 1.242,
+   "stretch": 1.76,
+   "squash": 0.512
+  },
+  "knee": {
+   "dv": 1.801,
+   "stretch": 1.725,
+   "squash": 0.383
+  },
+  "ankle_flex": {
+   "dv": 0.311,
+   "stretch": 1.442,
+   "squash": 0.781
+  },
+  "ankle_roll": {
+   "dv": 0.064,
+   "stretch": 1.134,
+   "squash": 0.855
+  }
+ },
+ "weight_choice": {
+  "original": 1.0104,
+  "twist": 1.0191,
+  "twist_smooth": 1.0688,
+  "kept": "original"
+ },
+ "rom_after": {
+  "waist_twist": {
+   "dv": 1.578,
+   "stretch": 1.525,
+   "squash": 0.654
+  },
+  "waist_flex": {
+   "dv": 3.428,
+   "stretch": 1.511,
+   "squash": 0.494
+  },
+  "waist_side": {
+   "dv": 0.649,
+   "stretch": 1.391,
+   "squash": 0.721
+  },
+  "neck_turn": {
+   "dv": 0.823,
+   "stretch": 1.348,
+   "squash": 0.658
+  },
+  "neck_nod": {
+   "dv": 0.493,
+   "stretch": 1.25,
+   "squash": 0.702
+  },
+  "neck_tilt": {
+   "dv": 0.085,
+   "stretch": 1.2,
+   "squash": 0.802
+  },
+  "shoulder_swing": {
+   "dv": 3.893,
+   "stretch": 1.941,
+   "squash": 0.448
+  },
+  "shoulder_raise": {
+   "dv": 3.184,
+   "stretch": 2.584,
+   "squash": 0.413
+  },
+  "shoulder_twist": {
+   "dv": 4.236,
+   "stretch": 2.445,
+   "squash": 0.551
+  },
+  "elbow": {
+   "dv": 0.284,
+   "stretch": 1.41,
+   "squash": 0.562
+  },
+  "wrist_flex": {
+   "dv": 0.081,
+   "stretch": 1.314,
+   "squash": 0.719
+  },
+  "wrist_dev": {
+   "dv": 0.037,
+   "stretch": 1.125,
+   "squash": 0.847
+  },
+  "hip_flex": {
+   "dv": 6.261,
+   "stretch": 2.235,
+   "squash": 0.256
+  },
+  "hip_abd": {
+   "dv": 0.204,
+   "stretch": 1.88,
+   "squash": 0.648
+  },
+  "hip_rot": {
+   "dv": 1.196,
+   "stretch": 1.684,
+   "squash": 0.513
+  },
+  "knee": {
+   "dv": 1.744,
+   "stretch": 1.581,
+   "squash": 0.383
+  },
+  "ankle_flex": {
+   "dv": 0.288,
+   "stretch": 1.387,
+   "squash": 0.797
+  },
+  "ankle_roll": {
+   "dv": 0.06,
+   "stretch": 1.123,
+   "squash": 0.864
+  }
+ },
+ "weights": {
+  "max_influences": 4,
+  "hist": {
+   "1": 2678,
+   "2": 3629,
+   "3": 1127,
+   "4": 2550
+  },
+  "unnormalized": 0,
+  "unweighted": 0
+ },
+ "geometry": {
+  "verts": 9984,
+  "tris": 20000,
+  "ngons": 0,
+  "quads": 0,
+  "zero_area": 0,
+  "nonmanifold_edges": 0,
+  "loose_verts": 0
+ },
+ "uv0": {
+  "coverage_pct": 50.2,
+  "overlap_pct_of_used": 0.04,
+  "texel_density_cv": 0.36,
+  "texel_density_p95_p5": 1.78
+ },
+ "uv1": {
+  "coverage_pct": 17.3,
+  "overlap_pct_of_used": 0.1,
+  "texel_density_cv": 0.06,
+  "texel_density_p95_p5": 1.2
+ },
+ "lods": [
+  {
+   "name": "Grandpa_v2_LOD1",
+   "tris": 10000
+  },
+  {
+   "name": "Grandpa_v2_LOD2",
+   "tris": 5000
+  }
+ ],
+ "morphs": {
+  "Basis": 9984,
+  "Breathe": 9984,
+  "Jiggle_Belly": 9984
+ },
+ "textures": [
+  {
+   "name": "T_Grandpa_v2_BaseColor",
+   "size": [
+    2048,
+    2048
+   ],
+   "pow2": true,
+   "colorspace": "sRGB"
+  },
+  {
+   "name": "T_Grandpa_v2_Normal",
+   "size": [
+    2048,
+    2048
+   ],
+   "pow2": true,
+   "colorspace": "Non-Color"
+  },
+  {
+   "name": "T_Grandpa_v2_ORM",
+   "size": [
+    2048,
+    2048
+   ],
+   "pow2": true,
+   "colorspace": "Non-Color"
+  },
+  {
+   "name": "T_Grandpa_v2_Mask",
+   "size": [
+    2048,
+    2048
+   ],
+   "pow2": true,
+   "colorspace": "Non-Color"
+  },
+  {
+   "name": "T_Grandpa_v2_Normal_DX",
+   "size": [
+    2048,
+    2048
+   ],
+   "pow2": true,
+   "colorspace": "Non-Color"
+  }
+ ],
+ "ao_mean": 0.712,
+ "collision": [
+  {
+   "part": "pelvis",
+   "verts": 17,
+   "faces": 30
+  },
+  {
+   "part": "belly",
+   "verts": 40,
+   "faces": 76
+  },
+  {
+   "part": "chest",
+   "verts": 41,
+   "faces": 78
+  },
+  {
+   "part": "neck",
+   "verts": 38,
+   "faces": 72
+  },
+  {
+   "part": "head",
+   "verts": 33,
+   "faces": 62
+  },
+  {
+   "part": "upperarm_l",
+   "verts": 25,
+   "faces": 46
+  },
+  {
+   "part": "forearm_l",
+   "verts": 28,
+   "faces": 52
+  },
+  {
+   "part": "hand_l",
+   "verts": 26,
+   "faces": 48
+  },
+  {
+   "part": "upperarm_r",
+   "verts": 29,
+   "faces": 54
+  },
+  {
+   "part": "forearm_r",
+   "verts": 26,
+   "faces": 48
+  },
+  {
+   "part": "hand_r",
+   "verts": 22,
+   "faces": 40
+  },
+  {
+   "part": "thigh_l",
+   "verts": 34,
+   "faces": 64
+  },
+  {
+   "part": "shin_l",
+   "verts": 24,
+   "faces": 44
+  },
+  {
+   "part": "foot_l",
+   "verts": 27,
+   "faces": 50
+  },
+  {
+   "part": "thigh_r",
+   "verts": 29,
+   "faces": 54
+  },
+  {
+   "part": "shin_r",
+   "verts": 34,
+   "faces": 64
+  },
+  {
+   "part": "foot_r",
+   "verts": 29,
+   "faces": 54
+  }
+ ],
+ "tangents": {
+  "mikktspace": true,
+  "bitangent_signs": [
+   -1,
+   1
+  ]
+ },
+ "skeleton": {
+  "bones": 18,
+  "deform": 18,
+  "root": "root",
+  "root_rest_identity": true,
+  "leaf": [
+   "head",
+   "hand_r",
+   "hand_l",
+   "foot_l",
+   "foot_r"
+  ],
+  "hierarchy": {
+   "root": null,
+   "pelvis": "root",
+   "belly": "pelvis",
+   "chest": "belly",
+   "neck": "chest",
+   "head": "neck",
+   "upperarm_r": "chest",
+   "forearm_r": "upperarm_r",
+   "hand_r": "forearm_r",
+   "upperarm_l": "chest",
+   "forearm_l": "upperarm_l",
+   "hand_l": "forearm_l",
+   "thigh_l": "pelvis",
+   "shin_l": "thigh_l",
+   "foot_l": "shin_l",
+   "thigh_r": "pelvis",
+   "shin_r": "thigh_r",
+   "foot_r": "shin_r"
+  }
+ },
+ "exports": {
+  "Grandpa_v2.fbm": 0.0,
+  "Grandpa_v2.fbx": 3.27,
+  "Grandpa_v2.glb": 18.26,
+  "Grandpa_v2_Collision.fbm": 0.0,
+  "Grandpa_v2_Collision.fbx": 0.5,
+  "Grandpa_v2_LOD1.fbm": 0.0,
+  "Grandpa_v2_LOD1.fbx": 0.89,
+  "Grandpa_v2_LOD2.fbm": 0.0,
+  "Grandpa_v2_LOD2.fbx": 0.51
+ },
+ "slap_peak": {
+  "frame": 144,
+  "hand_speed_ms": 6.57
+ },
+ "verify": {
+  "Grandpa_v2.glb": {
+   "bones": 18,
+   "root": [
+    "root"
+   ],
+   "verts": 21108,
+   "max_influences": 4,
+   "shape_keys": [
+    "Basis",
+    "Breathe",
+    "Jiggle_Belly"
+   ],
+   "actions": [
+    "ROM_Test",
+    "Slap_Sim"
+   ],
+   "uv_layers": [
+    "UVMap",
+    "UVMap.001"
+   ],
+   "dims_m": [
+    1.434,
+    0.227,
+    1.651
+   ],
+   "mesh_dims_m": [
+    1.705,
+    0.419,
+    1.708
+   ]
+  },
+  "Grandpa_v2.fbx": {
+   "bones": 18,
+   "root": [
+    "root"
+   ],
+   "verts": 9984,
+   "max_influences": 4,
+   "shape_keys": [
+    "Basis",
+    "Breathe",
+    "Jiggle_Belly"
+   ],
+   "actions": [
+    "Armature|Armature|ROM_Test",
+    "Armature|Armature|Slap_Sim",
+    "Key|Armature|ROM_Test",
+    "Key|Armature|Slap_Sim"
+   ],
+   "uv_layers": [
+    "UVMap",
+    "UVLightmap"
+   ],
+   "dims_m": [
+    1.809,
+    1.181,
+    1.645
+   ],
+   "mesh_dims_m": [
+    1.705,
+    0.419,
+    1.708
+   ]
+  }
+ },
+ "seconds": 426
+}
