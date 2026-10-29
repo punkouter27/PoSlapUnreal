@@ -165,6 +165,9 @@ class LocomotionEnv:
         self.lead_swaps = zl()            # count of alternating foot lead swaps
         self.last_lead = zl()             # +1 left foot ahead, -1 right foot ahead
         self.dist_walked = z(N)
+        # the walk-in (2026-10-29): a foot box BOX_DIST ahead; the command slows over the last 0.8 m and is 0 inside
+        # 0.15 m - Unreal's StepWalkIn sends the same, and its match brain takes over at 0.15 m
+        self.v0, self.x0, self.box, self.rem, self.cmd_dist = z(N), z(N), z(N), z(N), z(N)
         self.speed_err_sum = z(N)
         self.com_err = z(N)
         self.foot0 = z(N, 2, 2)
@@ -227,12 +230,20 @@ class LocomotionEnv:
         self.dist_walked[mask], self.speed_err_sum[mask], self.com_err[mask] = 0.0, 0.0, 0.0
 
         lo, hi = self.cfg.get("target_speed", (1.0, 1.4))
-        self.v_cmd[mask] = self._u(n, lo, hi) * self.speed_scale
+        self.v0[mask] = self._u(n, lo, hi) * self.speed_scale
+        self.box[mask] = self._u(n, *self.cfg.get("box_dist", (1.8, 3.0)))
+        self.x0[mask] = self.qpos[mask, 0]
+        self.cmd_dist[mask] = 0.0
         self.yaw_cmd[mask] = 0.0
+        self._command()
         self.stride_freq[mask] = 1.8
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.foot_prev[mask] = self.geom_xpos[mask][:, self.feet]
+
+    def _command(self):
+        self.rem = self.box - (self.qpos[:, 0] - self.x0)
+        self.v_cmd = torch.where(self.rem < 0.15, 0.0, self.v0 * (self.rem / 0.8).clamp(0.0, 1.0))
 
     def _forces(self, dt):
         self.xfrc.zero_()
@@ -322,6 +333,8 @@ class LocomotionEnv:
         # Advance gait clock and heading command
         active_walk = self.v_cmd > 0.1
         self.gait_phase = torch.where(active_walk, (self.gait_phase + self.stride_freq * 0.02) % 1.0, torch.zeros_like(self.gait_phase))
+        self.cmd_dist += self.v_cmd * 0.02
+        self._command()
 
         done = fell | (self.t >= self.T)
         timeout = done & ~fell
@@ -367,7 +380,7 @@ class LocomotionEnv:
         facing = torch.cos(yaw_err)
         v_err = (v_head[:, 0] - self.v_cmd).abs() + 0.5 * v_head[:, 1].abs()
         self.speed_err_sum += v_err
-        self.dist_walked += v_head[:, 0].clamp(min=0.0) * 0.02
+        self.dist_walked += v[:, 0].clamp(min=0.0) * 0.02   # toward the box (world +x), not wherever he faces
 
         # Option 7: alternating swing-foot clearance (the foot is one rigid box: no heel-to-toe roll)
         phi = 2.0 * math.pi * self.gait_phase
@@ -391,11 +404,14 @@ class LocomotionEnv:
         # 2026-10-26: standing paid ~2.2 a step and a 1.2 m/s miss cost only 1.2, so the S2 "graduates" stood still
         # (0.15 m in 20 s). A wide kernel pays partial speed, and forward progress pays linearly up to the command
         vel_rew = 2.0 * torch.exp(-(v_err ** 2) / 1.0)
-        progress = 1.5 * (v_head[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0) * moving
+        # 2026-10-29: progress is toward the box, and standing at it (command 0) earns full credit - with heading-frame
+        # progress and nothing for arriving, walking at an angle that never reached the box paid best (Kim: stop 0 %)
+        progress = 1.5 * torch.where(moving > 0, (v[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0), torch.ones_like(moving))
         gait_rew = moving * (0.4 * stride_clear + 0.4 * stance_match) + (1.0 - moving) * (0.8 * torch.exp(-(self.com_err ** 2) / 0.005))
         r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
              + vel_rew + progress + gait_rew
-             - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag)
+             - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag
+             - 3.0 * (-self.rem - 0.10).clamp(min=0.0))   # walked past the box (Kim overran hers by 0.25 m and fell)
 
         return torch.where(fell, torch.full_like(r, -25.0), r)
 

@@ -56,7 +56,8 @@ LEVELS = {
     # Walking (training/envs/locomotion.py): the opt-in -SlapWalkBrain walk-in. S1 (= L0) and S3 (jog) removed 2026-10-26
     "S2": dict(  # Stage 2: Take steady, alternating steps (swing-foot clearance) and walk at 1.0-1.4 m/s
         model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(1.0, 1.4),
+        box_dist=(1.8, 3.0),   # the walk-in: Unreal's walkers start 2.4 m from the box and stop there
         reward_target={0: 1800.0},
-        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6)},   # pace: walked / commanded distance
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_stop=0.9)},   # pace: walked / commanded distance
     ),
 }

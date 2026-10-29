@@ -857,25 +857,22 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 			{
 				UE_LOG(LogSlap, Log, TEXT("walk-in: %s at the box after %.1f s"), *A.Name, A.WalkT * 0.02);
 				A.bArrived = true;
-				A.bFresh = true;	// the match brain's memory starts here
 			}
 			float Value = 0.f;
-			if (A.bArrived)	// on guard in the box: the match brain, role 0 (its foot box is its target)
-			{
-				BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs);
-				if (!A.Net || !Infer(A, Obs, Value)) continue;
-			}
-			else	// the walking brain: forward speed and heading to the box in its heading frame, its gait clock
-			{
+			{	// the walking brain to the box and then standing in it (command 0, as S2 trains) until the first turn's reset:
+				// a match brain taking over mid-stride dropped Kim while she waited for Grandpa (2026-10-29)
 				mjtNum R[9];
 				mju_quat2Mat(R, d->qpos + A.RootQ + 3);
 				const double DYaw = std::atan2(Gy, Gx) - std::atan2(R[3], R[0]);
-				const float Cmd[6] = { (float)(WalkSpeed * std::cos(DYaw)), (float)(WalkSpeed * std::sin(DYaw)), 0.f,
-					(float)std::sin(2.0 * PI * A.WalkPhase), (float)std::cos(2.0 * PI * A.WalkPhase), (float)(WalkSpeed / 3.0) };
+				// locomotion.py _command: full speed, slowing over the last 0.8 m, 0 inside 0.15 m (along the aisle)
+				const double Rem = a == 0 ? Gx : -Gx;
+				const double V = Rem < 0.15 ? 0.0 : WalkSpeed * FMath::Clamp(Rem / 0.8, 0.0, 1.0);
+				const float Cmd[6] = { (float)(V * std::cos(DYaw)), (float)(V * std::sin(DYaw)), 0.f,
+					(float)std::sin(2.0 * PI * A.WalkPhase), (float)std::cos(2.0 * PI * A.WalkPhase), (float)(V / 3.0) };
 				BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs, Cmd);
 				Obs[3 * A.Act.Num() + 11] = (float)(1.0 - A.WalkT / 1000.0);	// locomotion.py feeds its episode clock at role 0 (BuildObs O[11 + N])
 				if (!RunNet(*A.WalkNet, A.WalkIn, A.WalkOut, Obs, Value)) continue;
-				A.WalkPhase = FMath::Fmod(A.WalkPhase + 1.8 * 0.02, 1.0);
+				A.WalkPhase = V > 0.1 ? FMath::Fmod(A.WalkPhase + 1.8 * 0.02, 1.0) : 0.0;	// locomotion.py: the clock rests at 0 below 0.1 m/s
 				++A.WalkT;
 			}
 			for (int32 j = 0; j < A.Act.Num(); ++j)	// Decide's mapping and rate limit; the walking brain trained with an 0.85 EMA on top
@@ -883,7 +880,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 				const double Step = A.MaxStep[j] * A.Stamina;
 				const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
 				const double Tgt = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
-				A.Goal[j] = A.bArrived ? Tgt : 0.85 * Tgt + 0.15 * A.Goal[j];
+				A.Goal[j] = 0.85 * Tgt + 0.15 * A.Goal[j];
 				A.PrevAction[j] = (float)Act;
 			}
 			continue;

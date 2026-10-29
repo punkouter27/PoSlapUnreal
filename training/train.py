@@ -135,15 +135,18 @@ def exam(ppo, character, level):
         obs = env.observe()
         fell, left_box, hit, absorbed, seen = (torch.zeros(env.N, dtype=torch.bool, device="cuda") for _ in range(5))
         pace = torch.zeros(env.N, device="cuda")   # walking levels: distance walked over distance commanded
+        stop = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # ... and standing within 0.3 m of the box at the end
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
             lb = getattr(env, "left_box", torch.zeros_like(fell)).clone()
             if loco:   # read before the step: a world that finishes is reset inside it
-                p0 = env.dist_walked / (env.v_cmd * (env.t + 1).float() * 0.02).clamp(min=1e-3)
+                p0 = env.dist_walked / env.cmd_dist.clamp(min=1e-3)
+                s0 = env.rem.abs() < 0.3
             obs, _, done, timeout = env.step(a)
             live = ~seen
             if loco:
                 pace = torch.where(live & done, p0.clamp(max=1.5), pace)
+                stop = torch.where(live & done, s0 & ~env.fell_now, stop)
             fell |= live & env.fell_now
             left_box |= live & lb
             hit |= live & getattr(env, "done_hit", torch.zeros_like(fell))
@@ -161,6 +164,8 @@ def exam(ppo, character, level):
             r[f"{tag}_absorbed"] = absorbed.float().mean().item()
         if "min_pace" in chk:       # 2026-10-26: S2's "graduated" brains stood still (0.15 m in 20 s); no-fall alone can't tell
             r[f"{tag}_pace"] = pace.mean().item()
+        if "min_stop" in chk:       # 2026-10-29: the walk-in ends at the foot box; Kim's walker ran past hers and fell
+            r[f"{tag}_stop"] = stop.float().mean().item()
         for k, v in r.items():
             passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0) - 1e-6   # float32 means: 90/100 reads 0.8999999762
         res.update(r)
