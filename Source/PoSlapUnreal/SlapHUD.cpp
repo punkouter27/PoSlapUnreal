@@ -417,6 +417,7 @@ void ASlapHUD::BuildUi()
 		AR.GetAssets(F, Out);
 	};
 	Find(TEXT("/Game/Brains"), UNNEModelData::StaticClass(), true, Brains);
+	Brains.RemoveAll([](const FAssetData& B) { return B.AssetName.ToString().EndsWith(TEXT("_S2")); });	// walking brains: the walk-in's, not a match brain
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 	// only the roster's brains are offered (training/roster.json); a build without training/ (Android) keeps every brain
 	FString RosterRaw;

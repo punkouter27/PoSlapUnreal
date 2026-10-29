@@ -423,19 +423,17 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		A.NumOut = N.NumOut;
 		UE_LOG(LogSlap, Log, TEXT("Policy: %s brain %s reads %d inputs"), *A.Name, *Labels[FMath::Min(a, 1)], A.NumIn);
 	}
-	// -SlapWalkBrain=1: the walk-in on each character's walking brain (S2, desktop: read from training/); else the scripted
-	// stride. Opt-in until a walker passes S2's pace exam: the first "graduates" (no-fall only) stood still (2026-10-26)
+	// The walk-in on each character's walking brain (S2, the cooked /Game/Brains/<card>_S2, so Android has it too; user
+	// 2026-10-29: the walk-in is pure RL); a character without one gets the scripted stride. -SlapWalkBrain=0: scripted for all
 	FString WalkFlag;
-	const bool bWalkBrains = FParse::Value(FCommandLine::Get(), TEXT("SlapWalkBrain="), WalkFlag) && WalkFlag == TEXT("1");
+	const bool bWalkBrains = !(FParse::Value(FCommandLine::Get(), TEXT("SlapWalkBrain="), WalkFlag) && WalkFlag == TEXT("0"));
 	FString Walkers;
 	for (int32 a = 0; a < Athletes.Num() && bWalkBrains; ++a)
 	{
-		TArray<uint8> Bytes;
-		if (!FFileHelper::LoadFileToArray(Bytes, *FPaths::Combine(FPaths::ProjectDir(), TEXT("training/models/brains"), CardName[FMath::Min(a, 1)] + TEXT("_S2.onnx")), FILEREAD_Silent)) continue;
-		UNNEModelData* Data = NewObject<UNNEModelData>(this, FName(*(CardName[FMath::Min(a, 1)] + TEXT("_S2"))));
-		Data->Init(TEXT("onnx"), Bytes);
+		const FString Name = CardName[FMath::Min(a, 1)] + TEXT("_S2");
+		UNNEModelData* Data = LoadObject<UNNEModelData>(nullptr, *FString::Printf(TEXT("/Game/Brains/%s.%s"), *Name, *Name), nullptr, LOAD_NoWarn);
 		FNet N;
-		if (!MakeNet(Data, N)) continue;
+		if (!Data || !MakeNet(Data, N)) continue;
 		LoadedBrains.Add(Data);
 		Athletes[a].WalkNet = N.Net;
 		Athletes[a].WalkIn = N.NumIn;
@@ -875,7 +873,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 				const float Cmd[6] = { (float)(WalkSpeed * std::cos(DYaw)), (float)(WalkSpeed * std::sin(DYaw)), 0.f,
 					(float)std::sin(2.0 * PI * A.WalkPhase), (float)std::cos(2.0 * PI * A.WalkPhase), (float)(WalkSpeed / 3.0) };
 				BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs, Cmd);
-				Obs[2 * A.Act.Num() + 11] = (float)(1.0 - A.WalkT / 1000.0);	// locomotion.py feeds its episode clock at role 0
+				Obs[3 * A.Act.Num() + 11] = (float)(1.0 - A.WalkT / 1000.0);	// locomotion.py feeds its episode clock at role 0 (BuildObs O[11 + N])
 				if (!RunNet(*A.WalkNet, A.WalkIn, A.WalkOut, Obs, Value)) continue;
 				A.WalkPhase = FMath::Fmod(A.WalkPhase + 1.8 * 0.02, 1.0);
 				++A.WalkT;
