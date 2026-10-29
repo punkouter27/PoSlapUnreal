@@ -8,6 +8,7 @@
   "mass_kg": 108.9,
   "strength": 0.85,
   "speed": 0.55,
+  "walk_speed_mps": 0.6,
   "flexibility": 0.8,
   "toughness": 1.15,
   "stamina_per_strike": 0.06,

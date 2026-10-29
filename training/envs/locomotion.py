@@ -154,7 +154,9 @@ class LocomotionEnv:
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
 
         # Locomotion state
-        self.speed_scale = 1.0
+        # card walk_speed_mps (Matt, speed 0.55, walked ~0.42 m/s at a 1.0-1.4 command): the command scales by it / 1.2,
+        # the mid of the level's range; Unreal's walk-in does the same. No field: 1.0
+        self.speed_scale = json.loads((HERE / "characters" / f"{character}.json").read_text()).get("walk_speed_mps", 1.2) / 1.2
         self.v_cmd = z(N)                 # desired forward speed in m/s
         self.yaw_cmd = z(N)               # desired heading yaw in rad
         self.gait_phase = z(N)            # [0, 1) cyclic stride clock

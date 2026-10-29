@@ -167,6 +167,7 @@ private:
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
 		double FaintChance = 0.0, FaintSeconds = 2.0, FaintStrength = 0.05;	// card: fainting (match.py faint_step)
+		double WalkSpeed = USlapController::WalkSpeed;	// the walk-in command, m/s (card walk_speed_mps)
 		TArray<double> FrAll;	// every motor's own forcerange (lo, hi per motor): a faint slackens them all
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		TArray<double> Vmax;	// the same per second: Hill's top speed (ApplyHill)

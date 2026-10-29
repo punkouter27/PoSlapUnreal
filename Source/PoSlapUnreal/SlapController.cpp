@@ -372,6 +372,9 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			Card->TryGetNumberField(TEXT("faint_chance_per_turn"), A.FaintChance);
 			Card->TryGetNumberField(TEXT("faint_seconds"), A.FaintSeconds);
 			Card->TryGetNumberField(TEXT("faint_strength"), A.FaintStrength);
+			double Walk = 1.2;	// card walk_speed_mps scales the walk-in command (locomotion.py speed_scale: / 1.2)
+			Card->TryGetNumberField(TEXT("walk_speed_mps"), Walk);
+			A.WalkSpeed = WalkSpeed * Walk / 1.2;
 		}
 		for (const int32 Act : A.Act) A.FrAll.Append({ m->actuator_forcerange[2 * Act], m->actuator_forcerange[2 * Act + 1] });
 		auto Geom = [&](const TCHAR* N) { return mj_name2id(m, mjOBJ_GEOM, TCHAR_TO_UTF8(*(A.Prefix + N))); };
@@ -866,7 +869,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 				const double DYaw = std::atan2(Gy, Gx) - std::atan2(R[3], R[0]);
 				// locomotion.py _command: full speed, slowing over the last 0.8 m, 0 inside 0.15 m (along the aisle)
 				const double Rem = a == 0 ? Gx : -Gx;
-				const double V = Rem < 0.15 ? 0.0 : WalkSpeed * FMath::Clamp(Rem / 0.8, 0.0, 1.0);
+				const double V = Rem < 0.15 ? 0.0 : A.WalkSpeed * FMath::Clamp(Rem / 0.8, 0.0, 1.0);
 				const float Cmd[6] = { (float)(V * std::cos(DYaw)), (float)(V * std::sin(DYaw)), 0.f,
 					(float)std::sin(2.0 * PI * A.WalkPhase), (float)std::cos(2.0 * PI * A.WalkPhase), (float)(V / 3.0) };
 				BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs, Cmd);
