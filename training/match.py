@@ -442,17 +442,17 @@ def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_c
 
 
 def _exam_one(args):
-    onnx, i, mjb, character, blue_character, jitter = args
-    res, turns, path = play(onnx, i % 2, mjb, character=character, blue_character=blue_character, seed=i, jitter=jitter)
+    onnx, i, mjb, character, blue_character, jitter, blue = args
+    res, turns, path = play(onnx, i % 2, mjb, blue=blue, character=character, blue_character=blue_character, seed=i, jitter=jitter)
     return res, turns, path
 
 
-def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None, jitter=EXAM_JITTER):
+def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None, jitter=EXAM_JITTER, blue=None):
     """L5: `matches` full matches (coin toss alternating, seed = match index), all must end without a sim blow-up.
     Start angles jittered per turn, or every match without a faint chance would be the same match."""
     from multiprocessing import Pool
     with Pool(min(20, matches)) as p:
-        out = p.map(_exam_one, [(onnx, i, mjb, character, blue_character, jitter) for i in range(matches)])
+        out = p.map(_exam_one, [(onnx, i, mjb, character, blue_character, jitter, blue) for i in range(matches)])
     blowups = sum(r["how"] == "blow-up" for r, _, _ in out)
     kos = sum(r["how"] == "KO" for r, _, _ in out)
     strikes = [t for _, ts, _ in out for t in ts]
@@ -505,6 +505,6 @@ if __name__ == "__main__":
             print(t)
         print(res, "\nlog:", path)
     elif x.cmd == "exam":
-        sys.exit(0 if exam(x.onnx, x.matches, x.mjb, x.char, x.blue_char) else 1)
+        sys.exit(0 if exam(x.onnx, x.matches, x.mjb, x.char, x.blue_char, blue=x.blue) else 1)
     else:
         sys.exit(0 if compare(x.onnx, x.ue_log, x.mjb, x.blue, x.char, x.blue_char) else 1)
