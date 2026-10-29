@@ -39,6 +39,7 @@ BOX = (0.20, 0.25)
 WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, defence
 KICK_STEPS = 2      # the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
+EXAM_JITTER = 0.01     # rad per joint on each exam turn's start pose (0.6 deg: below what a judge would see)
 
 # Eye contact (user 2026-10-24): the defender squares up and holds the striker's eyes through the whole turn.
 # The neck's yaw/pitch motors are walked to a gaze bias (smooth PD, no teleporting); the brain owns every other
@@ -124,10 +125,12 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None, seed=None):
+    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None, seed=None, jitter=0.0):
         """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice).
-        brains: both corners' brain names, logged with match_start (training/scouting.py credits them; compare skips it)."""
-        self.m, self.first, self.log, self.brains = m, first, log, brains
+        brains: both corners' brain names, logged with match_start (training/scouting.py credits them; compare skips it).
+        jitter: each turn's start angles get ± this many rad per joint from the seed (exam only: Unreal has none, so
+        play and compare keep 0)."""
+        self.m, self.first, self.log, self.brains, self.jitter = m, first, log, brains, jitter
         self.seed = random.getrandbits(31) if seed is None else seed   # the match's dice (fainting); Unreal logs its own
         self.d = mujoco.MjData(m)
         self.sides = [Side(m, fp, p, pol) for fp, p, pol in zip(fps, prefixes, policies)]
@@ -218,6 +221,11 @@ class Match:
         m, d = self.m, self.d
         S, D = self.sides[s], self.sides[1 - s]
         stand_both(m, d, self.sides)   # each corner to its own stand pose (per-corner fingerprints)
+        if self.jitter:
+            rng = np.random.default_rng((self.seed, rnd, s))
+            for x in self.sides:
+                d.qpos[x.a.qa] += rng.uniform(-self.jitter, self.jitter, len(x.a.qa))
+            settle_muscles(m, d)
         for x in self.sides:
             x.a.goal, x.a.prev, x.a.hist = x.a.stand.copy(), np.zeros(len(x.a.order), dtype=np.float32), []
             x.wbias = self.gaze_desire(x, m, self.d).copy()   # eye contact: world bias starts on the eye line
@@ -367,7 +375,7 @@ class Match:
     def play(self):
         names = [x.name for x in self.sides]
         self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY), seed=self.seed,
-                  **({"brains": dict(zip(names, self.brains))} if self.brains else {}))
+                  **({"brains": dict(zip(names, self.brains))} if self.brains else {}), **({"jitter": self.jitter} if self.jitter else {}))
         cards = [[0, 0] for _ in WEIGHTS]
         turns = []
         for rnd in range(1, ROUNDS + 1):
@@ -420,12 +428,13 @@ def log_path(first):
     return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None, seed=None):
+def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None, seed=None, jitter=0.0):
     m, fps, pre = load(mjb, character, blue_character)
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
     try:
-        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem), seed).play()
+        res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem), seed,
+                           jitter).play()
     finally:
         if f:
             f.close()
@@ -433,16 +442,17 @@ def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_c
 
 
 def _exam_one(args):
-    onnx, i, mjb, character, blue_character = args
-    res, turns, path = play(onnx, i % 2, mjb, character=character, blue_character=blue_character)
+    onnx, i, mjb, character, blue_character, jitter = args
+    res, turns, path = play(onnx, i % 2, mjb, character=character, blue_character=blue_character, seed=i, jitter=jitter)
     return res, turns, path
 
 
-def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None):
-    """L5: `matches` full matches (coin toss alternating), all must end without a sim blow-up."""
+def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None, jitter=EXAM_JITTER):
+    """L5: `matches` full matches (coin toss alternating, seed = match index), all must end without a sim blow-up.
+    Start angles jittered per turn, or every match without a faint chance would be the same match."""
     from multiprocessing import Pool
     with Pool(min(20, matches)) as p:
-        out = p.map(_exam_one, [(onnx, i, mjb, character, blue_character) for i in range(matches)])
+        out = p.map(_exam_one, [(onnx, i, mjb, character, blue_character, jitter) for i in range(matches)])
     blowups = sum(r["how"] == "blow-up" for r, _, _ in out)
     kos = sum(r["how"] == "KO" for r, _, _ in out)
     strikes = [t for _, ts, _ in out for t in ts]
@@ -450,7 +460,10 @@ def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None):
     print(f"{matches} matches: {blowups} blow-ups, {kos} KOs, {len(strikes)} turns, {len(landed)} strikes landed "
           f"({sum(t['palm'] for t in landed)} palm-led), mean hand speed "
           f"{np.mean([t['speed'] for t in landed] or [0]):.1f} m/s, decisions: "
-          f"{ {h: sum(r['how'] == h for r, _, _ in out) for h in sorted({r['how'] for r, _, _ in out})} }")
+          f"{ {h: sum(r['how'] == h for r, _, _ in out) for h in sorted({r['how'] for r, _, _ in out})} }, "
+          f"KO per landed strike {sum(t['ko'] for t in landed) / max(1, len(landed)):.0%} (L4 band 10-40 %), "
+          f"striker self-falls {sum(any(w == 'knocked down' for _, w in t['fouls']) for t in strikes) / max(1, len(strikes)):.0%}, "
+          f"distinct matches {len({json.dumps(r['cards']) + str([(t['touch'], t['speed']) for t in ts]) for r, ts, _ in out})}")
     ok = blowups == 0
     print("L5 exam:", "PASS" if ok else "FAIL")
     return ok

@@ -1951,11 +1951,11 @@ void ASlapHUD::LoadLeague()
 	const TSharedPtr<FJsonObject>* League = nullptr;
 	if (!J->TryGetObjectField(TEXT("brains"), League)) return;
 	Scout.Reset();
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& B : (*League)->Values)
+	for (const auto& B : (*League)->Values)	// key is FString on desktop, FSharedString on Android
 	{
 		const TSharedPtr<FJsonObject> O = B.Value->AsObject();
 		if (!O) continue;
-		Scout.Add(B.Key, FString::Printf(TEXT("ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),
+		Scout.Add(FString(*B.Key), FString::Printf(TEXT("ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),
 			(int32)O->GetNumberField(TEXT("wins")), (int32)O->GetNumberField(TEXT("losses")), (int32)O->GetNumberField(TEXT("draws")),
 			100.0 * O->GetNumberField(TEXT("ko_rate")), 100.0 * O->GetNumberField(TEXT("clean_rate")), O->GetNumberField(TEXT("speed"))));
 	}
