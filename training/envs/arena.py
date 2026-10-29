@@ -125,6 +125,9 @@ class ArenaEnv:
         pg = m.geom("podium")
         top, half = float(pg.pos[2] + pg.size[2]), float(pg.size[0])
         self.brace_pt = t([[[sx * (half + 0.07), y, top + 0.02] for y in (0.17, -0.17)] for sx in (-1, 1)])   # red at -X, blue at +X
+        self.podium_half = half
+        self.belly_g = t([m.geom(p + "belly").id for p in PREFIX])
+        self.belly_r = t([float(m.geom(p + "belly").size[0]) for p in PREFIX])
 
         W, N, A = num_envs, self.N, self.A
         z = lambda *s: torch.zeros(*s, device=dev)
@@ -374,6 +377,10 @@ class ArenaEnv:
         # striker earns for REMAINING UPRIGHT through the recovery window - flat zeros gave no signal to ride
         # out the recoil HE triggers (0.5/step ~ the value of the hit itself over a calm 5 s recovery)
         land = 0.5 * su.clamp(min=0)
+        # ...and off the podium (2026-10-29: all of grandpa_L4's 12 % exam self-falls were his belly leaning onto it
+        # 0.5-2 s after the touch, still standing): from 8 cm of clearance (11.9 at stand) to touching costs up to 1/step
+        gap = self._sd(self.geom_xpos[:, self.belly_g, 0])[0].abs() - self.podium_half - self.belly_r[self.striker]
+        land = land - ((0.08 - gap) / 0.08).clamp(0.0, 1.0)
         r_str = torch.where(self.struck, land, before) + self.bonus + 40.0 * ko.float()
         r_str = r_str - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()
         self.bonus.zero_()
