@@ -502,6 +502,13 @@ def main():
         inertia = joint_inertia(solo, stand, card)   # second pass: damping from each joint's own load
         solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target)
         (out / f"{card['name']}_solo.xml").write_text(solo)
+        # the locomotion obstacle scene (S3/S4, training/envs/locomotion.py): the same athlete on the same floor,
+        # plus a LOW STEP to climb and the podium to walk around. The env moves and resizes both per world; the
+        # solo and arena models are untouched, so the shipped brains and the Unreal import stay valid.
+        step = (f'    <geom name="step" type="box" pos="3 0 0.08" size="{fmt([0.25, 0.60, 0.08])}" '
+                f'rgba="0.35 0.30 0.25 1"/>\n')
+        loco = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target + step)
+        (out / f"{card['name']}_loco.xml").write_text(loco)
         m, off, up = balance_and_drop(solo, stand, card)
         joints = [m.joint(m.actuator_trnid[i, 0]).name for i in range(m.nu)]
         fp = {"mujoco": mujoco.__version__, "model": f"{card['name']}_solo.xml",

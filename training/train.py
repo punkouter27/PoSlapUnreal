@@ -16,6 +16,7 @@ import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, video
+from constants import GAZE_ON
 from envs.arena import ArenaEnv, VsFrozen
 from envs.locomotion import LocomotionEnv
 from envs.slap import SlapEnv
@@ -61,6 +62,50 @@ def tensorboard():
     subprocess.Popen([str(exe), "--logdir", str(RUNS), "--port", "6006"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     print("TensorBoard: http://localhost:6006")
+
+
+def git_sha():
+    """The commit the run trains from (and whether the tree was dirty): 'dirty' means the run is not the commit."""
+    try:
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = bool(subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True).stdout.strip())
+        return sha, dirty
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "", False
+
+
+def write_config_snapshot(run, args):
+    """The run's config snapshot (Realism 10: multi-instance runs record exactly what they train).
+
+    The resolved level config, the character card, the git commit, the library versions and the command line,
+    written before the first step into runs/<run>/config_snapshot.json and into DOCS/<YYYYMMDD>/config_snapshots/.
+    """
+    sha, dirty = git_sha()
+    card_path = HERE / "characters" / f"{args.char}.json"
+    card = json.loads(card_path.read_text()) if card_path.exists() else {}
+    snap = {
+        "run": run.name,
+        "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "command": " ".join(sys.argv),
+        "args": {k: v for k, v in vars(args).items()},
+        "level": args.level,
+        "level_config": LEVELS.get(args.level, {}),
+        "character": args.char,
+        "card": card,
+        "git_sha": sha,
+        "git_dirty": dirty,
+        "versions": {"python": sys.version.split()[0], "torch": torch.__version__, "mujoco": __import__("mujoco").__version__},
+        "obs_dim": OBS,
+        "ppo": {"lr": PPOConfig().lr, "init_std": PPOConfig().init_std, "max_std": args.max_std, "entropy": args.entropy},
+        "worlds": args.envs,
+        "gaze_servo": GAZE_ON,
+        "servo_mix": os.environ.get("SLAP_SERVO_MIX", "0.0"),
+    }
+    (run / "config_snapshot.json").write_text(json.dumps(snap, indent=1, default=str))
+    day = HERE.parent / "DOCS" / time.strftime("%Y%m%d") / "config_snapshots"
+    day.mkdir(parents=True, exist_ok=True)
+    (day / f"{run.name}.json").write_text(json.dumps(snap, indent=1, default=str))
+    print(f"config snapshot: {run.name}/config_snapshot.json (git {sha[:8]}{' dirty' if dirty else ''})")
 
 
 def cpu_policy(ppo):
@@ -136,17 +181,23 @@ def exam(ppo, character, level):
         fell, left_box, hit, absorbed, seen = (torch.zeros(env.N, dtype=torch.bool, device="cuda") for _ in range(5))
         pace = torch.zeros(env.N, device="cuda")   # walking levels: distance walked over distance commanded
         stop = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # ... and standing within 0.3 m of the box at the end
+        clear = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # the obstacle course: stepped up onto the step
+        reach = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # ... and reached the last waypoint
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
             lb = getattr(env, "left_box", torch.zeros_like(fell)).clone()
             if loco:   # read before the step: a world that finishes is reset inside it
                 p0 = env.dist_walked / env.cmd_dist.clamp(min=1e-3)
                 s0 = env.rem.abs() < 0.3
+                c0 = getattr(env, "ep_clear", torch.zeros_like(fell)).clone()
+                r0 = getattr(env, "reach_paid", torch.zeros_like(fell)).clone()
             obs, _, done, timeout = env.step(a)
             live = ~seen
             if loco:
                 pace = torch.where(live & done, p0.clamp(max=1.5), pace)
                 stop = torch.where(live & done, s0 & ~env.fell_now, stop)
+                clear = torch.where(live & done, c0, clear)
+                reach = torch.where(live & done, r0 & ~env.fell_now, reach)
             fell |= live & env.fell_now
             left_box |= live & lb
             hit |= live & getattr(env, "done_hit", torch.zeros_like(fell))
@@ -166,6 +217,10 @@ def exam(ppo, character, level):
             r[f"{tag}_pace"] = pace.mean().item()
         if "min_stop" in chk:       # 2026-10-29: the walk-in ends at the foot box; Kim's walker ran past hers and fell
             r[f"{tag}_stop"] = stop.float().mean().item()
+        if "min_clear" in chk:      # the obstacle course: stepped up onto the low step
+            r[f"{tag}_clear"] = clear.float().mean().item()
+        if "min_reach" in chk:      # ... and got past the podium to the last waypoint, still on his feet
+            r[f"{tag}_reach"] = reach.float().mean().item()
         for k, v in r.items():
             passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0) - 1e-6   # float32 means: 90/100 reads 0.8999999762
         res.update(r)
@@ -200,6 +255,7 @@ def main():
     run = RUNS / (a.run or f"{a.char}_{a.level}_{time.strftime('%y%m%d_%H%M')}")
     run.mkdir(exist_ok=True)
     tb, tele = SummaryWriter(str(run)), open(run / "telemetry.jsonl", "a")
+    write_config_snapshot(run, a)   # what is being trained, with what, from which commit (AGENTS.md: the run's own record)
 
     arena = LEVELS[a.level].get("model") == "arena"
     loco = LEVELS[a.level].get("model") == "locomotion"

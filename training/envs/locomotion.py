@@ -1,5 +1,13 @@
-"""Walking Env on MuJoCo Warp (Stage S2, the opt-in -SlapWalkBrain walk-in): N worlds on GPU.
-S1 (stand) duplicated L0 and S3 (jog, turn, slopes) trained a skill no match uses: both removed 2026-10-26.
+"""Walking Env on MuJoCo Warp (Stages S2-S4, the opt-in -SlapWalkBrain walk-in): N worlds on GPU.
+S1 (stand) duplicated L0 and the old S3 (jog, turn, slopes) trained a skill no match uses: both removed 2026-10-26.
+
+Levels (training/levels.py):
+    S2  the walk-in: steady, alternating steps to a foot box 1.8-3.0 m ahead. Unchanged, so the shipped
+        walk-in brains (grandpa_S2.onnx, kim_S2.onnx, matt_S2.onnx) keep working.
+    S3  the podium obstacle course (2026-10-29): step UP onto the low step, cross it, step DOWN off it, go
+        AROUND the podium, and reach the far waypoint. The obstacles are in the athlete's path, at a
+        randomised distance, lateral offset and approach side (-X or +X).
+    S4  the aisle lap: 2-4 waypoints around the arena furniture, jog speed band, slopes.
 
 Implements all 10 AI Realism Options:
 1. Anatomical anti-hyperextension limits & inertial PD firmness (zeta = 0.8).
@@ -12,6 +20,14 @@ Implements all 10 AI Realism Options:
 8. Anti-cheat & exploit penalties: second-order action jerk (vibration), arm flailing, leg dragging, asymmetric hop, and non-sole knockdown.
 9. Antagonist co-contraction impedance modulation during shove recovery.
 10. Fast multi-instance GPU execution (4,096 worlds, CUDA Graph captured, zero raycasts, zero host syncs per physics step).
+
+Added 2026-10-29 (the podium / aisle work):
+  * the obstacle course (S3) and the waypoint generator (S3, S4): the command is a point, the athlete's
+    yaw command is the bearing to it, and the reward pays the progress along the path;
+  * the reaction latency (Option 9 of the human-limits list): the command changes 0.15-0.35 s after the
+    athlete sees the reason, not instantly;
+  * the slope variation (a per-world gravity tilt of up to 4 deg) and the jog speed band;
+  * the flail penalty (the action's variance across the joints) next to the existing jerk penalty.
 """
 from __future__ import annotations
 
@@ -25,19 +41,21 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS
+from constants import LAGS, MIN_NECK, MIN_STAMINA, OBS
 from envs.slap import DECIM, hill, quat_mat
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
+COURSE_BOX, COURSE_PODIUM, COURSE_AISLE = "box", "podium", "aisle"   # the three courses the env can run
 
 
 class LocomotionEnv:
     def __init__(self, character="grandpa", level="S2", num_envs=4096, seed=0, randomize=True, obs_dim=OBS):
-        if level != "S2":
-            raise NotImplementedError(f"{level}: LocomotionEnv is S2 only")
+        if level not in ("S2", "S3", "S4"):
+            raise NotImplementedError(f"{level}: LocomotionEnv runs S2, S3 and S4")
         self.character, self.level, self.cfg, self.N, self.randomize = character, level, LEVELS[level], num_envs, randomize
         self.obs_dim = obs_dim
+        self.course = self.cfg.get("course", COURSE_BOX)
         dev = self.device = "cuda"
         torch.manual_seed(seed)
         wp.set_device("cuda:0")
@@ -52,7 +70,11 @@ class LocomotionEnv:
         self.train_cfg = json.loads((cfg_dir / "training_realism_config.json").read_text())
 
         fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
-        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_solo.xml"))
+        # S2 walks on the open floor of the solo scene; the obstacle courses need the low step and the podium
+        # in the scene, so they load <name>_loco.xml (build_body.py writes it: the same athlete, plus a step
+        # and the podium; the solo and arena models are untouched, so the shipped brains stay valid).
+        scene = "solo" if self.course == COURSE_BOX else "loco"
+        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_{scene}.xml"))
         order = fp["joint_order"]
         self.A = len(order)
         jid = [m.joint(n).id for n in order]
@@ -99,13 +121,24 @@ class LocomotionEnv:
         self.bias = per_world("actuator_biasprm")
         self.frange = per_world("actuator_forcerange")
         self.gpos = per_world("geom_pos")
+        self.gsize = per_world("geom_size")
+        # the slope: a per-world gravity tilt (mujoco-warp reads opt.gravity[worldid])
+        ga = self.mw.opt.gravity
+        gt = wp.to_torch(ga).repeat(num_envs, 1).contiguous()
+        self.mw.opt.gravity = wp.from_torch(gt, dtype=ga.dtype)
+        self.gravity = gt
         self.mass0, self.inertia0 = self.mass[0].clone(), self.inertia[0].clone()
         self.gain0, self.bias0, self.frange0 = self.gain[0].clone(), self.bias[0].clone(), self.frange[0].clone()
 
         self.floor = m.geom("floor").id
         self.podium = m.geom("podium").id
+        self.pod_z = float(m.geom("podium").pos[2])   # the podium stands on the floor (the env only moves it in x, y)
+        # the low step only exists in the obstacle scene (<name>_loco.xml)
+        self.step_g = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "step")
         # Park podium far away so athlete has open floor for walking
         self.gpos[:, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=dev)
+        if self.step_g >= 0:
+            self.gpos[:, self.step_g] = torch.tensor([50.0, 0.0, -5.0], device=dev)
 
         T = lambda a: wp.to_torch(a)
         self.qpos, self.qvel, self.ctrl = T(self.dw.qpos), T(self.dw.qvel), T(self.dw.ctrl)
@@ -115,6 +148,8 @@ class LocomotionEnv:
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.mocap = T(self.dw.mocap_pos)
         self.geom_xpos[:, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=dev)
+        if self.step_g >= 0:
+            self.geom_xpos[:, self.step_g] = torch.tensor([50.0, 0.0, -5.0], device=dev)
 
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
@@ -178,6 +213,30 @@ class LocomotionEnv:
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)
         self.fell_now = zb()
 
+        # The course (S3: the podium obstacle, S4: the aisle lap). The command is a POINT and the athlete's yaw
+        # command is the bearing to it; the reward pays the progress along the path (Feature B: the aisle lap).
+        self.dir = zl()                  # the approach side: +1 walks toward +X, -1 toward -X (the athlete turns around)
+        self.wp = z(N, 4, 2)             # the waypoints (xy), in order; the first four are used
+        self.wp_n = zl()                 # how many waypoints this episode has (2-4)
+        self.wp_i = zl()                 # the waypoint being walked to
+        self.wp_dist = z(N)              # the distance to it (m)
+        self.wp_dist_prev = z(N)         # the distance at the last step (the progress along the path)
+        self.wp_best = z(N)              # the closest it has been (the stall detector)
+        self.reach_paid = zb()           # the arrival bonus is paid once
+        self.stall_t = z(N)              # seconds without getting closer (the athlete stopped in front of the obstacle)
+        self.cmd_tgt = z(N, 2)           # the point the command points at (after the reaction delay)
+        self.pend_tgt = z(N, 2)          # the point it will point at when the reaction delay expires
+        self.react_t = z(N)              # the reaction delay left (s)
+        self.ep_clear = zb()             # the episode stepped up onto the step
+        self.ep_reach = zb()             # the episode reached the last waypoint
+        self.ep_wp = zl()                # the waypoints visited
+        self.step_top = z(N)             # the step's top height (m)
+        self.step_xy = z(N, 2)           # the step's centre (xy)
+        self.pod_xy = z(N, 2)            # the podium's centre (xy)
+        self.bump = z(N)                 # the body parts that hit an obstacle this step (the penalty)
+        self.reaction = tuple(self.cfg.get("reaction", (0.0, 0.0)))   # the human reaction latency (s)
+        self.slope = float(self.cfg.get("slope_deg", 0.0))            # the per-world gravity tilt (deg)
+
         # Pre-capture CUDA graphs for zero-overhead GPU execution
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
         with wp.ScopedCapture() as c:
@@ -237,15 +296,115 @@ class LocomotionEnv:
         self.x0[mask] = self.qpos[mask, 0]
         self.cmd_dist[mask] = 0.0
         self.yaw_cmd[mask] = 0.0
-        self._command()
+        self.ep_clear[mask], self.ep_reach[mask], self.ep_wp[mask] = False, False, 0
+        self.wp_i[mask], self.stall_t[mask], self.wp_best[mask] = 0, 0.0, 1e9
+        self.reach_paid[mask] = False
+        self.wp_dist_prev[mask] = 0.0
+        if self.slope > 0.0:   # the slope: a per-world gravity tilt (up to slope_deg), the floor stays flat
+            t = math.radians(self.slope)
+            pit, rol = self._u(n, -t, t), self._u(n, -t, t)
+            self.gravity[mask, 0] = 9.81 * torch.sin(pit)
+            self.gravity[mask, 1] = 9.81 * torch.sin(rol)
+            self.gravity[mask, 2] = -9.81 * torch.cos(pit) * torch.cos(rol)
+        if self.course == COURSE_BOX:
+            self._command()
+        else:
+            self._lay_course(mask, n)
+            self._command()
+            self.wp_dist_prev[mask] = self.wp_dist[mask]
         self.stride_freq[mask] = 1.8
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.foot_prev[mask] = self.geom_xpos[mask][:, self.feet]
 
+    # ------------------------------------------------------------------ the course (S3: the podium, S4: the aisle)
+    def _lay_course(self, mask, n):
+        """Lay out this episode's course: the approach side, the obstacles and the waypoints.
+
+        S3 (the podium obstacle): a LOW STEP in the athlete's path (step up onto it, cross it, step down off
+        it) and the full-height PODIUM further along (go around it), both at a randomised distance and lateral
+        offset; the last waypoint is beyond the podium.  S4 (the aisle): 2-4 waypoints around the podium, a
+        lap.  The athlete starts at the origin and faces the approach direction (-X or +X).
+        """
+        dev = self.device
+        d = torch.where(torch.rand(n, device=dev) < 0.5, -1.0, 1.0)   # the approach side
+        self.dir[mask] = d.to(torch.long)
+        far = self.gpos[:, self.podium].clone()   # (N, 3) the podium's parked position
+        step = self.gpos[:, self.step_g].clone() if self.step_g >= 0 else far.clone()
+        if self.course == COURSE_PODIUM:
+            d_step = self._u(n, 1.3, 1.9)           # the distance to the step (m): the athlete closes it first
+            step_off = self._u(n, -0.35, 0.35)      # the lateral offset (m)
+            d_pod = d_step + self._u(n, 1.5, 2.3)   # the podium is further along
+            pod_off = self._u(n, -0.55, 0.55)
+            side = torch.where(torch.rand(n, device=dev) < 0.5, -1.0, 1.0)   # which way round the podium
+            self.step_xy[mask] = torch.stack([d * d_step, step_off], -1)
+            self.pod_xy[mask] = torch.stack([d * d_pod, pod_off], -1)
+            # the step's top: 0.10-0.20 m (a step he can climb), its half-sizes from the model
+            self.step_top[mask] = self._u(n, 0.10, 0.20)
+            self.gsize[mask, self.step_g, 2] = self.step_top[mask] / 2
+            self.gpos[mask, self.step_g, 0] = d * d_step
+            self.gpos[mask, self.step_g, 1] = step_off
+            self.gpos[mask, self.step_g, 2] = self.step_top[mask] / 2
+            self.gpos[mask, self.podium, 0] = d * d_pod
+            self.gpos[mask, self.podium, 1] = pod_off
+            self.gpos[mask, self.podium, 2] = self.pod_z
+            # the waypoints: over the step, around the podium, beyond it
+            w = torch.stack([
+                torch.stack([d * (d_step + 0.55), step_off], -1),
+                torch.stack([d * d_pod, pod_off + side * 0.85], -1),
+                torch.stack([d * (d_pod + 1.4), pod_off + side * 0.4], -1),
+            ], 1)                                                        # (n, 3, 2)
+            self.wp[mask, :3] = w
+            self.wp[mask, 3] = w[:, 2]
+            self.wp_n[mask] = 3
+        else:                                                            # the aisle lap
+            centre = torch.stack([d * 1.7, torch.zeros(n, device=dev)], -1)
+            radius = self._u(n, 1.0, 1.6)
+            n_wp = torch.randint(2, 5, (n,), device=dev)
+            a0 = self._u(n, -math.pi, math.pi)
+            spin = torch.where(torch.rand(n, device=dev) < 0.5, -1.0, 1.0)
+            k = torch.arange(4, device=dev, dtype=torch.float32)
+            ang = a0[:, None] + spin[:, None] * (2 * math.pi / n_wp[:, None].clamp(min=2)) * k[None, :]
+            w = torch.stack([centre[:, 0:1] + radius[:, None] * torch.cos(ang),
+                             centre[:, 1:2] + radius[:, None] * torch.sin(ang)], -1)   # (n, 4, 2)
+            self.wp[mask] = w
+            self.wp_n[mask] = n_wp
+            self.step_xy[mask] = w[:, 0]     # the step is not used on the aisle: park it
+            self.pod_xy[mask] = centre
+            self.step_top[mask] = 0.0
+            if self.step_g >= 0:
+                self.gpos[mask, self.step_g] = torch.tensor([50.0, 0.0, -5.0], device=dev)
+            self.gpos[mask, self.podium, 0] = centre[:, 0]
+            self.gpos[mask, self.podium, 1] = centre[:, 1]
+            self.gpos[mask, self.podium, 2] = self.pod_z
+        self.geom_xpos[mask, self.podium] = self.gpos[mask, self.podium]
+        if self.step_g >= 0:
+            self.geom_xpos[mask, self.step_g] = self.gpos[mask, self.step_g]
+        # the commanded path length (the pace metric: walked / commanded)
+        legs = (self.wp[mask, 1:4] - self.wp[mask, 0:3]).norm(dim=-1) * (self.wp_n[mask, None] > 1)
+        self.cmd_dist[mask] = legs.sum(-1) + (self.wp[mask, 0] - self.qpos[mask, 0:2]).norm(dim=-1)
+        # the first command, and the reaction delay before it (a human does not answer instantly)
+        self.cmd_tgt[mask], self.pend_tgt[mask] = self.wp[mask, 0], self.wp[mask, 0]
+        self.react_t[mask] = self._u(n, *self.reaction) if self.reaction[1] > 0 else torch.zeros(n, device=dev)
+        # the athlete faces the approach direction
+        q = self.qpos[mask]
+        flip = (d < 0)
+        quat = q[:, 3:7]
+        quat[:, 3] = torch.where(flip, -quat[:, 3], quat[:, 3])
+        self.qpos[mask, 3:7] = quat
+
     def _command(self):
-        self.rem = self.box - (self.qpos[:, 0] - self.x0)
-        self.v_cmd = torch.where(self.rem < 0.15, 0.0, self.v0 * (self.rem / 0.8).clamp(0.0, 1.0))
+        """The command: v_cmd (m/s) and yaw_cmd (rad) toward the commanded point."""
+        if self.course == COURSE_BOX:
+            self.rem = self.box - (self.qpos[:, 0] - self.x0)
+            self.v_cmd = torch.where(self.rem < 0.15, 0.0, self.v0 * (self.rem / 0.8).clamp(0.0, 1.0))
+            return
+        d = self.cmd_tgt - self.qpos[:, 0:2]
+        dist = d.norm(dim=-1)
+        self.wp_dist = dist
+        self.yaw_cmd = torch.atan2(d[:, 1], d[:, 0])
+        self.v_cmd = torch.where(dist < 0.15, torch.zeros_like(dist), self.v0 * (dist / 0.8).clamp(0.0, 1.0))
+        self.rem = dist
 
     def _forces(self, dt):
         self.xfrc.zero_()
@@ -336,6 +495,8 @@ class LocomotionEnv:
         active_walk = self.v_cmd > 0.1
         self.gait_phase = torch.where(active_walk, (self.gait_phase + self.stride_freq * 0.02) % 1.0, torch.zeros_like(self.gait_phase))
         self.cmd_dist += self.v_cmd * 0.02
+        if self.course != COURSE_BOX:
+            self._advance()
         self._command()
 
         done = fell | (self.t >= self.T)
@@ -343,14 +504,46 @@ class LocomotionEnv:
         if done.any():
             mean_v_err = self.speed_err_sum / self.t.clamp(min=1).float()
             cols = (self.ret, self.t, fell, self.com_err, mean_v_err, self.lead_swaps, self.dist_walked)
-            for r, l, f, ce, ve, ls, dw in zip(*(c[done].tolist() for c in cols)):
-                self.episodes.append(dict(
+            extra = (self.ep_clear, self.ep_reach, self.ep_wp) if self.course != COURSE_BOX else (None, None, None)
+            for i, (r, l, f, ce, ve, ls, dw) in enumerate(zip(*(c[done].tolist() for c in cols))):
+                rec = dict(
                     ret=r, len=l, fell=f, left_box=False, hit=False, speed=0.0,
                     role=0, absorbed=(not f and ce <= 0.08), com_err=ce,
                     v_err=ve, lead_swaps=ls, dist_walked=dw,
-                ))
+                )
+                if extra[0] is not None:
+                    rec.update(clear=bool(extra[0][i]), reach=bool(extra[1][i]), waypoints=int(extra[2][i]))
+                self.episodes.append(rec)
             self.reset(done)
         return self.observe(), rew, done, timeout
+
+    def _advance(self):
+        """The course progression: the waypoints in order, the reaction delay, and the stall detector.
+
+        The athlete reaches a waypoint when it is within 0.45 m; the NEXT command then waits the reaction
+        latency (0.15-0.35 s: a human does not answer the instant the reason changes) before it points at it.
+        """
+        dev = self.device
+        self.react_t = (self.react_t - 0.02).clamp(min=0.0)
+        expired = self.react_t <= 0
+        self.cmd_tgt = torch.where(expired[:, None], self.pend_tgt, self.cmd_tgt)
+        # reached the current waypoint?
+        last = self.wp_i >= (self.wp_n - 1)
+        hit = (self.wp_dist < 0.45) & ~last
+        if bool(hit.any()):
+            nxt = (self.wp_i + 1).clamp(max=3)
+            rows = torch.arange(self.N, device=dev)
+            self.pend_tgt = torch.where(hit[:, None], self.wp[rows, nxt], self.pend_tgt)
+            self.wp_i = torch.where(hit, nxt, self.wp_i)
+            self.ep_wp = self.ep_wp + hit.long()
+            self.react_t = torch.where(hit, self._u(self.N, *self.reaction) if self.reaction[1] > 0 else torch.zeros(self.N, device=dev), self.react_t)
+                # the last waypoint reached: the episode's goal
+        reached = (self.wp_dist < 0.45) & last
+        self.ep_reach |= reached
+        # the stall detector: no progress towards the waypoint for a second (the athlete stopped in front of it)
+        closer = self.wp_dist < (self.wp_best - 0.01)
+        self.wp_best = torch.where(closer, self.wp_dist, self.wp_best)
+        self.stall_t = torch.where(closer, torch.zeros_like(self.stall_t), self.stall_t + 0.02)
 
     def _reward(self, a, fell):
         q, v = self.qpos, self.qvel
@@ -408,14 +601,60 @@ class LocomotionEnv:
         vel_rew = 2.0 * torch.exp(-(v_err ** 2) / 1.0)
         # 2026-10-29: progress is toward the box, and standing at it (command 0) earns full credit - with heading-frame
         # progress and nothing for arriving, walking at an angle that never reached the box paid best (Kim: stop 0 %)
-        progress = 1.5 * torch.where(moving > 0, (v[:, 0].clamp(min=0.0) / self.v_cmd.clamp(min=0.1)).clamp(max=1.0), torch.ones_like(moving))
+        fwd = (v[:, 0] * self.dir.to(v.dtype)).clamp(min=0.0)   # the progress along the approach axis
+        progress = 1.5 * torch.where(moving > 0, (fwd / self.v_cmd.clamp(min=0.1)).clamp(max=1.0), torch.ones_like(moving))
         gait_rew = moving * (0.4 * stride_clear + 0.4 * stance_match) + (1.0 - moving) * (0.8 * torch.exp(-(self.com_err ** 2) / 0.005))
+        # the flail penalty (Option 8): the action's spread across the joints - a body that shakes every muscle at
+        # once is not walking, it is thrashing (the jerk term catches the vibration, this catches the noise)
+        flail = (a - a.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
         r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
              + vel_rew + progress + gait_rew
-             - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag
+             - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag - 0.05 * flail
              - 3.0 * (-self.rem - 0.10).clamp(min=0.0))   # walked past the box (Kim overran hers by 0.25 m and fell)
-
+        if self.course != COURSE_BOX:
+            r = r + self._course_reward(a)
         return torch.where(fell, torch.full_like(r, -25.0), r)
+
+    def _course_reward(self, a):
+        """The obstacle course's own terms (S3: the step and the podium; S4: the aisle lap).
+
+        * the progress along the path: the distance closed towards the current waypoint (m per step), so the
+          reward follows the same scale as the rest of the env (a metre is worth a step of progress);
+        * the step-up: the pelvis above the step's top while over it - a small bonus every step and a one-off
+          bonus the first time (the "cleared the step" flag the level's exam reads);
+        * the bump: a body part (not a sole - a foot may stand on the step) into the step or the podium, read
+          from the same contact list the knockdown rule uses (the fall rule itself is unchanged);
+        * the stall: the athlete stopped in front of the obstacle (no progress for a second);
+        * the arrival: the last waypoint reached, once.
+        """
+        dev = self.device
+        n = self.nacon[0]
+        idx = torch.arange(self.con_geom.shape[0], device=dev)
+        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
+        w = self.con_world.long().clamp(0, self.N - 1)
+        obst = torch.zeros(self.m.ngeom, dtype=torch.bool, device=dev)
+        obst[self.podium] = True
+        if self.step_g >= 0:
+            obst[self.step_g] = True
+        hit = (idx < n) & ((obst[g0] & self.bad[g1]) | (obst[g1] & self.bad[g0]))
+        bump = torch.zeros(self.N, device=dev).scatter_reduce_(0, w, hit.float(), "amax")
+        self.bump = bump
+        # the progress along the path (the waypoint closed this step) and the arrival
+        dist = (self.cmd_tgt - self.qpos[:, 0:2]).norm(dim=-1)
+        prog = (self.wp_dist_prev - dist).clamp(min=0.0, max=0.2)
+        self.wp_dist_prev = dist
+        last = self.wp_i >= (self.wp_n - 1)
+        arrived = (dist < 0.45) & last & ~self.reach_paid
+        self.reach_paid |= arrived
+        self.ep_reach |= arrived
+        # the step-up: the pelvis above the step's top and over it
+        pel = self.xpos[:, self.pelvis]
+        off = (pel[:, 0:2] - self.step_xy).abs()
+        over = ((pel[:, 2] > (self.step_top + 0.05)) & (off[:, 0] < 0.35) & (off[:, 1] < 0.70) & (self.step_top > 0.0))
+        first = over & ~self.ep_clear
+        self.ep_clear |= first
+        r = 1.5 * prog - 0.30 * bump - 0.5 * (self.stall_t.clamp(max=2.0) - 1.0).clamp(min=0.0)
+        return r + 0.30 * over + 5.0 * first + 10.0 * arrived.float()
 
     def _heading(self, v, c, s):
         return torch.stack([c * v[:, 0] + s * v[:, 1], -s * v[:, 0] + c * v[:, 1], v[:, 2]], -1)

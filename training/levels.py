@@ -60,4 +60,22 @@ LEVELS = {
         reward_target={0: 1800.0},
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_stop=0.9)},   # pace: walked / commanded distance
     ),
+    # S3/S4 (2026-10-29): the podium obstacle course and the aisle lap. The observation and the action rule are
+    # unchanged (the brain I/O is the same 136 floats); only the course, the reward and the exam are new.
+    "S3": dict(  # Stage 3: step UP onto the low step, cross it, step DOWN off it, go AROUND the podium, reach the far waypoint
+        model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.5,
+        target_speed=(0.9, 1.3), box_dist=(1.3, 1.9),   # the distance to the step (randomised per episode)
+        course="podium", reaction=(0.15, 0.35),        # the human reaction latency (the command lands 0.15-0.35 s late)
+        slope_deg=3.0,                                  # the per-world gravity tilt (a slope of up to 3 deg)
+        reward_target={0: 2400.0},
+        # clear: stepped up onto the step; reach: got past the podium to the last waypoint, still on his feet
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_reach=0.70)},
+    ),
+    "S4": dict(  # Stage 4: the aisle lap - 2-4 waypoints around the podium, a jog speed band, slopes
+        model="locomotion", roles={0: 1.0}, seconds=40.0, pushes=True, max_push=0.5,
+        target_speed=(1.6, 2.2), box_dist=(1.5, 2.2),
+        course="aisle", reaction=(0.15, 0.35), slope_deg=4.0,
+        reward_target={0: 3000.0},
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_reach=0.70)},
+    ),
 }

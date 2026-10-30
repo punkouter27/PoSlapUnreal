@@ -27,11 +27,11 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
+from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
-DECIM = 4           # physics steps per brain step (200 Hz / 50 Hz)
+# DECIM (physics steps per brain step, 200 Hz / 50 Hz) comes from constants.py with the rest of the shared numbers.
 LEAN = float(os.environ.get("SLAP_LEAN", "1.0"))   # how far a braced defender leans in (see reset), stepped up by hand
 SETTLE = 250        # brain steps (5 s) a strike episode runs on after the touch: the match's recovery window; he stays up, slaps once
 WAIT = 200          # brain steps (4 s): the striker stands balanced before the wind-up (user, 2026-10-22); earlier touches don't count
