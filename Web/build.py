@@ -31,7 +31,9 @@ for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 page = DIST / "Web" / "index.html"   # the build stamp (bottom right): the build date
-page.write_text(re.sub(r'<div class="stamp">[^<]*</div>', f'<div class="stamp">{time.strftime("%y%m%d")}</div>', page.read_text(encoding="utf-8")), encoding="utf-8")
+# the stamp is <div class="... stamp ..." ...>dev</div>: only the text between the tags is replaced
+page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)', rf'\g<1>{time.strftime("%y%m%d")}\g<2>',
+                        page.read_text(encoding="utf-8")), encoding="utf-8")
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
 (DIST / "staticwebapp.config.json").write_text(

@@ -1,5 +1,9 @@
 // PoSlap in the browser: the match engine (sim.js) steps MuJoCo at 200 Hz in real time; three.js draws every
 // physics shape where MuJoCo puts it (drawing only, as Unreal does). Served from the repo root: Web/serve.py.
+//
+// The page is a broadcast HUD: the corner anchors (TL the match state, TC the rate, TR the settings, BL the
+// telemetry, BR the build stamp), a bottom dock with the spectator's pick and the tab row, and a bottom sheet
+// with the details. TAB opens and closes the sheet; the default view stays clean.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
@@ -12,6 +16,7 @@ ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
 
 const $ = id => document.getElementById(id);
 const COLORS = { red: 0xd9473f, blue: 0x4f7fe0 };
+const DANGER_FULL = 12;   // m/s of head snap that reads as full KO danger (the relay's scale)
 // ?live=ws://<host>:8765 (Web/live.py) or an Azure Web PubSub client URL: draw the match Unreal is playing instead of
 // running our own; the physics here only places the bodies where Unreal's MuJoCo put them.
 // Only a WebSocket URL we recognise is used: a ?live= parameter is attacker-controlled, and the relay it points at
@@ -29,63 +34,424 @@ const LIVE = (() => {
   } catch { return null; }
 })();
 const liveSeries = [0, 0];
+const BUILD = $("stamp").textContent.trim() || "dev";   // Web/build.py writes the build date (YYMMDD)
 
-// ---- HUD ------------------------------------------------------------------------------------------------
-let bannerTimer = 0, last = { striker: "red" };
+// ---- the match state the HUD shows -----------------------------------------------------------------------
+const S = {
+  phase: "menu",       // menu | practice | live | result
+  round: 1, cards: [[0, 0], [0, 0], [0, 0]], series: [0, 0],
+  strikes: 0, kos: 0, knockdowns: 0, fouls: 0, lastStrike: null, impact: null,
+  danger: { red: 0, blue: 0, source: "local" },
+  live: false, steps: 0, simTime: 0,
+};
+const NAMES = {};   // corner -> athlete (the card's display name), filled once the match loads
+
+// ---- the spectator's pick: who lands the next strike -------------------------------------------------------
+const STREAK_KEY = "poslap.streak.v1";
+const streak = { n: 0, best: 0 };
+try { const s = JSON.parse(localStorage.getItem(STREAK_KEY) || "null"); if (s) { streak.n = +s.n || 0; streak.best = +s.best || 0; } } catch { }
+const saveStreak = () => { try { localStorage.setItem(STREAK_KEY, JSON.stringify(streak)); } catch { } };
+let pick = null;        // the pick for the turn in progress: "red" | "blue" | "neither" | null
+let pickOpen = false;   // a turn is running: the pick counts
+
+function setPick(v) {
+  pick = v;
+  for (const b of $("picks").children) b.setAttribute("aria-pressed", String(b.dataset.pick === v));
+}
+function setPickOpen(on) {
+  pickOpen = on;
+  for (const b of $("picks").children) b.disabled = !on;   // no turn to predict: the pick is off
+  if (!on) setPick(null);
+}
+function renderStreak() {
+  const info = $("pickinfo");
+  info.textContent = "";
+  const n = document.createElement("span"); n.className = "n"; n.textContent = String(streak.n);
+  const best = document.createElement("span"); best.className = "best"; best.textContent = `best ${streak.best}`;
+  info.append(n, document.createTextNode(" "), best);
+  const line = $("streak");
+  line.textContent = "";
+  line.append(document.createTextNode(`streak ${streak.n} `));
+  const b = document.createElement("span"); b.className = "best"; b.textContent = `· best ${streak.best}`;
+  line.appendChild(b);
+}
+let pickBannerTimer = 0;
+function pickBanner(text, kind) {
+  const el = $("pickbanner");
+  el.textContent = text;
+  el.className = `pickbanner on ${kind}`;
+  clearTimeout(pickBannerTimer);
+  pickBannerTimer = setTimeout(() => { el.className = "pickbanner"; }, 1900);
+}
+function resolvePick(e) {
+  // the turn is over: the strike landed (the striker) or nobody did (the clock, a foul, a fall)
+  const landed = e.touch !== null && e.touch !== undefined;
+  const answer = landed ? e.striker : "neither";
+  if (pick === null) pickBanner("NO PICK", "none");
+  else if (pick === answer) { streak.n += 1; streak.best = Math.max(streak.best, streak.n); pickBanner(`CORRECT — streak ${streak.n}`, "good"); }
+  else { streak.n = 0; pickBanner("MISSED", "bad"); }
+  saveStreak();
+  renderStreak();
+  setPickOpen(false);
+}
+$("picks").addEventListener("click", e => {
+  const b = e.target.closest("button[data-pick]");
+  if (!b || b.disabled) return;
+  setPick(b.dataset.pick);
+});
+
+// ---- the banner -------------------------------------------------------------------------------------------
+let bannerTimer = 0;
 function banner(big, small = "", seconds = 1.6, color = "") {
   $("bannerBig").textContent = big; $("bannerBig").style.color = color; $("bannerSmall").textContent = small;
   $("banner").classList.add("on"); clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => $("banner").classList.remove("on"), seconds * 1000);
 }
-const NAMES = {};   // corner -> athlete (the card's display name), filled once the match loads
-// The striker's name arrives over the wire (the relay), so it is text, never markup: this builds the label with the DOM
-// and returns its HTML, so no attacker-supplied string is ever parsed as HTML.
-const corner = n => {
-  const f = document.createDocumentFragment();
+// The striker's name arrives over the wire (the relay), so it is text, never markup: this builds the label with the
+// DOM and returns the node, so no attacker-supplied string is ever parsed as HTML.
+const cornerNode = n => {
+  const wrap = document.createElement("span");
   const s = document.createElement("span");
   s.className = n === "blue" ? "blue" : "red";
   s.textContent = String(n).toUpperCase();
-  f.appendChild(s);
+  wrap.appendChild(s);
   const name = NAMES[n];
-  if (name) f.appendChild(document.createTextNode(" " + name));
-  const d = document.createElement("div");
-  d.appendChild(f);
-  return d.innerHTML;
+  if (name) wrap.appendChild(document.createTextNode(" " + name));
+  return wrap;
 };
+const foulText = fouls => (fouls || []).map(f => Array.isArray(f) ? f.join(" ") : String(f)).join(", ");
+
+// ---- the events: the local sim and the live feed both land here --------------------------------------------
 function onEvent(e) {
   switch (e.type) {
-    case "match_start": banner(e.match ? `Match ${e.match}` : "New match", `${e.first} wins the toss`, 2); renderCards([[0, 0], [0, 0], [0, 0]]); break;
+    case "match_start":
+      banner(e.match ? `Match ${e.match}` : "New match", `${e.first} wins the toss`, 2);
+      S.cards = [[0, 0], [0, 0], [0, 0]]; S.strikes = 0; S.kos = 0; S.knockdowns = 0; S.fouls = 0;
+      S.phase = LIVE ? "live" : "practice";
+      $("cardsLine").textContent = ""; renderCards();
+      break;
     case "turn_start":
-      last.striker = e.striker;
+      S.round = e.round || S.round;
       $("round").textContent = `Round ${e.round} / 3`;
-      $("turn").innerHTML = `${corner(e.striker)} strikes`;
-      $("strike").textContent = ""; $("call").textContent = ""; break;
-    case "strike":
-      $("strike").textContent = `${e.speed.toFixed(1)} m/s · ${e.part.replace("_r", "")}`;
-      banner(e.speed >= 8 ? (e.palm ? "Clean palm" : "Clean hit") : (e.palm ? "Palm" : "Hit"), `${e.speed.toFixed(1)} m/s${e.palm ? "" : " · not the palm"}`, 1.4, e.palm ? "var(--gold)" : "");
-      if (e.pos) flash(e.pos); break;   // (Unreal's strike line has no contact point)
-    case "faint": banner("Out cold!", `${e.athlete} passes out`, 2, "var(--gold)"); $("call").textContent = `${e.athlete} passes out`; break;
-    case "knockdown": $("call").textContent = `${e.athlete} down (${e.part})`; break;
-    case "foul": $("call").textContent = `Foul: ${e.athlete} ${e.why}`; break;
-    case "turn_end": {
-      const call = e.ko ? "KO" : e.end === "recovered" ? `Recovered · head snap ${e.head_peak.toFixed(1)} m/s` : e.fouls.length ? `Foul: ${e.fouls.map(f => f.join(" ")).join(", ")}` : e.end;
-      $("call").textContent = call;
-      if (e.ko) banner("KO!", `${e.striker} wins`, 3, "var(--gold)");
+      $("turn").textContent = "";
+      $("turn").append(cornerNode(e.striker), document.createTextNode(" strikes"));
+      $("call").textContent = "";
+      setPickOpen(true);       // the next strike is up for grabs
+      break;
+    case "strike": {
+      const palm = !!e.palm;
+      S.lastStrike = { striker: e.striker, part: e.part, palm, speed: e.speed, t: e.t };
+      S.strikes++;
+      $("call").textContent = `${e.speed.toFixed(1)} m/s · ${String(e.part || "").replace("_r", "")}${palm ? " · palm" : ""}`;
+      banner(e.speed >= 8 ? (palm ? "Clean palm" : "Clean hit") : (palm ? "Palm" : "Hit"),
+        `${e.speed.toFixed(1)} m/s${palm ? "" : " · not the palm"}`, 1.4, palm ? "var(--gold)" : "");
+      if (e.pos) flash(e.pos);   // (Unreal's strike line has no contact point)
       break;
     }
-    case "round": renderCards(e.cards); break;
+    case "impact":   // Unreal's broadcast science (the browser sim does not write it)
+      S.impact = { hic: e.hic, bric: e.bric, chain: e.chain, order: e.chain_order };
+      break;
+    case "faint":
+      $("call").textContent = `${e.athlete} passes out`;
+      banner("Out cold!", `${e.athlete} passes out`, 2, "var(--gold)");
+      break;
+    case "knockdown":
+      S.knockdowns++;
+      $("call").textContent = `${e.athlete} down (${e.part})`;
+      if (e.athlete === "red" || e.athlete === "blue") S.danger[e.athlete] = 1;
+      break;
+    case "foul":
+      S.fouls++;
+      $("call").textContent = `Foul: ${e.athlete} ${e.why}`;
+      break;
+    case "turn_end": {
+      const call = e.ko ? "KO" : e.end === "recovered" ? `Recovered · head snap ${Number(e.head_peak).toFixed(1)} m/s`
+        : (e.fouls && e.fouls.length) ? `Foul: ${foulText(e.fouls)}` : e.end;
+      $("call").textContent = call;
+      if (e.ko) { S.kos++; banner("KO!", `${e.striker} wins`, 3, "var(--gold)"); }
+      // the danger: the head snap the defender absorbed (the live feed carries no capture point)
+      if (e.touch !== null && e.touch !== undefined && (e.striker === "red" || e.striker === "blue")) {
+        const other = e.striker === "red" ? "blue" : "red";
+        S.danger[other] = Math.max(S.danger[other], Math.min(1, (e.head_peak || 0) / DANGER_FULL));
+        if (LIVE) S.danger.source = "live";
+      }
+      resolvePick(e);
+      break;
+    }
+    case "round":
+      S.cards = e.cards || S.cards;
+      renderCards();
+      break;
     case "result":
-      renderCards(e.cards);
+      S.cards = e.cards || S.cards;
+      renderCards();
+      S.phase = "result";
       banner(e.winner ? `${e.winner} wins` : "Draw", e.how, 5, e.winner === "red" ? "var(--red)" : e.winner === "blue" ? "var(--blue)" : "");
       if (LIVE && e.winner) liveSeries[e.winner === "red" ? 0 : 1]++;
-      { const sr = LIVE ? liveSeries : game.match.series; $("series").textContent = `Series ${sr[0]} – ${sr[1]}`; }
+      { const sr = LIVE ? liveSeries : game.match.series; S.series = [sr[0], sr[1]]; }
+      renderSheet();
       break;
   }
 }
-function renderCards(cards) {
-  $("cards").innerHTML = cards.map((c, j) => `<tr><th>${j + 1}</th><td class="r">${c[0]}</td><td class="b">${c[1]}</td></tr>`).join("");
+function renderCards() {
+  const line = $("cardsLine");
+  line.textContent = "";
+  const label = document.createElement("span"); label.textContent = "CARDS ";
+  const b = document.createElement("b");
+  b.textContent = S.cards.map(c => `${c[0]}–${c[1]}`).join("  ");
+  line.append(label, b);
 }
 
+// ---- the danger meter (the Unreal F6 one, in the browser) ---------------------------------------------------
+const dmeters = { red: null, blue: null };
+const heat = v => `hsl(${Math.round(120 * (1 - v))}, 82%, 55%)`;
+function buildDeters() {
+  const host = $("dmeters");
+  host.textContent = "";
+  for (const side of ["red", "blue"]) {
+    const row = document.createElement("div"); row.className = "drow";
+    const lbl = document.createElement("span"); lbl.className = `lbl ${side}`; lbl.textContent = side.toUpperCase();
+    const bar = document.createElement("span"); bar.className = "bar";
+    const fill = document.createElement("i"); bar.appendChild(fill);
+    const val = document.createElement("span"); val.className = "val";
+    const src = document.createElement("span"); src.className = "src";
+    row.append(lbl, bar, val, src);
+    host.appendChild(row);
+    dmeters[side] = { fill, val, src };
+  }
+}
+function updateDeters(vals, source) {
+  for (const side of ["red", "blue"]) {
+    const v = Math.max(0, Math.min(1, vals[side] || 0));
+    dmeters[side].fill.style.width = `${Math.round(v * 100)}%`;
+    dmeters[side].fill.style.background = heat(v);
+    dmeters[side].val.textContent = `${Math.round(v * 100)}%`;
+    dmeters[side].src.textContent = source;
+  }
+}
+// The capture point (USlapController::Wobble): where the centre of mass would come to rest over a step, x + v / w0
+// with w0 = sqrt(g / height), against the support polygon of the soles. Outside it, standing still is no longer
+// possible: he has to step or fall. 0 inside, 1 at 15 cm out - the same scale Unreal draws.
+function localDanger() {
+  const m = game.m, d = game.d;
+  const g = 9.81;
+  return game.match.sides.map(x => {
+    const C = [d.subtree_com[3 * x.pelvis], d.subtree_com[3 * x.pelvis + 1], d.subtree_com[3 * x.pelvis + 2]];
+    const V = d.subtree_linvel ? [d.subtree_linvel[3 * x.pelvis], d.subtree_linvel[3 * x.pelvis + 1]] : [0, 0];
+    const w0 = Math.sqrt(g / Math.max(C[2], 0.2));
+    const cp = [C[0] + V[0] / w0, C[1] + V[1] / w0];
+    const P = [];
+    for (const geom of x.feet) {
+      const X = [d.geom_xpos[3 * geom], d.geom_xpos[3 * geom + 1], d.geom_xpos[3 * geom + 2]];
+      const Sz = [m.geom_size[3 * geom], m.geom_size[3 * geom + 1], m.geom_size[3 * geom + 2]];
+      if (X[2] - Sz[2] > 0.03) continue;   // the sole is off the floor: it holds nothing
+      const R = [d.geom_xmat[9 * geom], d.geom_xmat[9 * geom + 1], d.geom_xmat[9 * geom + 2],
+        d.geom_xmat[9 * geom + 3], d.geom_xmat[9 * geom + 4], d.geom_xmat[9 * geom + 5],
+        d.geom_xmat[9 * geom + 6], d.geom_xmat[9 * geom + 7], d.geom_xmat[9 * geom + 8]];
+      for (let k = 0; k < 4; k++) {
+        const Lx = (k & 1) ? Sz[0] : -Sz[0], Ly = (k & 2) ? Sz[1] : -Sz[1];
+        P.push([X[0] + R[0] * Lx + R[1] * Ly, X[1] + R[3] * Lx + R[4] * Ly]);
+      }
+    }
+    if (P.length < 4) return 1;   // both feet off the floor
+    const H = hull(P), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    let inside = true, gap = Infinity;
+    for (let i = 0; i < H.length; i++) {
+      const E0 = H[i], E1 = H[(i + 1) % H.length];
+      inside = inside && cross(E0, E1, cp) >= 0;
+      const ex = E1[0] - E0[0], ey = E1[1] - E0[1];
+      const t = Math.max(0, Math.min(1, ((cp[0] - E0[0]) * ex + (cp[1] - E0[1]) * ey) / Math.max(ex * ex + ey * ey, 1e-12)));
+      gap = Math.min(gap, Math.hypot(cp[0] - (E0[0] + t * ex), cp[1] - (E0[1] + t * ey)));
+    }
+    return inside ? 0 : Math.min(1, gap / 0.15);
+  });
+}
+function hull(P) {   // Andrew's monotone chain, counter-clockwise (the Unreal hull)
+  const pts = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const out = [];
+  for (const pass of [0, 1]) {
+    const start = out.length;
+    for (let i = 0; i < pts.length; i++) {
+      const Q = pts[pass ? pts.length - 1 - i : i];
+      while (out.length >= start + 2 && cross(out[out.length - 2], out[out.length - 1], Q) <= 0) out.pop();
+      out.push(Q);
+    }
+    out.pop();
+  }
+  return out;
+}
+
+// ---- the bottom sheet: Telemetry / Science / Roster / Settings ---------------------------------------------
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+const kv = rows => { const d = el("dl", "kv"); for (const [k, v] of rows) { d.append(el("dt", "", k), el("dd", "", v)); } return d; };
+const row = (...kids) => { const r = el("div", "row"); r.append(...kids); return r; };
+const btn = (label, act, pressed) => { const b = el("button", "", label); b.dataset.act = act; if (pressed !== undefined) b.setAttribute("aria-pressed", String(pressed)); return b; };
+
+let tab = "telemetry", sheetOpen = false;
+const TABS = {
+  telemetry: () => {
+    const wrap = el("div");
+    wrap.append(kv([
+      ["phase", S.phase],
+      ["physics steps", String(S.steps)],
+      ["simulated", `${S.simTime.toFixed(1)} s`],
+      ["render", `${fpsNow} fps`],
+      ["pick streak", `${streak.n} (best ${streak.best})`],
+      ["feed", LIVE ? (S.live ? "live" : "connecting") : "local sim"],
+    ]));
+    if (LIVE) wrap.append(el("div", "note", LIVE));
+    return [wrap];
+  },
+  science: () => {
+    const wrap = el("div");
+    const t = el("table");
+    const head = el("thead"), hr = el("tr");
+    for (const h of ["Judge", "Red", "Blue"]) hr.append(el("th", "", h));
+    head.appendChild(hr); t.appendChild(head);
+    const body = el("tbody");
+    S.cards.forEach((c, j) => {
+      const tr = el("tr");
+      tr.append(el("th", "", String(j + 1)), el("td", "r", String(c[0])), el("td", "b", String(c[1])));
+      body.appendChild(tr);
+    });
+    t.appendChild(body);
+    wrap.append(t);
+    wrap.append(kv([
+      ["series", `${S.series[0]} – ${S.series[1]}`],
+      ["danger RED", `${Math.round((S.danger.red || 0) * 100)}%`],
+      ["danger BLUE", `${Math.round((S.danger.blue || 0) * 100)}%`],
+      ["danger source", S.danger.source],
+      ["strikes", String(S.strikes)],
+      ["knockdowns", String(S.knockdowns)],
+      ["knockouts", String(S.kos)],
+      ["fouls", String(S.fouls)],
+      ["last strike", S.lastStrike ? `${S.lastStrike.speed.toFixed(1)} m/s ${S.lastStrike.palm ? "palm" : "no palm"}` : "–"],
+    ]));
+    if (S.impact) wrap.append(kv([["head g (HIC15)", String(S.impact.hic)], ["brain (BRIC)", String(S.impact.bric)],
+      ["kinetic chain", (S.impact.chain || []).join(" · ")]]));
+    return [wrap];
+  },
+  roster: () => {
+    const wrap = el("div");
+    wrap.append(el("h3", "", "Matchup"));
+    const links = el("div", "matchups");
+    for (const [k, v] of Object.entries(MATCHUPS)) {
+      const a = el("a", "", v.name + (v.untrained ? " *" : ""));
+      a.href = `?m=${k}` + (LIVE ? `&live=${encodeURIComponent(LIVE)}` : "");
+      a.setAttribute("aria-current", String(k === MATCHUP));
+      links.appendChild(a);
+    }
+    wrap.append(links);
+    if (MATCHUPS[MATCHUP].untrained) wrap.append(el("div", "note", "* never trained together: expect falls"));
+    wrap.append(el("h3", "", "Athletes"));
+    for (const s of game.match.sides) {
+      const c = s.card, l = league[game.matchup.corners[game.match.sides.indexOf(s)].brain];
+      const box = el("div", "athlete");
+      const b = el("b", s.name === "red" ? "red" : "blue", c.display);
+      box.append(b, el("span", "", `${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}`));
+      if (l) box.append(el("span", "", `ELO ${Math.round(l.elo)} · KO ${Math.round(100 * l.ko_rate)}%`));
+      wrap.append(box);
+    }
+    return [wrap];
+  },
+  settings: () => {
+    const wrap = el("div");
+    const play = row(
+      btn(paused ? "Play" : "Pause", "pause", paused),
+      btn("¼×", "speed", speed === 0.25), btn("1×", "speed", speed === 1), btn("2×", "speed", speed === 2),
+      btn("Camera", "cam"), btn("Physics", "phys", art.physics));
+    wrap.append(el("h3", "", "Playback"), play);
+    wrap.append(el("h3", "", "Session"), row(btn("Back to the menu", "reset")));
+    const note = LIVE
+      ? `Watching the live match on ${LIVE}. The relay's API answers on the same host: /api/match, /api/events, /api/events/stream.`
+      : "A local match: the browser engine runs the same rules as training/match.py.";
+    wrap.append(el("div", "note", note));
+    wrap.append(el("div", "note", `build ${BUILD} · OBS 136 · 30 motors · 200 Hz`));
+    return [wrap];
+  },
+};
+function renderSheet() {
+  const panel = $("panel");
+  panel.textContent = "";
+  if (sheetOpen) panel.append(...TABS[tab]());
+  renderBadges();
+}
+function renderBadges() {
+  $("bTelemetry").textContent = S.steps > 999 ? `${(S.steps / 1000).toFixed(1)}k` : String(S.steps);
+  $("bScience").textContent = `R${S.round}`;
+  $("bRoster").textContent = MATCHUP.toUpperCase();
+  const b = $("bSettings");
+  b.textContent = LIVE ? (S.live ? "LIVE" : "…") : "SIM";
+  b.classList.toggle("hot", !!(LIVE && S.live));
+}
+function setTab(t) {
+  tab = t;
+  for (const b of $("tabs").children) b.setAttribute("aria-selected", String(b.dataset.tab === t));
+  sheetOpen = true;
+  $("sheet").hidden = false;
+  renderSheet();
+  measureBottom();
+}
+function toggleSheet(force) {
+  sheetOpen = force === undefined ? !sheetOpen : force;
+  $("sheet").hidden = !sheetOpen;
+  for (const b of $("tabs").children) b.setAttribute("aria-selected", String(sheetOpen && b.dataset.tab === tab));
+  renderSheet();
+  measureBottom();
+}
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  if (sheetOpen && b.dataset.tab === tab) toggleSheet(false); else setTab(b.dataset.tab);
+});
+$("gear").onclick = () => setTab("settings");
+$("panel").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === "pause") { paused = !paused; renderSheet(); }
+  else if (act === "speed") { speed = +b.textContent.replace("×", ""); renderSheet(); }
+  else if (act === "cam") { view = (view + 1) % VIEWS.length; setView(view); }
+  else if (act === "phys") { art.physics = !art.physics; showArt(); renderSheet(); }
+  else if (act === "reset") { showMenu(); }
+});
+addEventListener("keydown", e => {
+  if (e.key === "Tab") { e.preventDefault(); toggleSheet(); }   // TAB: the detailed stats panel
+  else if (e.key === "Escape") { if (sheetOpen) toggleSheet(false); else showMenu(); }
+});
+
+// ---- the menu: menu -> live or practice -> result -> reset --------------------------------------------------
+function showMenu() {
+  S.phase = "menu";
+  started = false;
+  $("menu").hidden = false;
+}
+function startPractice() {
+  $("menu").hidden = true;
+  S.phase = "practice";
+  started = true;
+}
+$("practice").onclick = startPractice;
+$("watchlive").onclick = () => { $("menu").hidden = true; S.phase = "live"; };
+function renderMatchups() {
+  const host = $("menuMatch");
+  host.textContent = "";
+  for (const [k, v] of Object.entries(MATCHUPS)) {
+    const a = el("a", "", v.name + (v.untrained ? " *" : ""));
+    a.href = `?m=${k}` + (LIVE ? `&live=${encodeURIComponent(LIVE)}` : "");
+    a.setAttribute("aria-current", String(k === MATCHUP));
+    host.appendChild(a);
+  }
+  if (MATCHUPS[MATCHUP].untrained) host.append(el("span", "note", "* never trained together: expect falls"));
+  $("menuFoot").textContent = `build ${BUILD} · ${MATCHUPS[MATCHUP].name}`;
+}
+
+// ---- the layout: the dock's height is a CSS variable, so the HUD never sits under it -------------------------
+function measureBottom() {
+  const h = $("bottom").getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--bottomh", `${Math.round(h)}px`);
+}
 // ---- 3D -------------------------------------------------------------------------------------------------
 const canvas = $("view");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -176,23 +542,20 @@ const MATCHUP = MATCHUPS[new URLSearchParams(location.search).get("m")] ? new UR
 let league = {};   // training/models/league.json (training/scouting.py): Elo and tendencies per brain, if it has run
 try { league = (await get("training/models/league.json", "json")).brains || {}; } catch { }
 let game, speed = 1, paused = false, busy = false, debt = 0, prevT = performance.now();
+let started = false;      // the menu gates the match: nothing runs until the spectator picks one
+let fpsNow = 0, frames = 0, fpsT = performance.now();
+
 try {
   $("loadmsg").textContent = "Loading MuJoCo…";
   const mj = await loadMujoco();
   $("loadmsg").textContent = "Loading the arena and both brains…";
   game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
-  $("matchup").innerHTML = Object.entries(MATCHUPS).map(([k, v]) => `<a href="?m=${k}" aria-current="${k === MATCHUP}">${v.name}${v.untrained ? " *" : ""}</a>`).join("")
-    + (MATCHUPS[MATCHUP].untrained ? `<span class="note">* never trained together: expect falls</span>` : "");
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
-  $("tape").innerHTML = game.match.sides.map((s, i) => {
-    const c = s.card, l = league[game.matchup.corners[i].brain];
-    const scout = l ? ` · ELO ${Math.round(l.elo)} · KO ${Math.round(100 * l.ko_rate)}%` : "";
-    return `<div><b class="${s.name === "red" ? "r" : "b"}">${c.display}</b> ${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}${scout}</div>`;
-  }).join("");
+  buildDeters(); renderStreak(); renderMatchups(); renderBadges(); renderCards(); measureBottom();
+  if (LIVE) { S.phase = "live"; $("watchlive").hidden = false; $("practice").hidden = true; connectLive(); }
   $("loading").remove();
-  if (LIVE) connectLive();
   requestAnimationFrame(loop);
 } catch (err) {
   $("loadmsg").textContent = `Could not start: ${err.message}`; console.error(err);
@@ -200,11 +563,11 @@ try {
 
 async function advance(n) {
   busy = true;
-  try { for (let i = 0; i < n; i++) await game.match.step(); } finally { busy = false; }
+  try { for (let i = 0; i < n; i++) { await game.match.step(); S.steps++; } } finally { busy = false; }
 }
 function loop(now) {
   const dt = Math.min(0.1, (now - prevT) / 1000); prevT = now;
-  if (!paused && !LIVE) debt += dt * speed;
+  if (!paused && !LIVE && started) debt += dt * speed;
   const h = game.match.dt;
   if (!busy && debt >= h) { const n = Math.min(Math.floor(debt / h), 60); debt -= n * h; if (debt > 0.25) debt = 0; advance(n); }
   const M = game.match;
@@ -218,24 +581,31 @@ function loop(now) {
   } else if (M.phase === "turn") {
     $("clock").textContent = `${M.touchK === null ? "clock" : "recovery"} ${(M.touchK === null ? Math.max(0, 30 - M.k * h) : Math.max(0, 5 - (M.k - M.touchK) * h)).toFixed(1)} s`;
   }
+  frames++;
+  if (now - fpsT > 500) {
+    fpsNow = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now;
+    $("fps").textContent = `${fpsNow} fps`;
+    $("steps").textContent = LIVE ? "live feed" : `${S.steps} steps`;
+    S.simTime = S.steps * h;
+    $("tel").textContent = LIVE ? `live · ${S.strikes} strikes` : `step ${S.steps} · ${S.simTime.toFixed(1)} s`;
+    if (!LIVE) {   // the local capture point: the danger the browser's own match is in
+      const d = localDanger();
+      S.danger.red = d[0]; S.danger.blue = d[1]; S.danger.source = "local";
+    }
+    updateDeters(S.danger, S.danger.source);
+    renderBadges();
+  }
   draw(game.d); tickFx(dt * (paused ? 0 : 1)); controls.update(); renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
-
-$("pause").onclick = e => { paused = !paused; e.target.setAttribute("aria-pressed", paused); e.target.textContent = paused ? "Play" : "Pause"; };
-document.querySelectorAll("[data-speed]").forEach(b => b.onclick = () => {
-  speed = +b.dataset.speed; document.querySelectorAll("[data-speed]").forEach(x => x.setAttribute("aria-pressed", x === b));
-});
-$("cam").onclick = () => { view = (view + 1) % VIEWS.length; setView(view); };
-$("phys").onclick = e => { art.physics = !art.physics; e.target.setAttribute("aria-pressed", art.physics); showArt(); };
 
 // ---- second screen ----------------------------------------------------------------------------------------------
 const live = { at: 0, slow: 1, walkIn: false };
 function connectLive() {
   const azure = LIVE.includes("webpubsub.azure.com");
   const ws = new WebSocket(LIVE, azure ? "json.webpubsub.azure.v1" : undefined);
-  ws.onopen = () => { if (azure) ws.send(JSON.stringify({ type: "joinGroup", group: "live" })); };
-  ws.onclose = () => setTimeout(connectLive, 3000);   // Unreal or the relay restarted: keep trying
+  ws.onopen = () => { S.live = true; renderBadges(); if (azure) ws.send(JSON.stringify({ type: "joinGroup", group: "live" })); };
+  ws.onclose = () => { S.live = false; renderBadges(); setTimeout(connectLive, 3000); };   // Unreal or the relay restarted: keep trying
   ws.onmessage = ev => {
     let msg = JSON.parse(ev.data);
     if (azure) { if (msg.type !== "message") return; msg = typeof msg.data === "string" ? JSON.parse(msg.data) : msg.data; }
@@ -255,8 +625,8 @@ function connectLive() {
     });
     game.match.mj.mj_forward(game.m, game.d);
     Object.assign(live, { at: performance.now(), slow: msg.slow, walkIn: msg.w });
-    $("round").textContent = msg.w ? "RING WALK-IN" : `Round ${msg.r} / 3`;
-    $("turn").innerHTML = msg.w ? "Approaching the podium" : `${corner(msg.s)} strikes`;
+    if (msg.w) $("turn").textContent = "Approaching the podium";
+    else { $("turn").textContent = ""; $("turn").append(cornerNode(msg.s), document.createTextNode(" strikes")); }
   };
 }
 
@@ -273,3 +643,4 @@ function showArt() {   // art view: meshes and arena; physics view: every MuJoCo
   if (art.arena) art.arena.visible = !art.physics;
   for (const a of art.athletes) a.root.visible = !art.physics;
 }
+addEventListener("resize", measureBottom);

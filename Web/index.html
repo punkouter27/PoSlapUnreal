@@ -8,51 +8,122 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
 <style>
-/* Layout: full-bleed 3D arena, broadcast HUD in the corners, transport bar at the bottom */
+/* Layout: full-bleed 3D arena, a broadcast HUD in the corners, a bottom dock with the pick and the tab row.
+   One viewport, no scrolling: the HUD is a grid, the dock is fixed at the bottom, the sheet opens upwards. */
 :root {
   --bg: #0b0b0d; --panel: rgb(14 14 18 / .78); --ink: #f2f0ea; --ink-2: #b8b6ad; --rule: rgb(255 255 255 / .12);
-  --red: #e5554c; --blue: #5d8cf0; --gold: #f1c24b;
+  --red: #e5554c; --blue: #5d8cf0; --gold: #f1c24b; --green: #6fce8f;
   --display: "Anton", Impact, "Arial Narrow", sans-serif; --body: "Public Sans", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+  --inset-t: max(10px, env(safe-area-inset-top)); --inset-r: max(10px, env(safe-area-inset-right));
+  --inset-b: max(10px, env(safe-area-inset-bottom)); --inset-l: max(10px, env(safe-area-inset-left));
+  --bottomh: 116px;              /* the dock's height (app.js measures it) */
   color-scheme: dark;
 }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--body); overflow: hidden; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--body); overflow: hidden; overscroll-behavior: none; }
 canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-.hud { position: fixed; pointer-events: none; padding: 12px 14px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; backdrop-filter: blur(6px); }
-.top-left { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); display: grid; gap: 4px; min-width: 220px; }
-.top-right { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; gap: 6px; }
-.brand { font-family: var(--display); font-size: 28px; letter-spacing: .02em; line-height: 1; }
+.hud { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; backdrop-filter: blur(6px); pointer-events: none; }
+
+/* ---- the corner anchors: TL state, TC rate, TR settings, BL telemetry, BR build stamp ---- */
+.hudgrid { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: var(--inset-t) var(--inset-r) calc(var(--bottomh) + 6px) var(--inset-l); pointer-events: none; }
+.tl { grid-area: 1 / 1; justify-self: start; align-self: start; display: grid; gap: 2px; padding: 8px 10px; }
+.tc { grid-area: 1 / 2; justify-self: center; align-self: start; padding: 6px 9px; font: 500 clamp(10px, 2.5vw, 12px)/1.35 var(--mono); color: var(--ink-2); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tr { grid-area: 1 / 3; justify-self: end; align-self: start; padding: 4px; pointer-events: auto; }
+.tr button { min-width: 44px; min-height: 44px; font-size: clamp(15px, 4vw, 19px); line-height: 1; background: transparent; border: 1px solid var(--rule); border-radius: 6px; color: var(--ink); cursor: pointer; }
+.tr button:hover { background: rgb(255 255 255 / .08); }
+.tr button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.bl { grid-area: 3 / 1; justify-self: start; align-self: end; display: grid; gap: 4px; padding: 7px 9px; }
+.br { grid-area: 3 / 3; justify-self: end; align-self: end; font: 500 clamp(10px, 2.4vw, 12px) var(--mono); color: var(--ink-2); text-align: right; }
+.brand { font-family: var(--display); font-size: clamp(20px, 5.5vw, 30px); letter-spacing: .02em; line-height: 1; }
 .brand b { color: var(--red); font-weight: 400; } .brand i { color: var(--blue); font-style: normal; }
-.round { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
-.turn { font-weight: 700; font-size: 16px; }
+.round { font: 600 clamp(10px, 2.4vw, 12px)/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.turn { font-weight: 700; font-size: clamp(13px, 3.2vw, 16px); line-height: 1.2; }
 .turn .red { color: var(--red); } .turn .blue { color: var(--blue); }
-.clock { font: 500 13px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.strike { font: 500 13px var(--mono); color: var(--gold); min-height: 1.4em; }
-.call { font-weight: 600; min-height: 1.4em; }
-table { border-collapse: collapse; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+.clock { font: 500 clamp(11px, 2.7vw, 13px)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.strike { font: 500 clamp(11px, 2.7vw, 13px)/1.3 var(--mono); color: var(--gold); min-height: 1.3em; }
+.call { font-weight: 600; font-size: clamp(11px, 2.7vw, 13px); min-height: 1.3em; }
+.cards-line { font: 500 clamp(10px, 2.5vw, 12px)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cards-line b { color: var(--ink); font-weight: 500; }
+.streak-line { font: 600 clamp(10px, 2.5vw, 12px)/1.3 var(--mono); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.streak-line .best { color: var(--ink-2); font-weight: 500; }
+.tel { font: 500 clamp(10px, 2.4vw, 12px)/1.35 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dmeters { display: grid; gap: 3px; }
+.drow { display: flex; align-items: center; gap: 5px; font: 500 clamp(9px, 2.2vw, 11px) var(--mono); color: var(--ink-2); }
+.drow .lbl { width: 3.4em; }
+.drow .lbl.red { color: var(--red); } .drow .lbl.blue { color: var(--blue); }
+.drow .bar { width: clamp(40px, 12vw, 76px); height: 6px; background: rgb(255 255 255 / .1); border-radius: 3px; overflow: hidden; }
+.drow .bar i { display: block; height: 100%; width: 0; background: var(--green); }
+.drow .val { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.drow .src { opacity: .7; }
+.stamp { letter-spacing: .06em; }
+
+/* the banner sits in the free middle row, never over the scoreboard */
+.banner { grid-area: 2 / 1 / 3 / -1; justify-self: center; align-self: start; margin-top: 4vh; text-align: center; pointer-events: none; opacity: 0; transition: opacity .25s; padding: 10px 24px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; backdrop-filter: blur(6px); }
+.banner.on { opacity: 1; }
+.banner .big { font-family: var(--display); font-size: clamp(28px, 8vw, 60px); line-height: 1; text-transform: uppercase; }
+.banner .small { font-weight: 600; font-size: clamp(11px, 2.8vw, 14px); color: var(--ink-2); margin-top: 4px; }
+
+/* ---- the bottom: the sheet opens upwards, the dock holds the pick and the tabs ---- */
+.bottom { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 0 var(--inset-r) var(--inset-b) var(--inset-l); pointer-events: none; }
+.sheet { pointer-events: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; backdrop-filter: blur(8px); padding: 10px 12px; max-height: 46vh; overflow: hidden; }
+.sheet[hidden] { display: none; }
+.sheet h3 { margin: 0 0 6px; font: 600 clamp(10px, 2.4vw, 12px) var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.dock { pointer-events: auto; display: grid; gap: 6px; }
+.pickbar { position: relative; display: flex; gap: 6px; align-items: stretch; }
+.picks { display: flex; gap: 4px; flex: 1 1 auto; }
+.picks button, .tabs button, .sheet button, .menuCard button { font: 600 clamp(11px, 2.9vw, 13px) var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
+.picks button { flex: 1 1 0; min-height: 46px; min-width: 44px; letter-spacing: .04em; }
+.picks button[data-pick="red"] { border-color: rgb(229 85 76 / .55); } .picks button[data-pick="blue"] { border-color: rgb(93 140 240 / .55); }
+.picks button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.picks button[aria-pressed="true"][data-pick="red"] { background: var(--red); border-color: var(--red); color: #fff; }
+.picks button[aria-pressed="true"][data-pick="blue"] { background: var(--blue); border-color: var(--blue); color: #fff; }
+.picks button:disabled { opacity: .38; cursor: default; }
+.picks button:focus-visible, .tabs button:focus-visible, .sheet button:focus-visible, .menuCard button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.pickinfo { display: grid; align-content: center; justify-items: end; padding: 0 4px; font: 600 clamp(10px, 2.5vw, 12px) var(--mono); color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pickinfo .best { color: var(--ink-2); font-weight: 500; }
+.pickbanner { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 8px; background: rgb(14 14 18 / .92); border: 1px solid var(--rule); font: 700 clamp(12px, 3.2vw, 16px) var(--body); letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.pickbanner.on { opacity: 1; }
+.pickbanner.good { color: var(--green); } .pickbanner.bad { color: var(--red); } .pickbanner.none { color: var(--ink-2); }
+.tabs { display: flex; gap: 4px; }
+.tabs button { flex: 1 1 0; min-height: 40px; min-width: 44px; position: relative; color: var(--ink-2); font-size: clamp(10px, 2.6vw, 12px); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.badge { display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 8px; background: rgb(255 255 255 / .12); font: 500 10px var(--mono); vertical-align: 1px; }
+.tabs button[aria-selected="true"] .badge { background: rgb(0 0 0 / .18); }
+.badge.hot { background: var(--gold); color: #1a1400; }
+
+/* the panel inside the sheet */
+.panel { display: grid; gap: 8px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font: 500 clamp(10px, 2.5vw, 12px) var(--mono); font-variant-numeric: tabular-nums; margin: 0; }
+.kv dt { color: var(--ink-2); } .kv dd { margin: 0; text-align: right; }
+table { border-collapse: collapse; font: 500 clamp(10px, 2.5vw, 12px) var(--mono); font-variant-numeric: tabular-nums; }
 th, td { padding: 2px 8px; text-align: right; } th { color: var(--ink-2); font-weight: 500; text-align: left; }
 td.r { color: var(--red); } td.b { color: var(--blue); }
-.series { font: 600 12px var(--mono); color: var(--ink-2); }
-.tape { display: grid; gap: 2px; font: 500 11px var(--mono); color: var(--ink-2); }
-.tape b { font-family: var(--body); font-size: 12px; } .tape .r { color: var(--red); } .tape .b { color: var(--blue); }
-.banner { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity .25s; padding: 14px 28px; }
-.banner.on { opacity: 1; }
-.banner .big { font-family: var(--display); font-size: clamp(36px, 7vw, 72px); line-height: 1; text-transform: uppercase; }
-.banner .small { font-weight: 600; color: var(--ink-2); margin-top: 6px; }
-.bar { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
-.bar button { font: 600 13px var(--body); color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 5px; padding: 0 12px; min-height: 44px; min-width: 44px; cursor: pointer; }   /* 44 px thumb targets */
-.bar button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
-.bar button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.matchups { left: 50%; transform: translateX(-50%); top: max(12px, env(safe-area-inset-top)); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: auto; padding: 6px; max-width: calc(100% - 32px); }
-.matchups a { color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: 13px; padding: 0 10px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 5px; border: 1px solid var(--rule); }
+.sheet .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sheet .row > button { min-height: 38px; padding: 0 12px; }
+.sheet .row > button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.sheet .note { color: var(--ink-2); font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
+.sheet .athlete { display: grid; gap: 1px; font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
+.sheet .athlete b { font-size: clamp(11px, 2.8vw, 13px); }
+.sheet .athlete .red { color: var(--red); } .sheet .athlete .blue { color: var(--blue); }
+.matchups { display: flex; flex-wrap: wrap; gap: 5px; }
+.matchups a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: clamp(11px, 2.8vw, 13px); padding: 0 10px; min-height: 38px; display: inline-flex; align-items: center; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); }
 .matchups a[aria-current="true"] { background: var(--ink); color: var(--bg); }
 .matchups a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.matchups .note { flex-basis: 100%; text-align: center; font-size: 12px; color: var(--gold); }
-@media (max-width: 900px) { .matchups { top: auto; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 66px); } }
-.stamp { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font: 500 11px var(--mono); color: var(--ink-2); }
+.matchups .note { flex-basis: 100%; color: var(--gold); font-size: clamp(10px, 2.4vw, 12px); }
+
+/* the menu: the state flow starts here (menu -> live or practice -> result -> reset) */
+.menu { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 16px; background: rgb(6 6 8 / .84); backdrop-filter: blur(4px); }
+.menu[hidden] { display: none; }
+.menuCard { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; display: grid; gap: 10px; text-align: center; }
+.menuCard .brand { font-size: clamp(28px, 9vw, 46px); }
+.menuCard .sub { color: var(--ink-2); font-size: clamp(11px, 2.8vw, 13px); }
+.menuCard button { min-height: 46px; padding: 0 14px; }
+.menuCard button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
+.menuCard .matchups { justify-content: center; }
+.menuCard .foot { color: var(--ink-2); font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
 .loading { position: fixed; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; background: var(--bg); z-index: 5; }
 .loading .big { font-family: var(--display); font-size: 40px; }
-@media (max-width: 640px) { .top-right { display: none; } .top-left { min-width: 0; } }
-@media (prefers-reduced-motion: reduce) { .banner { transition: none; } }
+@media (max-width: 420px) { .drow .bar { width: 40px; } .picks button { letter-spacing: 0; } }
+@media (prefers-reduced-motion: reduce) { .banner, .pickbanner { transition: none; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -67,34 +138,64 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 <canvas id="view"></canvas>
 <div class="loading" id="loading"><div class="big">POSLAP</div><div id="loadmsg">Loading physics and brains…</div></div>
 
-<div class="hud top-left" aria-live="polite">
-  <div class="brand"><b>PO</b>SL<i>AP</i></div>
-  <div class="round" id="round">Round 1 / 3</div>
-  <div class="turn" id="turn">–</div>
-  <div class="clock" id="clock">clock 30.0 s</div>
-  <div class="strike" id="strike"></div>
-  <div class="call" id="call"></div>
+<div class="hudgrid" id="hudgrid">
+  <div class="hud tl" id="tl" aria-live="polite">
+    <div class="brand"><b>PO</b>SL<i>AP</i></div>
+    <div class="round" id="round">Round 1 / 3</div>
+    <div class="turn" id="turn">–</div>
+    <div class="clock" id="clock">clock 30.0 s</div>
+    <div class="call" id="call"></div>
+    <div class="cards-line" id="cardsLine"></div>
+    <div class="streak-line" id="streak"></div>
+  </div>
+
+  <div class="hud tc" id="tc"><span id="fps">– fps</span><br><span id="steps">0 steps</span></div>
+
+  <div class="hud tr"><button id="gear" aria-label="Settings" title="Settings">⚙</button></div>
+
+  <div class="hud bl" id="bl">
+    <div class="tel" id="tel">step 0 · 0.0 s</div>
+    <div class="dmeters" id="dmeters"></div>
+  </div>
+
+  <div class="br stamp" id="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
+
+  <div class="hud banner" id="banner"><div class="big" id="bannerBig"></div><div class="small" id="bannerSmall"></div></div>
 </div>
 
-<nav class="hud matchups" id="matchup" aria-label="Matchup"></nav>
+<div class="bottom" id="bottom">
+  <section class="sheet" id="sheet" hidden aria-label="Details"><div class="panel" id="panel"></div></section>
 
-<div class="hud top-right">
-  <div class="tape" id="tape"></div>
-  <table aria-label="Judges' cards"><thead><tr><th>Judge</th><th>Red</th><th>Blue</th></tr></thead><tbody id="cards"></tbody></table>
-  <div class="series" id="series">Series 0 – 0</div>
+  <div class="dock">
+    <div class="pickbar">
+      <div class="picks" id="picks" role="group" aria-label="Predict the next strike">
+        <button data-pick="red" aria-pressed="false" disabled>RED</button>
+        <button data-pick="blue" aria-pressed="false" disabled>BLUE</button>
+        <button data-pick="neither" aria-pressed="false" disabled>NEITHER</button>
+      </div>
+      <div class="pickinfo" id="pickinfo"><span class="n">0</span> <span class="best">best 0</span></div>
+      <div class="pickbanner" id="pickbanner" aria-live="polite"></div>
+    </div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
+      <button role="tab" data-tab="telemetry" aria-selected="true">Telemetry<span class="badge" id="bTelemetry"></span></button>
+      <button role="tab" data-tab="science" aria-selected="false">Science<span class="badge" id="bScience"></span></button>
+      <button role="tab" data-tab="roster" aria-selected="false">Roster<span class="badge" id="bRoster"></span></button>
+      <button role="tab" data-tab="settings" aria-selected="false">Settings<span class="badge" id="bSettings"></span></button>
+    </div>
+  </div>
 </div>
 
-<div class="hud banner" id="banner"><div class="big" id="bannerBig"></div><div class="small" id="bannerSmall"></div></div>
-
-<div class="bar" role="toolbar" aria-label="Playback">
-  <button id="pause" aria-pressed="false">Pause</button>
-  <button data-speed="0.25" aria-pressed="false">¼×</button>
-  <button data-speed="1" aria-pressed="true">1×</button>
-  <button data-speed="2" aria-pressed="false">2×</button>
-  <button id="cam">Camera</button>
-  <button id="phys" aria-pressed="false">Physics</button>
+<div class="menu" id="menu">
+  <div class="menuCard">
+    <div class="brand"><b>PO</b>SL<i>AP</i></div>
+    <div class="sub">Power slap · three rounds · ten-point must</div>
+    <button class="primary" id="practice">Practice match</button>
+    <button class="primary" id="watchlive" hidden>Watch the live match</button>
+    <div class="matchups" id="menuMatch"></div>
+    <div class="foot" id="menuFoot">build —</div>
+  </div>
 </div>
-<div class="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
+
 <script type="module" src="./app.js"></script>
 </body>
 </html>
