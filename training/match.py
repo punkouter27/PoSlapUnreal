@@ -202,8 +202,9 @@ class Match:
         Rc = d.xmat[side.chest].reshape(3, 3)
         u = Rc.T @ side.wbias
         yc = math.atan2(u[1], u[0])
-        pc = -math.asin(max(-1.0, min(1.0, u[2])))
-        for idx, targ in ((side.i_yaw, yc), (side.i_pitch, pc)):
+        # turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off the target his slap
+        # trained on (training has no gaze servo); the nod stays the brain's (Unreal ApplyGaze)
+        for idx, targ in ((side.i_yaw, yc),):
             lo, hi = side.a.lo[idx], side.a.hi[idx]
             want = max(lo, min(hi, targ))
             blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * want

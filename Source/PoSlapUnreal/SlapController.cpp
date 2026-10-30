@@ -1300,8 +1300,10 @@ void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 	mju_mulMatTVec3(Rx, Xm, WB);	// R^T * bias
 	const double Want[2] = { FMath::Atan2(Rx[1], Rx[0]),
 							 -FMath::Asin(FMath::Clamp(Rx[2], -1.0, 1.0)) };
-	const int32 Idx[2] = { Watcher.YawIdx, Watcher.PitchIdx };
-	for (int32 s = 0; s < 2; ++s)
+	// turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off the target his slap trained
+	// on (training has no gaze servo); the nod stays the brain's (match.py gaze_apply)
+	const int32 Idx[1] = { Watcher.YawIdx };
+	for (int32 s = 0; s < 1; ++s)
 	{
 		const int32 j = Idx[s];
 		const double Clamped = FMath::Clamp(Want[s], Watcher.Lo[j], Watcher.Hi[j]);
