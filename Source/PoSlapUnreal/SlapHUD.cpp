@@ -619,21 +619,62 @@ void ASlapHUD::BuildUi()
 		if (Self.IsValid()) Self->Targets.Add(Box);	// the audit checks every target is at least 44 units
 		return Box;
 	};
+	const FLinearColor RedTeam(0.85f, 0.22f, 0.18f), BlueTeam(0.2f, 0.45f, 0.9f);
 	auto Corner = [&](int32 a)
 	{
 		return SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[SNew(SBox).WidthOverride(64.f)[Label(FText::FromString(a ? TEXT("BLUE") : TEXT("RED")), 18, FLinearColor(TeamColor[a]))]]
-			+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT("<"), [NextBrain, a] { return NextBrain(a, -1); }, Spare)]
-			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).HAlign(HAlign_Center)
-			[Label(TAttribute<FText>::CreateLambda([Self, a]
+			[Arrow(TEXT("<"), [Self, a]
 			{
-				if (!Self.IsValid()) return FText();
-				if (Self->Pairing != Self->HerePairing) return FText::FromString(TEXT("level default"));
-				const int32 P = Self->Pick[a];
-				return FText::FromString(Self->Brains.IsValidIndex(P) ? Self->Brains[P].AssetName.ToString() : Self->Last.Brain[a]);
-			}), 17, Hi)]
-			+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT(">"), [NextBrain, a] { return NextBrain(a, 1); }, a == 0 ? Hit[HitRedNext] : Spare)];
+				if (!Self.IsValid()) return FReply::Handled();
+				int32 Cur = Self->SelectedFighter[a];
+				for (int32 s = 1; s < RosterSize; ++s)
+				{
+					int32 Cand = (Cur - s + RosterSize) % RosterSize;
+					if (!Self->Slots[Cand].Key.IsEmpty()) { Self->SelectedFighter[a] = Cand; Self->RosterSel = Cand; break; }
+				}
+				return FReply::Handled();
+			}, Spare)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(FMargin(2.f, 0.f))
+			[
+				SNew(SBox).MinDesiredHeight(Touch)
+				[
+					SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center)
+					.ButtonColorAndOpacity_Lambda([Self, a, RedTeam, BlueTeam]
+					{
+						if (!Self.IsValid()) return FLinearColor::White;
+						const bool bActive = Self->ActiveCornerSelect == a;
+						return bActive ? (a ? BlueTeam : RedTeam) : FLinearColor(0.18f, 0.18f, 0.22f);
+					})
+					.OnClicked_Lambda([Self, a]
+					{
+						if (Self.IsValid()) Self->ActiveCornerSelect = a;
+						return FReply::Handled();
+					})
+					[
+						Label(TAttribute<FText>::CreateLambda([Self, a]
+						{
+							if (!Self.IsValid()) return FText();
+							const int32 SIdx = Self->SelectedFighter[a];
+							const FString Name = Self->Slots.IsValidIndex(SIdx) && !Self->Slots[SIdx].Key.IsEmpty() ? Self->Slots[SIdx].Key : TEXT("OPEN");
+							const bool bActive = Self->ActiveCornerSelect == a;
+							return FText::FromString(FString::Printf(TEXT("%s: %s%s"), a ? TEXT("BLUE (P2)") : TEXT("RED (P1)"), *Name, bActive ? TEXT(" *") : TEXT("")));
+						}), 13, White)
+					]
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[Arrow(TEXT(">"), [Self, a]
+			{
+				if (!Self.IsValid()) return FReply::Handled();
+				int32 Cur = Self->SelectedFighter[a];
+				for (int32 s = 1; s < RosterSize; ++s)
+				{
+					int32 Cand = (Cur + s) % RosterSize;
+					if (!Self->Slots[Cand].Key.IsEmpty()) { Self->SelectedFighter[a] = Cand; Self->RosterSel = Cand; break; }
+				}
+				return FReply::Handled();
+			}, a == 0 ? Hit[HitRedNext] : Spare)];
 	};
 	auto PairStep = [Self](int32 Dir)
 	{
@@ -653,6 +694,72 @@ void ASlapHUD::BuildUi()
 			return FText::FromString(Self->Pairing == Self->HerePairing ? P : P + TEXT("  (loads)"));
 		}), 17, Hi)]
 		+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT(">"), [PairStep] { return PairStep(1); }, Spare)];
+
+	// 16-slot character selection grid for Start Menu
+	TSharedRef<SUniformGridPanel> StartGrid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f)).MinDesiredSlotHeight(Touch).MinDesiredSlotWidth(Touch);
+	for (int32 i = 0; i < RosterSize; ++i)
+	{
+		const bool bOpen = Slots[i].Key.IsEmpty();
+		if (!bOpen)
+		{
+			StartGrid->AddSlot(i % 4, i / 4)
+			[
+				SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center)
+				.ButtonColorAndOpacity_Lambda([Self, i]
+				{
+					if (!Self.IsValid()) return FLinearColor::White;
+					const bool bRed = Self->SelectedFighter[0] == i;
+					const bool bBlue = Self->SelectedFighter[1] == i;
+					if (bRed && bBlue) return FLinearColor(0.6f, 0.2f, 0.7f);
+					if (bRed) return FLinearColor(0.8f, 0.2f, 0.15f);
+					if (bBlue) return FLinearColor(0.15f, 0.35f, 0.85f);
+					return FLinearColor(0.18f, 0.18f, 0.22f);
+				})
+				.OnClicked_Lambda([Self, i]
+				{
+					if (Self.IsValid())
+					{
+						Self->SelectedFighter[Self->ActiveCornerSelect] = i;
+						Self->ActiveCornerSelect = 1 - Self->ActiveCornerSelect;
+						Self->RosterSel = i;
+					}
+					return FReply::Handled();
+				})
+				[
+					Label(TAttribute<FText>::CreateLambda([Self, i]
+					{
+						if (!Self.IsValid()) return FText();
+						const bool bRed = Self->SelectedFighter[0] == i;
+						const bool bBlue = Self->SelectedFighter[1] == i;
+						FString Tag;
+						if (bRed && bBlue) Tag = TEXT(" [1&2]");
+						else if (bRed) Tag = TEXT(" [P1]");
+						else if (bBlue) Tag = TEXT(" [P2]");
+						return FText::FromString(FString::Printf(TEXT("%d. %s%s"), i + 1, *Self->Slots[i].Key, *Tag));
+					}), 12, White)
+				]
+			];
+		}
+		else
+		{
+			// Empty slot: kept blank for now as requested
+			StartGrid->AddSlot(i % 4, i / 4)
+			[
+				SNew(SBorder)
+				.BorderImage(&BadgeOff)
+				.Padding(0.f)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(Touch).HAlign(HAlign_Center).VAlign(VAlign_Center)
+					[
+						Label(FText::FromString(FString::Printf(TEXT("%d"), i + 1)), 12, Dim * 0.35f)
+					]
+				]
+			];
+		}
+	}
+
 	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f)).MinDesiredSlotHeight(Touch).MinDesiredSlotWidth(Touch);	// the roster: 4 x 4 slots, each a thumb target
 	for (int32 i = 0; i < RosterSize; ++i)
 	{
@@ -667,15 +774,63 @@ void ASlapHUD::BuildUi()
 	auto Start = [Self, Menu]
 	{
 		if (!Self.IsValid() || Self->bTravelling) return FReply::Handled();	// a second tap while the level opens does nothing
-		if (Self->Pairing != Self->HerePairing) { Self->Travel(Self->Pairing); return Menu(false); }
-		if (!Self->Controller.IsValid()) return FReply::Handled();
-		UNNEModelData* B[2] = {};
-		for (int32 a = 0; a < 2; ++a)
+
+		const int32 RedSlot = Self->SelectedFighter[0];
+		const int32 BlueSlot = Self->SelectedFighter[1];
+		const FString RedCard = Self->SlotCards.IsValidIndex(RedSlot) && !Self->SlotCards[RedSlot].IsEmpty() ? Self->SlotCards[RedSlot] : TEXT("grandpa");
+		const FString BlueCard = Self->SlotCards.IsValidIndex(BlueSlot) && !Self->SlotCards[BlueSlot].IsEmpty() ? Self->SlotCards[BlueSlot] : TEXT("grandpa");
+
+		// Find the level for this matchup
+		FString WantedLevel = (RedCard == TEXT("grandpa") && BlueCard == TEXT("grandpa"))
+			? TEXT("L_Arena")
+			: FString::Printf(TEXT("L_Arena_%s_vs_%s"), *RedCard, *BlueCard);
+
+		int32 TargetPairing = Self->Pairings.IndexOfByPredicate([&](const FAssetData& A)
 		{
-			if (Self->Brains.IsValidIndex(Self->Pick[a])) B[a] = Cast<UNNEModelData>(Self->Brains[Self->Pick[a]].GetAsset());
+			return A.AssetName.ToString().Equals(WantedLevel, ESearchCase::IgnoreCase);
+		});
+
+		if (TargetPairing == INDEX_NONE)
+		{
+			// Check reverse level
+			FString AltLevel = FString::Printf(TEXT("L_Arena_%s_vs_%s"), *BlueCard, *RedCard);
+			TargetPairing = Self->Pairings.IndexOfByPredicate([&](const FAssetData& A)
+			{
+				return A.AssetName.ToString().Equals(AltLevel, ESearchCase::IgnoreCase);
+			});
 		}
-		Self->Controller->RequestMatch(B[0], B[1]);
-		Self->Pick[0] = Self->Pick[1] = INDEX_NONE;	// the corners play them now
+
+		if (TargetPairing != INDEX_NONE && TargetPairing != Self->HerePairing)
+		{
+			Self->Travel(TargetPairing);
+			return Menu(false);
+		}
+
+		if (Self->Controller.IsValid())
+		{
+			UNNEModelData* B[2] = {};
+			for (int32 a = 0; a < 2; ++a)
+			{
+				if (Self->Brains.IsValidIndex(Self->Pick[a]))
+				{
+					B[a] = Cast<UNNEModelData>(Self->Brains[Self->Pick[a]].GetAsset());
+				}
+				else
+				{
+					const FString CardPrefix = (a == 0 ? RedCard : BlueCard) + TEXT("_");
+					for (const FAssetData& Asset : Self->Brains)
+					{
+						if (Asset.AssetName.ToString().StartsWith(CardPrefix))
+						{
+							B[a] = Cast<UNNEModelData>(Asset.GetAsset());
+							break;
+						}
+					}
+				}
+			}
+			Self->Controller->RequestMatch(B[0], B[1]);
+			Self->Pick[0] = Self->Pick[1] = INDEX_NONE;
+		}
 		return Menu(false);
 	};
 	auto ReplayClick = [Self, Menu]	// replay over the live picture: the sheet closes so the replay is seen
@@ -848,20 +1003,50 @@ void ASlapHUD::BuildUi()
 							+ SVerticalBox::Slot().FillHeight(1.f).Padding(FMargin(4.f, 0.f, 4.f, 8.f))
 							[
 								SAssignNew(SheetContent, SWidgetSwitcher).WidgetIndex_Lambda([Self] { return Self.IsValid() ? Self->Tab : 0; })
-								+ SWidgetSwitcher::Slot()	// MATCH: status, pairing, brains, START + replay, view badges: one screen
+								+ SWidgetSwitcher::Slot()	// START MENU: choose the 2 players from 16 slots, START
 								[
 									SNew(SVerticalBox)
-									+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda(MatchText), 15, White)]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 2.f)[PairRow]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f)[Corner(0)]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f)[Corner(1)]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
+									+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda(MatchText), 14, White)]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 2.f)
+									[
+										SNew(SHorizontalBox)
+										+ SHorizontalBox::Slot().FillWidth(1.f)[Corner(0)]
+										+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(4.f, 0.f))
+										[
+											Label(FText::FromString(TEXT("VS")), 16, Dim)
+										]
+										+ SHorizontalBox::Slot().FillWidth(1.f)[Corner(1)]
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 2.f).HAlign(HAlign_Center)
+									[
+										Label(TAttribute<FText>::CreateLambda([Self, Hi]
+										{
+											if (!Self.IsValid()) return FText();
+											return FText::FromString(Self->ActiveCornerSelect == 0 ? TEXT("CHOOSE P1 (RED): Tap an available slot below") : TEXT("CHOOSE P2 (BLUE): Tap an available slot below"));
+										}), 13, Hi)
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 4.f)
+									[
+										StartGrid
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 4.f).HAlign(HAlign_Center)
+									[
+										Label(TAttribute<FText>::CreateLambda([Self]
+										{
+											if (!Self.IsValid()) return FText();
+											const int32 R = Self->SelectedFighter[0], B = Self->SelectedFighter[1];
+											const FString NameR = Self->Slots.IsValidIndex(R) && !Self->Slots[R].Key.IsEmpty() ? Self->Slots[R].Key : TEXT("P1");
+											const FString NameB = Self->Slots.IsValidIndex(B) && !Self->Slots[B].Key.IsEmpty() ? Self->Slots[B].Key : TEXT("P2");
+											return FText::FromString(FString::Printf(TEXT("START: %s vs %s"), *NameR, *NameB));
+										}), 13, Dim)
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
 									[
 										SNew(SHorizontalBox)
 										+ SHorizontalBox::Slot().FillWidth(2.f).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
 										[
 											SNew(SBox).MinDesiredHeight(Touch)
-											[SAssignNew(Hit[HitStart], SButton).ButtonColorAndOpacity(FLinearColor(0.75f, 0.2f, 0.15f)).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START")), 18, White)]]
+											[SAssignNew(Hit[HitStart], SButton).ButtonColorAndOpacity(FLinearColor(0.75f, 0.2f, 0.15f)).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START MATCH")), 18, White)]]
 										]
 										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 4.f, 0.f))
 										[
@@ -870,10 +1055,9 @@ void ASlapHUD::BuildUi()
 										]
 										+ SHorizontalBox::Slot().FillWidth(0.6f)[Badge(TEXT("x1/4"), &ASlapHUD::bQuarter)]	// the replay's pace, beside it
 									]
-									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
 									[
 										// the view badges on one row: seven codes, no words (the ABOUT tab spells them out).
-										// They share the row, so each one is a wide thumb target.
 										SNew(SHorizontalBox)
 										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, 3.f, 0.f)[Badge(TEXT("TEL"), &ASlapHUD::bShowTelemetry)]
 										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, 3.f, 0.f)[Badge(TEXT("SCI"), &ASlapHUD::bShowScience)]
@@ -1069,7 +1253,7 @@ void ASlapHUD::LoadRoster()
 	// every character card in its slot (SlapNames.h does the reading: the cards, their tape and the brains made for them)
 	TArray<FString> Names;
 	for (const FAssetData& B : Brains) Names.Add(B.AssetName.ToString());
-	Slap::LoadRoster(RosterSize, Slots, Names);
+	Slap::LoadRoster(RosterSize, Slots, Names, &SlotCards);
 }
 
 void ASlapHUD::LayoutAudit()

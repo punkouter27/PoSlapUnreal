@@ -124,6 +124,9 @@ private:
 		void TrackBox(const FString& Name, float X, float Y, float W, float H);
 	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
+	TArray<FString> SlotCards;				// per slot: lowercase character card name ("grandpa", "kim", "matt", "")
+	int32 SelectedFighter[2] = { 0, 1 };	// Start Menu: selected roster slot for RED (P1) and BLUE (P2)
+	int32 ActiveCornerSelect = 0;			// Start Menu: 0 = assigning RED corner, 1 = assigning BLUE corner
 	int32 RosterSel = 0;
 	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;	// the match alone by default; overlays are opt-in: MATCH tab badges or a swipe
 	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;	// slow motion is an effect, on by default

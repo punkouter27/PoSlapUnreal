@@ -477,12 +477,77 @@ addEventListener("keydown", e => {
 });
 
 // ---- the menu: menu -> live or practice -> result -> reset --------------------------------------------------
+const ROSTER_SLOTS = [
+  { id: "grandpa", display: "GRANDPA" },
+  { id: "kim", display: "KIM" },
+  { id: "matt", display: "MATT" },
+];
+while (ROSTER_SLOTS.length < 16) {
+  ROSTER_SLOTS.push({ id: null, display: null, empty: true });
+}
+let selFighters = [0, 1];
+let activeCornerPick = 0;
+
+function updateRoster16UI() {
+  const rCard = ROSTER_SLOTS[selFighters[0]];
+  const bCard = ROSTER_SLOTS[selFighters[1]];
+  if ($("lblRed")) $("lblRed").textContent = rCard.display || "OPEN";
+  if ($("lblBlue")) $("lblBlue").textContent = bCard.display || "OPEN";
+  if ($("btnPickRed")) $("btnPickRed").classList.toggle("active", activeCornerPick === 0);
+  if ($("btnPickBlue")) $("btnPickBlue").classList.toggle("active", activeCornerPick === 1);
+  if ($("slotPrompt")) $("slotPrompt").textContent = activeCornerPick === 0 
+    ? "Tap an available slot for RED (P1)" 
+    : "Tap an available slot for BLUE (P2)";
+
+  const grid = $("roster16");
+  if (!grid) return;
+  grid.textContent = "";
+  ROSTER_SLOTS.forEach((slot, i) => {
+    const b = el("button", slot.empty ? "empty" : "");
+    const isRed = selFighters[0] === i;
+    const isBlue = selFighters[1] === i;
+    if (isRed && isBlue) b.classList.add("selBoth");
+    else if (isRed) b.classList.add("selRed");
+    else if (isBlue) b.classList.add("selBlue");
+
+    if (slot.empty) {
+      b.textContent = `${i + 1} —`;
+      b.disabled = true;
+    } else {
+      let tag = "";
+      if (isRed && isBlue) tag = " [1 and 2]";
+      else if (isRed) tag = " [P1]";
+      else if (isBlue) tag = " [P2]";
+      b.textContent = `${i + 1}. ${slot.display}${tag}`;
+      b.onclick = () => {
+        selFighters[activeCornerPick] = i;
+        activeCornerPick = 1 - activeCornerPick;
+        updateRoster16UI();
+      };
+    }
+    grid.appendChild(b);
+  });
+}
+
+if ($("btnPickRed")) $("btnPickRed").onclick = () => { activeCornerPick = 0; updateRoster16UI(); };
+if ($("btnPickBlue")) $("btnPickBlue").onclick = () => { activeCornerPick = 1; updateRoster16UI(); };
+
 function showMenu() {
   S.phase = "menu";
   started = false;
   $("menu").hidden = false;
+  updateRoster16UI();
 }
 function startPractice() {
+  const r = ROSTER_SLOTS[selFighters[0]].id || "grandpa";
+  const b = ROSTER_SLOTS[selFighters[1]].id || "kim";
+  const key = (r === "grandpa" ? "g" : "k") + (b === "grandpa" ? "g" : "k");
+  if (MATCHUPS[key] && key !== MATCHUP) {
+    const url = new URL(location.href);
+    url.searchParams.set("m", key);
+    location.href = url.toString();
+    return;
+  }
   $("menu").hidden = true;
   S.phase = "practice";
   started = true;
@@ -490,15 +555,18 @@ function startPractice() {
 $("practice").onclick = startPractice;
 $("watchlive").onclick = () => { $("menu").hidden = true; S.phase = "live"; };
 function renderMatchups() {
+  updateRoster16UI();
   const host = $("menuMatch");
-  host.textContent = "";
-  for (const [k, v] of Object.entries(MATCHUPS)) {
-    const a = el("a", "", v.name + (v.untrained ? " *" : ""));
-    a.href = `?m=${k}` + (LIVE ? `&live=${encodeURIComponent(LIVE)}` : "");
-    a.setAttribute("aria-current", String(k === MATCHUP));
-    host.appendChild(a);
+  if (host) {
+    host.textContent = "";
+    for (const [k, v] of Object.entries(MATCHUPS)) {
+      const a = el("a", "", v.name + (v.untrained ? " *" : ""));
+      a.href = `?m=${k}` + (LIVE ? `&live=${encodeURIComponent(LIVE)}` : "");
+      a.setAttribute("aria-current", String(k === MATCHUP));
+      host.appendChild(a);
+    }
+    if (MATCHUPS[MATCHUP].untrained) host.append(el("span", "note", "* never trained together: expect falls"));
   }
-  if (MATCHUPS[MATCHUP].untrained) host.append(el("span", "note", "* never trained together: expect falls"));
   $("menuFoot").textContent = `build ${BUILD} · ${MATCHUPS[MATCHUP].name}`;
 }
 

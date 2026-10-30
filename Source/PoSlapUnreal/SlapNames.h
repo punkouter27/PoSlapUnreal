@@ -71,7 +71,7 @@ namespace Slap
 	 * ponytail: the cards live in training/characters beside the project; a packaged (Android) build stages them in
 	 * Content/Data, so both places are read.
 	 */
-	inline void LoadRoster(int32 Size, TArray<TPair<FString, FString>>& Out, const TArray<FString>& BrainNames)
+	inline void LoadRoster(int32 Size, TArray<TPair<FString, FString>>& Out, const TArray<FString>& BrainNames, TArray<FString>* OutCardNames = nullptr)
 	{
 		TArray<FString> Files;
 		for (const FString& Dir : { FPaths::ProjectDir() / TEXT("training/characters"), FPaths::ProjectContentDir() / TEXT("Data") })
@@ -86,6 +86,7 @@ namespace Slap
 		}
 		Files.Sort();
 		Out.Init({}, Size);
+		if (OutCardNames) OutCardNames->Init(FString(), Size);
 		// the card of a slot is four lines, always: a long summary or brain list is cut, never wrapped (the sheet does not scroll)
 		auto Cut = [](FString S, int32 N)
 		{
@@ -111,6 +112,7 @@ namespace Slap
 			if (!Out.IsValidIndex(Slot) || !Out[Slot].Key.IsEmpty()) Slot = Out.IndexOfByPredicate([](const TPair<FString, FString>& X) { return X.Key.IsEmpty(); });
 			if (Slot == INDEX_NONE) break;	// more cards than slots
 			Out[Slot].Key = C->GetStringField(TEXT("display"));
+			if (OutCardNames) (*OutCardNames)[Slot] = Name;
 			const FString Made = Cut(Mine.IsEmpty() ? FString(TEXT("none yet (in training)")) : Mine, 54);
 			Out[Slot].Value = FString::Printf(TEXT("%s   %.2f m  %.0f kg\nSTR %.2f  SPD %.2f  FLX %.2f  TGH %.2f\n%s\nBrains: %s"),
 				*Out[Slot].Key, C->GetNumberField(TEXT("height_m")), C->GetNumberField(TEXT("mass_kg")), C->GetNumberField(TEXT("strength")),
