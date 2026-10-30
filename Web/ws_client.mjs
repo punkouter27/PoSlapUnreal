@@ -47,19 +47,23 @@ export function connect(url) {
       open = true;
       if (ws.onopen) ws.onopen();
     }
+    // the frames are handed over in a macrotask: the code that awaited the connection assigns its handlers
+    // in a microtask, and a frame that arrives in the same chunk as the handshake must not be lost
+    const frames = [];
     for (;;) {
-      if (buf.length < 2) return;
+      if (buf.length < 2) break;
       const opcode = buf[0] & 0x0f;
       let len = buf[1] & 0x7f, off = 2;
-      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
-      else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); off = 10; }
-      if (buf.length < off + len) return;
+      if (len === 126) { if (buf.length < 4) break; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) break; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      if (buf.length < off + len) break;
       const payload = buf.slice(off, off + len);
       buf = buf.slice(off + len);
-      if (opcode === 1) { if (ws.onmessage) ws.onmessage({ data: payload.toString("utf8") }); }
+      if (opcode === 1) frames.push(payload.toString("utf8"));
       else if (opcode === 8) { if (ws.onclose) ws.onclose(); sock.end(); return; }
       else if (opcode === 9) sock.write(Buffer.concat([Buffer.from([0x8a, payload.length]), payload]));   // pong
     }
+    if (frames.length) setImmediate(() => { for (const f of frames) if (ws.onmessage) ws.onmessage({ data: f }); });
   });
   sock.on("error", err => { if (ws.onerror) ws.onerror(err); });
   sock.on("close", () => { if (!open) { if (ws.onerror) ws.onerror(new Error("closed before the handshake")); } else if (ws.onclose) ws.onclose(); });
