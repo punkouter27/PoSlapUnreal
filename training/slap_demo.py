@@ -44,11 +44,14 @@ KEYS = list(GUESS)
 TIMES = (0.45, 0.22, 0.20)          # s to reach each pose
 SIG_DEG, SIG_T = 15.0, 0.06
 # a card's slapping style replaces the starting guess, timing, whip delays and how far the search may wander from them
-_style = json.loads((HERE / "characters" / f"{CHAR}.json").read_text()).get("style", {}).get("slap")
+_card = json.loads((HERE / "characters" / f"{CHAR}.json").read_text())
+_style = _card.get("style", {}).get("slap")
 if _style:
     GUESS = {k: tuple(v) for k, v in _style["guess_deg"].items()}
     DELAY, TIMES, SIG_DEG = _style["delays_s"], tuple(_style["times_s"]), _style.get("search_sigma_deg", SIG_DEG)
     KEYS = list(GUESS)
+if "sparring" in _card and "head" in _card["sparring"]:
+    OPP_HEAD = np.array(_card["sparring"]["head"])
 
 
 def setup():
@@ -122,7 +125,7 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
         off = np.abs(np.array([d.geom_xpos[f][:2] for f in sorted(feet)]) - feet0)
         out = (off[:, 0] > BOX[0]).any() or (off[:, 1] > BOX[1]).any()
         if down or out:   # partial credit for getting closer and lasting longer, so the search can climb out of falling
-            s = (20 + 3 * speed if palm else 0.0) - 40.0 - 10.0 * dmin + 5.0 * min(t, ends[1])
+            s = (20 + 3 * speed if palm else 0.0) - 80.0 - 10.0 * dmin + 5.0 * min(t, ends[1])
             why = "out of the box" if out else next(m.geom(g).name for c in d.contact[:d.ncon] for g in (c.geom[0], c.geom[1])
                                                      if g in mine and g not in feet and ({c.geom[0], c.geom[1]} & surf))
             return dict(score=s, fell=True, hit=hit is not None, palm=palm, speed=speed, t=round(t, 2), why=why, dmin=round(dmin, 2)), ref_goal, ref_q
@@ -140,7 +143,8 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
 def _eval(args):
     x, seeds = args
     m, fp = setup()
-    return float(np.mean([run(m, fp, x, s)[0]["score"] for s in seeds]))
+    res = [run(m, fp, x, s)[0] for s in seeds]
+    return float(np.mean([r["score"] - (50.0 if r["fell"] else 0.0) for r in res]))
 
 
 def search(iters=150, pop=96, elite=12, nseeds=3):
@@ -157,15 +161,16 @@ def search(iters=150, pop=96, elite=12, nseeds=3):
         for it in range(iters):
             xs = mu + rng.standard_normal((pop, len(mu))) * sig
             xs[0] = best[1]
-            seeds = [1 + nseeds * it + i for i in range(nseeds)]   # fresh variations every generation: robust, not lucky
+            seeds = [0] + [1 + nseeds * it + i for i in range(nseeds)]   # fresh variations plus nominal seed 0
             sc = np.array(P.map(_eval, [(x, seeds) for x in xs]))
             idx = np.argsort(sc)[::-1][:elite]
             mu = xs[idx].mean(0)
             sig = np.maximum(xs[idx].std(0), np.r_[[2.0] * (3 * len(KEYS)), [0.01] * 3, [0.005] * len(DELAY)])
-            if sc[idx[0]] > best[0]:
+            m, fp = setup()
+            r_top = run(m, fp, xs[idx[0]], seed=0)[0]
+            if sc[idx[0]] > best[0] and not r_top["fell"] and r_top["hit"] and r_top["palm"]:
                 best = (float(sc[idx[0]]), xs[idx[0]].copy())
             if it % 5 == 0 or it == iters - 1:
-                m, fp = setup()
                 r = run(m, fp, best[1])[0]
                 print(f"it {it:3d} best {best[0]:7.2f} | nominal: hit {r['hit']} palm {r['palm']} {r['speed']:.1f} m/s fell {r['fell']}", flush=True)
     return best[1]
