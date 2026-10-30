@@ -37,17 +37,9 @@ namespace
 
 	TSharedPtr<FJsonObject> LoadJson(const FString& RelPath)
 	{
-		FString Text;
-		TSharedPtr<FJsonObject> Obj;
-		// source checkout / editor, then packaged Content/Data/<file> (Android / packaged builds), then Content/<RelPath>
-		for (const FString& Path : { FPaths::Combine(FPaths::ProjectDir(), RelPath),
-			FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Data"), FPaths::GetCleanFilename(RelPath)),
-			FPaths::Combine(FPaths::ProjectContentDir(), RelPath) })
-		{
-			if (FFileHelper::LoadFileToString(Text, *Path) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Obj) && Obj) return Obj;
-		}
-		UE_LOG(LogSlap, Error, TEXT("Could not read %s"), *RelPath);
-		return nullptr;
+		TSharedPtr<FJsonObject> Obj = Slap::LoadJson(RelPath);
+		UE_CLOG(!Obj, LogSlap, Error, TEXT("Could not read %s"), *RelPath);
+		return Obj;
 	}
 
 	/** UE 5.8 has no ONNX runtime on Android: the same brain rebuilt for NNE's basic CPU runtime from the weights
@@ -71,21 +63,23 @@ namespace
 		TArray<TArray<int32>> Dims;
 		for (int32 t = 0; t < Count; ++t)
 		{
-			int32 Nd = 0, Num = 1;
+			int32 Nd = 0;
+			int64 Num = 1;
 			if (!Int(Nd) || Nd < 1 || Nd > 2) return nullptr;
 			TArray<int32>& D = Dims.AddDefaulted_GetRef();
 			for (int32 k = 0; k < Nd; ++k)
 			{
 				int32 V = 0;
-				if (!Int(V) || V < 1) return nullptr;
+				if (!Int(V) || V < 1 || V > (1 << 20)) return nullptr;	// a dimension is bounded: the product cannot overflow
 				D.Add(V);
 				Num *= V;
+				if (Num > (1 << 24)) return nullptr;	// and the tensor itself is bounded (16 M floats)
 			}
-			if (At + 4 * (int64)Num > Raw.Num()) return nullptr;
+			if (At + 4 * Num > Raw.Num()) return nullptr;
 			TArray<float>& Values = T.AddDefaulted_GetRef();
-			Values.SetNumUninitialized(Num);
-			FMemory::Memcpy(Values.GetData(), Raw.GetData() + At, 4 * (int64)Num);
-			At += 4 * (int64)Num;
+			Values.SetNumUninitialized((int32)Num);
+			FMemory::Memcpy(Values.GetData(), Raw.GetData() + At, 4 * Num);
+			At += 4 * Num;
 		}
 
 		using namespace UE::NNE::RuntimeBasic;
@@ -211,14 +205,10 @@ void USlapController::BindHillMotors(mjModel* m, const FJsonObject* const (&Fps)
 	// list the policy path does, straight from the fingerprints: per joint, the actuator, its joint's dof address and
 	// the joint's top speed (fp["max_joint_speed_rad_s"]).
 	HillMotors.Reset();
-	TArray<int32> Pelvises;
-	for (const TCHAR* Corner : { TEXT("red_pelvis"), TEXT("blue_pelvis") })
-		for (int32 b = 0; b < m->nbody; ++b)
-			if (Slap::Name(m, mjOBJ_BODY, b).EndsWith(Corner)) Pelvises.Add(b);
+	const TArray<int32> Pelvises = Slap::CornerPelvises(m);
 	for (int32 i = 0; i < Pelvises.Num(); ++i)
 	{
-		const FString BodyName = Slap::Name(m, mjOBJ_BODY, Pelvises[i]);
-		const FString Prefix = BodyName.LeftChop(6);	// "..._red_pelvis" -> "..._red_" (as BindPolicy does)
+		const FString Prefix = Slap::CornerPrefix(Slap::Name(m, mjOBJ_BODY, Pelvises[i]));	// "..._red_pelvis" -> "..._red_"
 		const FJsonObject& Fp = *Fps[FMath::Min(i, 1)];
 		const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
 		const TArray<TSharedPtr<FJsonValue>>* Speeds;
@@ -318,14 +308,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 	FString Tape[2] = { TEXT("?"), TEXT("?") }, Display[2] = { TEXT("?"), TEXT("?") }, CardName[2];
 	// red, then blue, by name: a cooked build compiles the components in another order (blue's body first on Android),
 	// and everything indexed by corner (walk-in side, fingerprint, turns) assumes 0 = red
-	TArray<int32> Pelvises;
-	for (const TCHAR* Corner : { TEXT("red_pelvis"), TEXT("blue_pelvis") })
-	{
-		for (int32 b = 0; b < m->nbody; ++b)
-		{
-			if (Slap::Name(m, mjOBJ_BODY, b).EndsWith(Corner)) Pelvises.Add(b);
-		}
-	}
+	const TArray<int32> Pelvises = Slap::CornerPelvises(m);
 	for (const int32 b : Pelvises)
 	{
 		const FString BodyName = Slap::Name(m, mjOBJ_BODY, b);
@@ -337,7 +320,10 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		Action.SetNumZeroed(Order.Num());
 		// the character card is the source of truth (the fingerprint keeps a build-time copy): fatigue, display name
 		CardName[c] = Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name"));
-		const TSharedPtr<FJsonObject> Card = LoadJson(TEXT("training/characters/") + CardName[c] + TEXT(".json"));
+		// the card file, else the fingerprint's build-time copy of it: a build that staged only the fingerprint must not
+		// bind an athlete with a zero strike mass (no slap impulse, so no head snap, no stagger and no KO)
+		TSharedPtr<FJsonObject> Card = LoadJson(TEXT("training/characters/") + CardName[c] + TEXT(".json"));
+		if (!Card) Card = Fp.GetObjectField(TEXT("card"));
 		if (Card)
 		{
 			Tape[c] = FString::Printf(TEXT("%.2f m  %.0f kg  STR %.2f  SPD %.2f  TGH %.2f"), Card->GetNumberField(TEXT("height_m")), Card->GetNumberField(TEXT("mass_kg")),

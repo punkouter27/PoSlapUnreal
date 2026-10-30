@@ -269,7 +269,7 @@ class PPO:
         """widen: a checkpoint that reads fewer numbers than this model gets zero weights (and a unit scale) on the new
         ones, so it acts exactly as before while they are zero (tools/archive/widen_policy.py's rule); its optimiser state
         is dropped, being shaped for the old layer."""
-        ck = torch.load(path, map_location=self.device, weights_only=False)
+        ck = torch.load(path, map_location=self.device, weights_only=True)
         add = self.model.actor[0].in_features - ck["model"]["actor.0.weight"].shape[1]
         if widen and add > 0:
             sd, rms = ck["model"], ck["obs_rms"]
@@ -291,7 +291,7 @@ class PPO:
 
 def obs_dim_of(path: str) -> int:
     """How many numbers a checkpoint's policy reads (103 for every brain before the Melee's bodies, 106 after)."""
-    return int(torch.load(path, map_location="cpu", weights_only=False)["model"]["actor.0.weight"].shape[1])
+    return int(torch.load(path, map_location="cpu", weights_only=True)["model"]["actor.0.weight"].shape[1])
 
 
 class ExportPolicy(nn.Module):

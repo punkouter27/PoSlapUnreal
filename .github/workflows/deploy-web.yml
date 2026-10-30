@@ -17,16 +17,17 @@ jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # pinned to commit SHAs: the deploy token goes to these actions, so a moved tag must not change what runs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Pull LFS assets the bundle needs (brains + GLBs)
         run: git lfs pull --include="training/models/brains/*.onnx,Web/assets/*.glb"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.x"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -43,7 +44,7 @@ jobs:
         run: for p in gg kk gk; do node Web/check.mjs $p; done
 
       - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POSLAP_ARENA }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

@@ -13,8 +13,21 @@ ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
 const $ = id => document.getElementById(id);
 const COLORS = { red: 0xd9473f, blue: 0x4f7fe0 };
 // ?live=ws://<host>:8765 (Web/live.py) or an Azure Web PubSub client URL: draw the match Unreal is playing instead of
-// running our own; the physics here only places the bodies where Unreal's MuJoCo put them
-const LIVE = new URLSearchParams(location.search).get("live");
+// running our own; the physics here only places the bodies where Unreal's MuJoCo put them.
+// Only a WebSocket URL we recognise is used: a ?live= parameter is attacker-controlled, and the relay it points at
+// sends the text that reaches the HUD, so an unexpected scheme or host must not become a connection.
+const LIVE = (() => {
+  const raw = new URLSearchParams(location.search).get("live");
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "ws:" && u.protocol !== "wss:") return null;
+    const host = u.hostname.toLowerCase();
+    const local = host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1";
+    if (!local && !host.endsWith(".webpubsub.azure.com")) return null;
+    return u.href;
+  } catch { return null; }
+})();
 const liveSeries = [0, 0];
 
 // ---- HUD ------------------------------------------------------------------------------------------------
@@ -25,7 +38,20 @@ function banner(big, small = "", seconds = 1.6, color = "") {
   bannerTimer = setTimeout(() => $("banner").classList.remove("on"), seconds * 1000);
 }
 const NAMES = {};   // corner -> athlete (the card's display name), filled once the match loads
-const corner = n => `<span class="${n}">${n.toUpperCase()}</span>${NAMES[n] ? " " + NAMES[n] : ""}`;
+// The striker's name arrives over the wire (the relay), so it is text, never markup: this builds the label with the DOM
+// and returns its HTML, so no attacker-supplied string is ever parsed as HTML.
+const corner = n => {
+  const f = document.createDocumentFragment();
+  const s = document.createElement("span");
+  s.className = n === "blue" ? "blue" : "red";
+  s.textContent = String(n).toUpperCase();
+  f.appendChild(s);
+  const name = NAMES[n];
+  if (name) f.appendChild(document.createTextNode(" " + name));
+  const d = document.createElement("div");
+  d.appendChild(f);
+  return d.innerHTML;
+};
 function onEvent(e) {
   switch (e.type) {
     case "match_start": banner(e.match ? `Match ${e.match}` : "New match", `${e.first} wins the toss`, 2); renderCards([[0, 0], [0, 0], [0, 0]]); break;

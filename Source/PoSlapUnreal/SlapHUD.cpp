@@ -79,12 +79,6 @@ namespace
 	const TCHAR* ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("KO"), TEXT("REPLAY") };
 	int32 Team(const FString& Name) { return Name == TEXT("blue") ? 1 : 0; }
 	template <typename T> T* Load(const TCHAR* Path) { return LoadObject<T>(nullptr, Path, nullptr, LOAD_Quiet | LOAD_NoWarn); }
-	TSharedPtr<FJsonObject> ReadJson(const FString& Path)	// quiet: a missing or bad file = null
-	{
-		FString Raw;
-		TSharedPtr<FJsonObject> J;
-		return FFileHelper::LoadFileToString(Raw, *Path) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Raw), J) ? J : nullptr;
-	}
 	void Ring(AHUD* Hud, const FVector& C, float R, int32 Sides, const FLinearColor& Col, float Thick)	// screen space
 	{
 		for (int32 k = 0; k < Sides; ++k)
@@ -900,10 +894,19 @@ void ASlapHUD::LoadRoster()
 {
 	// every character card in its slot ("slot": 1-16, else the first open one): the tape, its style, the brains made for it
 	// (a new one shows "in training" until it graduates); the other slots are placeholders for athletes still to come
-	// ponytail: read from training/ beside the project; a packaged (Android) build needs the cards staged with the content
-	const FString Dir = FPaths::ProjectDir() / TEXT("training/characters");
+	// ponytail: the cards live in training/characters beside the project; a packaged (Android) build stages them in
+	// Content/Data, so both places are read
 	TArray<FString> Files;
-	IFileManager::Get().FindFiles(Files, *(Dir / TEXT("*.json")), true, false);
+	for (const FString& Dir : { FPaths::ProjectDir() / TEXT("training/characters"), FPaths::ProjectContentDir() / TEXT("Data") })
+	{
+		TArray<FString> Found;
+		IFileManager::Get().FindFiles(Found, *(Dir / TEXT("*.json")), true, false);
+		for (const FString& F : Found)
+		{
+			if (F.EndsWith(TEXT("_skeleton.json")) || F.EndsWith(TEXT("_fingerprint.json"))) continue;	// not cards
+			Files.AddUnique(F);	// the editor has both places: one card, one slot
+		}
+	}
 	Files.Sort();
 	Slots.Init({}, RosterSize);
 	// the card of a slot is four lines, always: a long summary or brain list is cut, never wrapped (the sheet does not scroll)
@@ -915,7 +918,8 @@ void ASlapHUD::LoadRoster()
 	};
 	for (const FString& F : Files)
 	{
-		const TSharedPtr<FJsonObject> C = F.EndsWith(TEXT("_skeleton.json")) ? nullptr : ReadJson(Dir / F);
+		// the card by name, from either place: training/characters/<name>.json or the staged Content/Data/<name>.json
+		const TSharedPtr<FJsonObject> C = Slap::LoadJson(TEXT("training/characters/") + F);
 		if (!C) continue;
 		const FString Name = C->GetStringField(TEXT("name"));
 		FString Mine;
@@ -1299,7 +1303,7 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		// chat hype: fresh for 15 s after Scripts/chat.py last wrote it
 		const FDateTime HypeStamp = IFileManager::Get().GetTimeStamp(*HypeFile());
 		Hype = 0.f;
-		const TSharedPtr<FJsonObject> J = (FDateTime::UtcNow() - HypeStamp).GetTotalSeconds() < 15.0 ? ReadJson(HypeFile()) : nullptr;
+		const TSharedPtr<FJsonObject> J = (FDateTime::UtcNow() - HypeStamp).GetTotalSeconds() < 15.0 ? Slap::ReadJson(HypeFile()) : nullptr;
 		if (J)
 		{
 			Hype = FMath::Clamp((float)J->GetNumberField(TEXT("hype")), 0.f, 1.f);
@@ -1947,7 +1951,7 @@ void ASlapHUD::Live(const FSlapHud& H)
 void ASlapHUD::LoadLeague()
 {
 	// training/scouting.py: Elo and tendencies per brain from every logged match; a missing file = no scouting line
-	const TSharedPtr<FJsonObject> J = ReadJson(FPaths::ProjectDir() / TEXT("training/models/league.json"));
+	const TSharedPtr<FJsonObject> J = Slap::ReadJson(FPaths::ProjectDir() / TEXT("training/models/league.json"));
 	if (!J) return;
 	const TSharedPtr<FJsonObject>* League = nullptr;
 	if (!J->TryGetObjectField(TEXT("brains"), League)) return;

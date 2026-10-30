@@ -35,7 +35,10 @@ page.write_text(re.sub(r'<div class="stamp">[^<]*</div>', f'<div class="stamp">{
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
 (DIST / "staticwebapp.config.json").write_text(
-    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" } }\n')
+    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
+    '"headers": { "Content-Security-Policy": "default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\'; '
+    'style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob:; connect-src \'self\' ws: wss:; '
+    'worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'" } }\n')
 
 
 def _fail_lfs_pointers():

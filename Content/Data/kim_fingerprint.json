@@ -1,7 +1,7 @@
 {
  "mujoco": "3.10.0",
  "model": "kim_solo.xml",
- "sha256": "99be08f41b1eefa41cc36e642718665ead164b1185c13ff28038f7aeec7aa48d",
+ "sha256": "97ae872ddfc4ee1981f94b9c69593fd62f36269e43acef960baafcedb05ce13f",
  "option": {
   "timestep": 0.005,
   "integrator": 3,

@@ -22,6 +22,13 @@ Second screen, viewers at `Web/index.html?live=ws://<host>:8765`; check `node We
 (Elo + scouting -> `training/models/league.json`). Brains per corner:
 `-SlapRedBrain=<.onnx> -SlapBlueBrain=<.onnx>`; tournaments: `training/tournament.py` (roster `training/roster.json`).
 
+The relay's publisher role is keyed: `Web/live.py --key <secret>` (or `SLAP_LIVE_KEY`) and Unreal connects to
+`ws://<host>:8765/ue?key=<secret>`. Without a key only viewers are served, so a page on the LAN cannot push text
+into every other viewer's page. `Web/serve.py` serves only `Web/` and `training/` (`.git`, `Saved/`, `Logs/`, the
+venv are refused) and takes `--host 0.0.0.0` for phones on the network. The browser page validates `?live=` (a
+`ws:`/`wss:` URL on localhost or `*.webpubsub.azure.com` only) and never parses wire text as HTML; the deployed
+bundle ships a CSP (`Web/build.py`).
+
 ## Rebuilding from a fresh clone
 
 1. **URLab** (not in git): `git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab`,

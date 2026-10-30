@@ -549,6 +549,24 @@ def main():
     print(f"arena: {name}, podium top {pod_h} m, gap {gap} m, contacts at stance besides floor: {sorted(touching) or 'none'}")
     if touching:
         sys.exit("ARENA FAIL: athletes touch each other or the podium at stance")
+    stage_data(a.card, a.blue or a.card)
+
+
+def stage_data(*cards):
+    """Copy the cards, skeletons and fingerprints into Content/Data, the directory a packaged (Android) build stages.
+    Without them the packaged build has no character card and no fingerprint: the athlete binds with a zero strike
+    mass (no KO) and the roster tab is empty. Staging here keeps them in step with the source of truth."""
+    dst = HERE.parent / "Content" / "Data"
+    dst.mkdir(parents=True, exist_ok=True)
+    for path in cards:
+        card = json.loads(Path(path).read_text())
+        name = card["name"]
+        for src in (Path(path), HERE / card["skeleton"], HERE / "models" / f"{name}_fingerprint.json"):
+            if not src.exists():
+                print(f"stage: {src.name} missing, skipped")
+                continue
+            (dst / src.name).write_bytes(src.read_bytes())
+    print(f"staged into Content/Data: {', '.join(sorted(p.name for p in dst.glob('*.json')))}")
 
 
 if __name__ == "__main__":

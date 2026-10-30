@@ -8,11 +8,25 @@ Unreal: MENU > VIEW > Second screen (or -SlapLive=ws://127.0.0.1:8765/ue). Viewe
 Off the local network, point both at an Azure Web PubSub hub instead (client access URLs; Unreal sends to the group
 "live", the page joins it) and this relay isn't needed. Stdlib only: RFC 6455 text frames, no extensions.
 """
-import argparse, asyncio, base64, hashlib, struct
+import argparse, asyncio, base64, hashlib, hmac, os, struct
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 viewers = set()
 latest = {"pose": None}
+KEY = ""   # the publisher's shared secret (--key, or SLAP_LIVE_KEY); empty = publishers are refused
+
+
+def publisher_ok(path, origin):
+    """The publisher's role is proved by the shared key in the path's query. With no key configured the relay serves
+    viewers only: a page on the network cannot push text into every other viewer's page."""
+    if not KEY:
+        return False
+    query = path.split("?", 1)[1] if "?" in path else ""
+    for pair in query.split("&"):
+        name, _, value = pair.partition("=")
+        if name == "key" and hmac.compare_digest(value, KEY):
+            return True
+    return False
 
 
 async def handshake(reader, writer):
@@ -22,7 +36,7 @@ async def handshake(reader, writer):
     writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                   f"Sec-WebSocket-Accept: {accept}\r\n\r\n").encode())
     await writer.drain()
-    return head[0].split(" ")[1]   # the path
+    return head[0].split(" ")[1], hdr.get("origin", "")   # the path, the Origin header
 
 
 async def message(reader):
@@ -53,11 +67,17 @@ def frame(data, op=1):
 
 async def client(reader, writer):
     try:
-        path = await handshake(reader, writer)
+        path, origin = await handshake(reader, writer)
     except (asyncio.IncompleteReadError, KeyError, IndexError, ConnectionError):
         writer.close()
         return
     publisher = path.split("?")[0].rstrip("/").endswith("/ue")
+    # The publisher role is what lets a client push text into every viewer's page, so it needs the shared key
+    # (--key, or SLAP_LIVE_KEY). Without it only viewers are served: a page on the LAN cannot impersonate Unreal.
+    if publisher and not publisher_ok(path, origin):
+        print(f"publisher refused (no key): {path}", flush=True)
+        writer.close()
+        return
     print(f"{'unreal' if publisher else 'viewer'} connected ({len(viewers) + (not publisher)} viewers)", flush=True)
     if not publisher:
         viewers.add(writer)
@@ -88,12 +108,18 @@ async def client(reader, writer):
 
 
 async def main():
+    global KEY
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 lets phones on the network watch")
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--key", default=os.environ.get("SLAP_LIVE_KEY", ""),
+                    help="the publisher's shared secret: Unreal connects to ws://<host>:<port>/ue?key=<key>; "
+                         "without it only viewers are served")
     a = ap.parse_args()
+    KEY = a.key
     server = await asyncio.start_server(client, a.host, a.port)
-    print(f"PoSlap second screen: Unreal -> ws://{a.host}:{a.port}/ue, viewers -> ws://{a.host}:{a.port}", flush=True)
+    print(f"PoSlap second screen: Unreal -> ws://{a.host}:{a.port}/ue"
+          f"{'?key=...' if KEY else ' (no key: publishers refused)'}, viewers -> ws://{a.host}:{a.port}", flush=True)
     async with server:
         await server.serve_forever()
 
