@@ -35,11 +35,17 @@ Second screen, viewers at `Web/index.html?live=ws://<host>:8765`; check `node We
    then `-script=Scripts/arena_env.py` (re-imports the env, lights, haze, grade into the level). Brain only: `Scripts/set_brain.py`.
 6. **Checks**: `UnrealEditor … -game -SlapMode=Replay -SlapShot=10`, then
    `training/replay_check.py compare training/replays/<model>_5s.json Saved/URLab/replay_ue.json --mjb Saved/URLab/scene_compiled.mjb`.
+   Re-record the stream after a model change: `training/replay_check.py record training/models/<red>_vs_<blue>_arena.xml`.
 
 Matching rules learned the hard way (keep them): URLab drops a child model's `<option>` (USlapController sets it from the
 fingerprint), applies `<default>` to free joints (write the root as an explicit `type="free"` joint), and stores floats
 (write MJCF numbers float32-exact, radians, explicit pos/quat/size). Exact math both sides: stand pose read in radians from the
 fingerprint, `std::atan2/cos/sin` (not FMath). Live check = Python on URLab's `.mjb` vs Unreal: bit-identical (0.000 cm / 5 s).
+**The Hill cap (G4) is physics, not brain** — every path that steps the model applies it, including the replay
+(`ApplyHill` walks `HillMotors`, built per path from the fingerprints). Skipping it on one side only made the replay
+diverge 1182 mm over 5 s (2026-10-29). **A matching gate is only meaningful in a stable regime**: the recorded stream's
+swing is 0.12 rad (`replay_check.AMP`) because at 0.25 both athletes fall, and a fall amplifies float residues into
+centimetres — the XML and URLab's own compiled model drift 85 mm apart with identical maths on both sides.
 More (2026-10-24): `build_scene.py` wipes+saves the LEVEL before deleting/importing the arena Blueprint — URLab refuses to
 import over a BP the open level still instantiates and `delete_asset` fails on a referenced asset. Every arena's
 `DefenderRole` must be **-1** for L3+ brains (a level built with 0 feeds the defender different inputs and he collapses in
