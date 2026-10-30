@@ -530,9 +530,12 @@ class VsFrozen:
     Looks like an ArenaEnv with one agent per world (the learner's rows); everything else is the arena's."""
     _own = ("env", "side", "N", "opp", "_full")
 
-    def __init__(self, learner, opponent, opp_ckpt, level="L4", num_envs=4096, seed=0, randomize=True):
+    def __init__(self, learner, opponent, opp_ckpt, level="L4", num_envs=4096, seed=0, randomize=True, side=None):
+        # side: the learner's corner (0 red, 1 blue); None = red when <learner>_vs_<opponent>_arena.xml exists
         from ppo import PPO, PPOConfig
-        pair = (learner, opponent) if (HERE / "models" / f"{learner}_vs_{opponent}_arena.xml").exists() else (opponent, learner)
+        if side is None:
+            side = 0 if (HERE / "models" / f"{learner}_vs_{opponent}_arena.xml").exists() else 1
+        pair = (learner, opponent) if side == 0 else (opponent, learner)
         self.env = ArenaEnv(pair, level, num_envs, seed, randomize)
         self.side, self.N = pair.index(learner), num_envs
         self.opp = PPO(OBS, self.env.A, 1, "cuda", PPOConfig())
@@ -566,3 +569,75 @@ class VsFrozen:
         self._full = obs
         k = self.side
         return obs[k::2], rew[k::2], done[k::2], timeout[k::2]
+
+class Field:
+    """One brain per player (user 2026-10-30: "3 players, 3 brains"): the learner's seats are its own arena (self-play,
+    both corners) and every opponent from BOTH corners (VsFrozen, side forced), so one brain learns every pairing it can
+    be put in. Each seat keeps its own arena, CUDA stream and captured Warp graphs; a step runs them one after the other
+    on their streams and joins the agents into one batch for PPO. Attribute writes (the curricula) reach every seat."""
+    _own = ("seats", "sizes", "names", "stream", "N", "A")
+
+    def __init__(self, learner, opponents, level="L4", num_envs=4096, seed=0, randomize=True):
+        # opponents: [(character, checkpoint .pt)]; num_envs worlds in all, split evenly over the seats
+        seats, names = [], []
+        k = 1 + 2 * len(opponents)
+        w = max(64, num_envs // k)
+        seats.append(ArenaEnv(learner, level, max(32, w // 2), seed, randomize)); names.append(f"{learner}_self")   # 2 agents a world
+        for i, (opp, ckpt) in enumerate(opponents):
+            for side in (0, 1):
+                seats.append(VsFrozen(learner, opp, ckpt, level, w, seed + 1 + 2 * i + side, randomize, side=side))
+                names.append(f"{learner}_{'red' if side == 0 else 'blue'}_vs_{opp}")
+        object.__setattr__(self, "seats", seats)
+        object.__setattr__(self, "names", names)
+        object.__setattr__(self, "sizes", [s.N for s in seats])
+        object.__setattr__(self, "N", sum(s.N for s in seats))
+        object.__setattr__(self, "A", seats[0].A)
+        object.__setattr__(self, "stream", torch.cuda.Stream())
+        self._use(self.stream)
+
+    @staticmethod
+    def _use(stream):
+        torch.cuda.set_stream(stream)
+        wp.set_stream(wp.stream_from_torch(stream))
+
+    def __getattr__(self, k):   # read: the first seat's (T, qpos for telemetry, the curricula's current values)
+        return getattr(self.seats[0], k)
+
+    def __setattr__(self, k, v):
+        if k in Field._own:
+            object.__setattr__(self, k, v)
+        else:
+            for s in self.seats:
+                setattr(s, k, v)
+
+    @property
+    def episodes(self):
+        return [e for s in self.seats for e in s.episodes]
+
+    @episodes.setter
+    def episodes(self, v):
+        for s in self.seats:
+            s.episodes = []
+
+    def _each(self, fn):
+        out = []
+        for s in self.seats:
+            s.stream.wait_stream(self.stream)   # the trainer's actions are ready before the seat reads them
+            self._use(s.stream)
+            out.append(fn(s))
+        self._use(self.stream)
+        for s in self.seats:
+            self.stream.wait_stream(s.stream)   # and the seat's results before the trainer reads them
+        return out
+
+    def observe(self):
+        return torch.cat(self._each(lambda s: s.observe()))
+
+    def reset(self, mask):
+        self._each(lambda s: s.reset(torch.ones(s.W if hasattr(s, "W") else s.env.W, dtype=torch.bool, device="cuda")))
+
+    @torch.no_grad()
+    def step(self, action):
+        parts = iter(torch.split(action, self.sizes))
+        outs = self._each(lambda s: s.step(next(parts)))
+        return tuple(torch.cat(x) for x in zip(*outs))

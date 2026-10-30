@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, pca_projection, video
 from constants import GAZE_ON
-from envs.arena import ArenaEnv, VsFrozen
+from envs.arena import ArenaEnv, Field, VsFrozen
 from envs.locomotion import LocomotionEnv
 from envs.slap import SlapEnv
 from levels import LEVELS
@@ -129,8 +129,9 @@ def arena_exam(ppo, character, level, opponent=None):
     """L4: 100 fresh worlds, one turn each, coin-toss striker: KO rate per landed strike, striker self-falls, strikes."""
     chk = LEVELS[level]["check"]
     env = _exam_envs.get((character, level, opponent))
-    if env is None:   # opponent: (character, checkpoint) of a frozen corner (VsFrozen): the exam scores the matchup
-        env = _exam_envs[(character, level, opponent)] = (VsFrozen(character, *opponent, level, num_envs=chk["episodes"], seed=12345)
+    if env is None:   # opponent: (character, checkpoint[, learner's corner]) of a frozen corner (VsFrozen): the exam scores the matchup
+        env = _exam_envs[(character, level, opponent)] = (VsFrozen(character, opponent[0], opponent[1], level, num_envs=chk["episodes"], seed=12345,
+                                                                   side=opponent[2] if len(opponent) > 2 else None)
                                                           if opponent else ArenaEnv(character, level, num_envs=chk["episodes"], seed=12345))
     torch.cuda.set_stream(env.stream)
     wp.set_stream(wp.stream_from_torch(env.stream))
@@ -156,6 +157,21 @@ def arena_exam(ppo, character, level, opponent=None):
     res["score"] = res["strikes"] * (1 - res["self_fall"]) * (1.0 if lo <= res["ko_rate"] <= hi else 0.5)
     torch.cuda.set_stream(ppo_stream)
     wp.set_stream(wp.stream_from_torch(ppo_stream))
+    return passed, res
+
+
+def field_exam(ppo, character, level, opponents):
+    """--field: the arena exam in every seat (self-play, then each opponent with the learner red and blue). Passes when
+    every seat passes; the score is the weakest seat's, so a brain cannot graduate on its easy pairings."""
+    res, passed, scores = {}, True, []
+    seats = [None] + [(o, c, side) for o, c in opponents for side in (0, 1)]
+    for seat in seats:
+        ok, r = arena_exam(ppo, character, level, seat)
+        tag = "self" if seat is None else f"{'red' if seat[2] == 0 else 'blue'}_vs_{seat[0]}"
+        res.update({f"{tag}_{k}": v for k, v in r.items()})
+        passed &= ok
+        scores.append(r["score"])
+    res["score"] = min(scores)
     return passed, res
 
 
@@ -243,6 +259,8 @@ def main():
     ap.add_argument("--critic-warmup", type=int, default=0, help="iterations the critic learns alone after --resume (a fine-tune on new conditions collapsed the slap within minutes)")
     ap.add_argument("--roles", default=None, help="override the level's role mix, e.g. 1:1 (strike only); exams still check every role")
     ap.add_argument("--opponent", default=None, help="L4 against a frozen brain: <character>:<checkpoint .pt> (a mixed pairing)")
+    ap.add_argument("--field", default=None, help="one brain per player: L4 in self-play AND against each frozen "
+                    "<character>:<checkpoint .pt> (comma-separated) from both corners; graduates as <char>_all when every seat passes")
     ap.add_argument("--out", default=None, help="graduated brain's name in models/brains (default <char>_<level>[_vs_<opponent>]): a challenger keeps the champions")
     ap.add_argument("--reach-start", type=float, default=None, help="strike target from easy (0) to the real head (1); overrides the level's start")
     ap.add_argument("--imit-start", type=float, default=None, help="reference-slap imitation weight at the start; overrides the level's (0: no reference slap)")
@@ -264,10 +282,14 @@ def main():
     arena = LEVELS[a.level].get("model") == "arena"
     loco = LEVELS[a.level].get("model") == "locomotion"
     opp = tuple(a.opponent.split(":", 1)) if a.opponent else None
+    field = [tuple(x.split(":", 1)) for x in a.field.split(",")] if a.field else None
     vs = f"_vs_{opp[0]}" if opp else ""   # brains from a mixed pairing never overwrite the self-play graduates
-    out_name = a.out or f"{a.char}_{a.level}{vs}"
+    out_name = a.out or (f"{a.char}_all" if field else f"{a.char}_{a.level}{vs}")
     env_cls = ArenaEnv if arena else (LocomotionEnv if loco else SlapEnv)
-    env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs)
+    env = (Field(a.char, field, a.level, num_envs=a.envs) if field
+           else VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs))
+    if field:
+        print(f"field: seats {env.names} ({env.N} agents)")
     global ppo_stream
     ppo_stream = env.stream
     proj = None
@@ -344,7 +366,7 @@ def main():
             m[f"{tag}_return"] = mean([e["ret"] for e in rec])
             m[f"{tag}_fall"] = mean([e["fell"] for e in rec])
             m[f"{tag}_episode_s"] = mean([e["len"] for e in rec]) / 50
-            if "clear" in rec[0]:      # the obstacle course: cleared the step, reached the last waypoint
+            if rec and "clear" in rec[0]:      # the obstacle course: cleared the step, reached the last waypoint
                 m[f"{tag}_clear"] = mean([e["clear"] for e in rec])
                 m[f"{tag}_reach"] = mean([e["reach"] for e in rec])
                 m[f"{tag}_waypoints"] = mean([e["waypoints"] for e in rec])
@@ -395,7 +417,7 @@ def main():
             and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0)))
         exam_cd = min(600, max(45, a.minutes * 10))
         if ready and time.time() - last_exam > exam_cd:   # up to 10 min of training between exams, scaled for shorter runs:
-            ok, res = arena_exam(ppo, a.char, a.level, opp) if arena else exam(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
+            ok, res = (field_exam(ppo, a.char, a.level, field) if field else arena_exam(ppo, a.char, a.level, opp)) if arena else exam(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
             last_exam = time.time()                                          # mostly CPU); at 120 s from its start, L2 did
             # 8 exams and 10 iterations in 23 min (2026-10-22)
             print(f"exam {a.level}: {res} -> {'PASS' if ok else 'not yet'}", flush=True)
