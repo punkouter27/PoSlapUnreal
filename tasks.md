@@ -159,3 +159,34 @@ The HUD is a canvas layer (540 × 960 reference) plus a Slate layer (1080-wide r
 - [x] H8 `torch.load(weights_only=False)` on `.pt` checkpoints (pickle RCE from a third-party checkpoint) → `weights_only=True`; every shipped checkpoint loads
 - [x] H9 The committed Android File Server LAN token is removed and `bAllowNetworkConnection=False`; the four CI actions are pinned to commit SHAs
 - Checks: editor build Succeeded; replay parity 0.000 mm / 1000 steps; `verify_realism.py` all 10 PASS; `node Web/check.mjs` PASS; `node Web/live_check.mjs` PASS; `match.py play` runs; the desktop `.bin` probe unchanged
+
+## Phase I — Feature pass (2026-10-29): Features 2/4/6/8, GFX & Audio 1-10, and the rest
+
+The user asked for the whole list: features 2, 4, 6 and 8, all ten GFX & audio options, and everything else
+(the other features, the UI list, the clean list, the realism list). Three parallel streams, disjoint files:
+the Unreal broadcast layer (`Source/`), the training side (`training/`) and the browser (`Web/`).
+
+### I-A — Gaps found in the audit's own fixes
+
+- [x] I1 **H7's path guard never worked.** `Web/serve.py` refused a path by writing a 404, but `do_GET` ignored the guard's return value and fell through to `super().do_GET()` — the socket got the 404 **and the whole file**. Verified with a raw socket: `/.git/config` and `/AGENTS.md` came back in full. And the guard checked the *request* path, while `SimpleHTTPRequestHandler` drops `..` instead of resolving it, so `/Web/../AGENTS.md` walked out of the allowed directories. Both closed: the handler stops at the guard, and the guard checks the **resolved** path. `/.git/config`, `/AGENTS.md`, `/Saved/`, `/Web/../` and `%2e%2e/` variants all 404 with no bytes leaked; `Web/` and `training/` still serve
+- [x] I2 **CI ran nothing but the deploy.** `.github/workflows/verify.yml` now runs the browser engine one turn each way for every pairing, the relay check, the spectator API check, a parse of every python file, the card/model/staging gate, the constant-parity gate, the naming lint and the `serve.py` guard. Actions pinned to commit SHAs
+- [x] I3 `training/verify_cards.py` (new, CPU only): every roster card is complete and has a `strike_mass` > 0 (a card that loses it makes the slap impulse zero — no KO, no fatigue, one log line); every card builds and passes A8–A13; `Content/Data` (what a packaged Android build reads) is not a build behind; every model shares the same per-athlete joint and actuator set (31 joints, 30 motors — Blueprint §2.3) with a motor on every motorised joint; the model's timestep agrees with the config's `physics_hz`; every roster entry and packaged brain resolves
+- [x] I4 `training/verify_constants.py` (new): the three engines still carry the same **value** for every shared number (OBS 136/148, REACT, HILL_K, the fatigue floors, DECIM, the physics and control rates). The expectation is the python constant, never a literal, so it fails when the engines disagree
+- [x] I5 `Scripts/check_naming.py` (new): an asset carries its folder's prefix (`SM_`/`M_`/`MI_`/`BP_`/`NS_`/`S_`/`RV_`), no two assets share a base name (Unreal resolves a soft path by base name), every name is one Unreal accepts, every C++ type is PascalCase
+- [x] I6 `training/prune_runs.py` (new): a dry run by default, `--apply` to delete. Purges a failed run, a test run (< 5,000 steps) and an old finished run, plus the stale overnight logs, and reports the space freed. It **never** touches a run written in the last 24 h or a run any queue file names in a `run` or a `resume` field (`training/runs/overnight_queue.json` still carries an unfinished L4 self-play stage)
+- [x] I7 `Scripts/verify_all.ps1` (new): every check in one command, one summary, exit 0 only when all pass. `-Quick` skips the CUDA gate, `-Unreal` adds the editor build and the UI test
+
+### I-B — Features 2, 4, 6, 8 (the four the user named)
+
+- [x] I8 **Feature 8 — the spectator API.** `Web/live.py` serves a read-only JSON API next to the WebSocket: `/api/match`, `/api/events` (`?since=`, `?limit=`, clamped to 500), `/api/events/stream` (SSE, with `Last-Event-ID`), `/api/health`, `/api/schema` and an index. Every event carries a sequence number, the relay keeps the last 5,000, a token bucket answers 429, the reads are open by default (localhost) or keyed with `--api-key`, and the publisher role never opens the API. `node Web/api_check.mjs` PASS
+- [ ] I9 **Feature 2 — the palm-impact close-up** and its 120 fps capture burst (render-side only: the physics timestep never changes)
+- [ ] I10 **Feature 4 — the podium obstacle traversal** in the S2 env (step up, step down, keep the balance, the waypoint beyond the podium)
+- [ ] I11 **Feature 6 — the crowd danger meter** (capture point vs the planted soles, live, driving the crowd's tension and a HUD bar)
+
+### I-C — The rest of the features, the UI, the clean list and the realism list
+
+- [ ] I12 Features 1 (judges' conference), 3 (AI read telegraphy), 5 (aisle waypoints), 7 (prediction streak), 9 (kinetic slow reveal), 10 (feint vs commit)
+- [ ] I13 UI 1–10: one viewport, no scroll, the five anchors (TL title, TC fps/step, TR settings, BL telemetry, BR `YYMMDD` stamp), the tabbed bottom sheet, the TAB stats toggle, the 16:9→21:9 layout down to 360×800, the notch safe areas
+- [ ] I14 GFX & Audio 1–10: the contact burst by strike mass, the mobile quality tiers, the shake by palm speed and off under load, the impact reverb by camera distance, the crowd's near-miss "ooooh", the bone-contact dust, the deformable cheek, the footstep audio from MuJoCo's own contacts, the material LODs and atlas, the zero-scroll typography
+- [ ] I15 Clean 3 (dedupe, dead code, clean logs), 7 (per-athlete action buffer), 8 (the observation count), 9 (split the controller), 10 (split the HUD)
+- [ ] I16 Realism 1–10: the torque limits, the mass distribution, the muscle acceleration, the hulls, the streamlined sensory view, the signal ramping, the curriculum, the posture reward, the reaction intervals, the multi-instance runs and the config snapshots
