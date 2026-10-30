@@ -1,7 +1,7 @@
 From e9fc1d6c4106aa75e1959df2b37c09aadf3d2ecd Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:28:05 -0400
-Subject: [PATCH 1/7] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
+Subject: [PATCH 1/8] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
 
 ---
  third_party/MuJoCo/src | 2 +-
@@ -21,7 +21,7 @@ index 67a1ea6..28009f9 160000
 From 14373b8981961f5a52e5d7c457f6f26cd094f84c Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:50:39 -0400
-Subject: [PATCH 2/7] UE 5.8: JSON object keys are FSharedString
+Subject: [PATCH 2/8] UE 5.8: JSON object keys are FSharedString
 
 ---
  .../URLab/Private/Bridge/MsgpackHelpers.cpp   |  2 +-
@@ -145,7 +145,7 @@ index 9758d6f..2f812b9 100644
 From c6589d1397d809140d40f1debc8788426bd8d4f3 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:51:00 -0400
-Subject: [PATCH 3/7] UE 5.8: remaining FSharedString keys
+Subject: [PATCH 3/8] UE 5.8: remaining FSharedString keys
 
 ---
  Source/URLab/Private/Bridge/RpcDispatcher.cpp | 4 ++--
@@ -180,7 +180,7 @@ index 2f812b9..a9adf88 100644
 From 165aef616968628d30116a7bdb1095b2d3437565 Mon Sep 17 00:00:00 2001
 From: punkouter26 <punkouter26@gmail.com>
 Date: Sun, 25 Oct 2026 12:19:00 -0400
-Subject: [PATCH 4/7] feat(android): add Android arm64-v8a build support for
+Subject: [PATCH 4/8] feat(android): add Android arm64-v8a build support for
  MuJoCo 3.10.0
 
 ---
@@ -368,7 +368,7 @@ index 0000000..8ce516f
 From 74606a4dc2b4c2738a0832816bfed9236787ffc6 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Mon, 26 Oct 2026 04:09:43 -0400
-Subject: [PATCH 5/7] Android: stub libzmq/CoACD headers, package libmujoco.so
+Subject: [PATCH 5/8] Android: stub libzmq/CoACD headers, package libmujoco.so
 
 The dev bridge (ZMQ) and mesh decomposition (CoACD) have no Android build;
 stub headers make their calls fail cleanly. URLab_UPL.xml copies
@@ -478,7 +478,7 @@ index 0000000..a152b3f
 From 3a79fffe9d0d7dd649b8e711c5e2ddb2a921c3d1 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Mon, 26 Oct 2026 10:14:25 -0400
-Subject: [PATCH 6/7] Android: 16 KB page-aligned libmujoco.so (Android 15+)
+Subject: [PATCH 6/8] Android: 16 KB page-aligned libmujoco.so (Android 15+)
 
 ---
  third_party/MuJoCo/build_android.ps1 | 2 ++
@@ -508,7 +508,7 @@ index 8ce516f..380c80b 100644
 From b696fd1ba3628bb42ad94094c62d1f130a8e437d Mon Sep 17 00:00:00 2001
 From: punko <punko@users.noreply.github.com>
 Date: Fri, 30 Oct 2026 16:59:41 -0400
-Subject: [PATCH 7/7] Twist controller: don't cache input assets in
+Subject: [PATCH 7/8] Twist controller: don't cache input assets in
  GC-invisible statics
 
 AMjArticulation::PostInitializeComponents kept IMC_TwistControl, IA_TwistMove and IA_TwistTurn in
@@ -547,6 +547,134 @@ index 3b9dc2a..bb93761 100644
  			nullptr, TEXT("/UnrealRoboticsLab/Input/IA_TwistTurn.IA_TwistTurn"));
  
  		if (DefaultIMC)
+-- 
+2.55.0.windows.3
+
+
+From 672dacd9857d1c08734875a7810ec6c22e0561f8 Mon Sep 17 00:00:00 2001
+From: punko <punko@users.noreply.github.com>
+Date: Fri, 30 Oct 2026 18:48:06 -0400
+Subject: [PATCH 8/8] Build joints and bodies in Blueprint authoring order
+
+GetAttachChildren() order is rebuilt at load and differs in cooked builds
+(siblings come back name-sorted), which reorders the joints inside a body
+and so changes the physics. Sort children by their SCS node order before
+building the spec.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../MuJoCo/Components/Bodies/MjBody.cpp       |  1 +
+ .../MuJoCo/Components/Bodies/MjFrame.cpp      |  1 +
+ .../Private/MuJoCo/Core/MjArticulation.cpp    |  1 +
+ Source/URLab/Private/MuJoCo/Utils/MjUtils.cpp | 31 +++++++++++++++++++
+ Source/URLab/Public/MuJoCo/Utils/MjUtils.h    |  9 ++++++
+ 5 files changed, 43 insertions(+)
+
+diff --git a/Source/URLab/Private/MuJoCo/Components/Bodies/MjBody.cpp b/Source/URLab/Private/MuJoCo/Components/Bodies/MjBody.cpp
+index bcf9218..27450df 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Bodies/MjBody.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Bodies/MjBody.cpp
+@@ -203,6 +203,7 @@ void UMjBody::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWra
+ 	m_Root = Parent;
+ 
+ 	TArray<USceneComponent*> DirectChildren = GetAttachChildren();
++	MjUtils::SortByAuthoringOrder(DirectChildren);	// joint order inside a body is physics
+ 
+ 	for (USceneComponent* CurrentComponent : DirectChildren)
+ 	{
+diff --git a/Source/URLab/Private/MuJoCo/Components/Bodies/MjFrame.cpp b/Source/URLab/Private/MuJoCo/Components/Bodies/MjFrame.cpp
+index 53fa316..d60a78d 100644
+--- a/Source/URLab/Private/MuJoCo/Components/Bodies/MjFrame.cpp
++++ b/Source/URLab/Private/MuJoCo/Components/Bodies/MjFrame.cpp
+@@ -98,6 +98,7 @@ void UMjFrame::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWr
+ 	}
+ 
+ 	TArray<USceneComponent*> DirectChildren = GetAttachChildren();
++	MjUtils::SortByAuthoringOrder(DirectChildren);
+ 
+ 	for (USceneComponent* CurrentComponent : DirectChildren)
+ 	{
+diff --git a/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp b/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
+index bb93761..67d0a3b 100644
+--- a/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
++++ b/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
+@@ -376,6 +376,7 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
+ 
+ 	TArray<UMjBody*> RootBodies;
+ 	TArray<USceneComponent*> WorldChildren = WorldBody->GetAttachChildren();
++	MjUtils::SortByAuthoringOrder(WorldChildren);
+ 	for (USceneComponent* Child : WorldChildren)
+ 	{
+ 		if (UMjBody* BodyChild = Cast<UMjBody>(Child))
+diff --git a/Source/URLab/Private/MuJoCo/Utils/MjUtils.cpp b/Source/URLab/Private/MuJoCo/Utils/MjUtils.cpp
+index 4d9f712..9c9ed12 100644
+--- a/Source/URLab/Private/MuJoCo/Utils/MjUtils.cpp
++++ b/Source/URLab/Private/MuJoCo/Utils/MjUtils.cpp
+@@ -25,6 +25,9 @@
+ #include "MuJoCo/Utils/MjXmlUtils.h"
+ #include "DrawDebugHelpers.h"
+ #include "XmlNode.h"
++#include "Engine/BlueprintGeneratedClass.h"
++#include "Engine/SimpleConstructionScript.h"
++#include "Engine/SCS_Node.h"
+ 
+ FVector MjUtils::MjToUEPosition(const double* pos)
+ {
+@@ -436,6 +439,34 @@ FString MjUtils::PrettifyName(const FString& Name, const FString& PrefixToStrip)
+ 	return Result.IsEmpty() ? Name : Result;
+ }
+ 
++void MjUtils::SortByAuthoringOrder(TArray<USceneComponent*>& Components)
++{
++	Components.RemoveAll([](const USceneComponent* C) { return C == nullptr; });
++	if (Components.Num() < 2 || !Components[0]->GetOwner())
++		return;
++
++	// SCS nodes in the order the importer created them (subclass first, then its parents)
++	TMap<FName, int32> Order;
++	for (UClass* C = Components[0]->GetOwner()->GetClass(); C; C = C->GetSuperClass())
++	{
++		const UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(C);
++		if (!BPGC || !BPGC->SimpleConstructionScript)
++			continue;
++		for (const USCS_Node* Node : BPGC->SimpleConstructionScript->GetAllNodes())
++		{
++			if (Node && !Order.Contains(Node->GetVariableName()))
++				Order.Add(Node->GetVariableName(), Order.Num());
++		}
++	}
++
++	Components.StableSort([&Order](const USceneComponent& A, const USceneComponent& B)
++	{
++		const int32* IA = Order.Find(A.GetFName());
++		const int32* IB = Order.Find(B.GetFName());
++		return (IA ? *IA : MAX_int32) < (IB ? *IB : MAX_int32);
++	});
++}
++
+ bool MjUtils::ReadVec3InMeters(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride)
+ {
+ 	if (!Node)
+diff --git a/Source/URLab/Public/MuJoCo/Utils/MjUtils.h b/Source/URLab/Public/MuJoCo/Utils/MjUtils.h
+index 97be0f3..18aba53 100644
+--- a/Source/URLab/Public/MuJoCo/Utils/MjUtils.h
++++ b/Source/URLab/Public/MuJoCo/Utils/MjUtils.h
+@@ -175,6 +175,15 @@ public:
+ 	 * @return FString The cleaned, human-readable name.
+ 	 */
+ 	static FString PrettifyName(const FString& Name, const FString& PrefixToStrip = TEXT(""));
++
++	/**
++	 * @brief Sorts components into their Blueprint authoring order (the SCS node order).
++	 *
++	 * GetAttachChildren() order is rebuilt at load and differs in cooked builds (siblings come
++	 * back name-sorted), which reorders the joints inside a body and so changes the physics.
++	 * Components not found in any SCS keep their relative order, after the ones that are.
++	 */
++	static void SortByAuthoringOrder(TArray<class USceneComponent*>& Components);
+ };
+ 
+ // ---------------------------------------------------------------------------
 -- 
 2.55.0.windows.3
 
