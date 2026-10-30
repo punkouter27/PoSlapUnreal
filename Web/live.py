@@ -29,7 +29,7 @@ import os
 import re
 import struct
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -43,6 +43,7 @@ MAX_LIMIT = 500          # ?limit is clamped to this
 DEFAULT_LIMIT = 200      # ?limit without a value
 RATE_BURST = 120         # API requests per client per RATE_WINDOW seconds
 RATE_WINDOW = 10.0
+RATE_CLIENTS = 4096      # the token buckets are capped, so cycling addresses cannot grow the dict without bound
 HEARTBEAT = 15.0         # the SSE heartbeat (a comment line), seconds
 STRIKE_CLOCK = 30.0      # match.py / sim.js: the turn clock
 RECOVERY = 5.0           # match.py / sim.js: the recovery window after a touch
@@ -188,7 +189,7 @@ poses = deque(maxlen=MAX_POSES)      # the pose frames (not part of the event st
 seq = 0
 state = fresh_state()
 sse_clients = set()
-rate = {}              # client address -> [tokens, last refill]
+rate = OrderedDict()     # client address -> [tokens, last refill]
 started = time.time()
 publisher_at = None    # when the publisher (Unreal) connected, None while it is away
 
@@ -244,11 +245,24 @@ def rate_ok(who):
     now = time.time()
     tokens, last = rate.get(who, (RATE_BURST, now))
     tokens = min(RATE_BURST, tokens + (now - last) * (RATE_BURST / RATE_WINDOW))
-    rate[who] = (tokens, now)
     if tokens < 1:
+        rate[who] = (tokens, now)
+        rate.move_to_end(who)
         return False
     rate[who] = (tokens - 1, now)
+    rate.move_to_end(who)
+    if len(rate) > RATE_CLIENTS:
+        evict_rate(now)
     return True
+
+
+def evict_rate(now):
+    """The buckets are capped: a client cycling addresses must not grow the dict without bound. The spent and the
+    idle ones go first, then the least recently used."""
+    for k in [k for k, (t, l) in rate.items() if t >= RATE_BURST or now - l > 4 * RATE_WINDOW]:
+        del rate[k]
+    while len(rate) > RATE_CLIENTS:
+        rate.popitem(last=False)
 
 
 # ---- the WebSocket --------------------------------------------------------------------------------------
