@@ -1,0 +1,242 @@
+{
+ "run": "matt_L2_n5_0604",
+ "started": "2026-10-30 06:05:29",
+ "command": "train.py --char matt --level L2 --minutes 150.0 --envs 8192 --run matt_L2_n5_0604 --resume models/brains/matt_L1.pt",
+ "args": {
+  "char": "matt",
+  "level": "L2",
+  "minutes": 150.0,
+  "envs": 8192,
+  "run": "matt_L2_n5_0604",
+  "resume": "models/brains/matt_L1.pt",
+  "max_std": 0.3,
+  "entropy": 0.001,
+  "critic_warmup": 0,
+  "roles": null,
+  "opponent": null,
+  "out": null,
+  "reach_start": null,
+  "imit_start": null,
+  "keep_going": false
+ },
+ "level": "L2",
+ "level_config": {
+  "roles": {
+   "1": 0.7,
+   "0": 0.3
+  },
+  "seconds": 30.0,
+  "pushes": true,
+  "foot_box": [
+   0.2,
+   0.25
+  ],
+  "max_push": 0.6,
+  "hit_speed": 8.0,
+  "hit_speed_start": 2.0,
+  "reach_start": 1.0,
+  "imit_start": 1.0,
+  "reward_target": {
+   "1": 100.0,
+   "0": 2500.0
+  },
+  "check": {
+   "1": {
+    "episodes": 100,
+    "min_hit": 0.9,
+    "min_no_fall": 0.9,
+    "min_in_box": 0.9
+   },
+   "0": {
+    "episodes": 100,
+    "min_no_fall": 0.95,
+    "min_in_box": 0.95
+   }
+  }
+ },
+ "character": "matt",
+ "card": {
+  "name": "matt",
+  "display": "MATT",
+  "slot": 3,
+  "mesh": "Content/Art/Exports/Matt_rigged.fbx",
+  "skeleton": "characters/matt_skeleton.json",
+  "height_m": 1.905,
+  "mass_kg": 108.9,
+  "strength": 0.85,
+  "speed": 0.55,
+  "walk_speed_mps": 0.6,
+  "flexibility": 0.8,
+  "toughness": 1.15,
+  "stamina_per_strike": 0.06,
+  "neck_damage_per_snap": 0.035,
+  "strike_mass": 4.19,
+  "faint_chance_per_turn": 0.02,
+  "faint_seconds": 2.0,
+  "faint_strength": 0.05,
+  "notes": "Third roster athlete (user, 2026-10-26: \"6 foot 3, 240 pounds, slow but strong, passes out randomly on rare occasion\"). 1.905 m, 108.9 kg. Strongest and slowest on the roster (strength 0.85 vs Grandpa 0.5 / Kim 0.6; speed 0.55 vs 0.75 / 0.95), a little stiff (flexibility 0.8), a thick neck (toughness 1.15, takes neck damage slower), tires faster for his size (0.06 per strike). Strike mass scaled to body mass as for the others (3.0 kg per 78 kg). Fainting (rules: match.py, USlapController, Web/sim.js): each turn he faints with chance faint_chance_per_turn at a seeded moment - every motor at faint_strength of its force for faint_seconds - and the referee calls what follows as usual. Same rules as grandpa.json otherwise.",
+  "style": {
+   "summary": "Balance: wide, low and planted - knees bent 22 deg, hips sat back, hands low. Slap: a heavy swing from the low base - a hip and trunk turn, a long arm, a short follow-through.",
+   "stance_deg": {
+    "knee_l": 22,
+    "knee_r": 22,
+    "hip_flex_l": 12,
+    "hip_flex_r": 12,
+    "hip_abd_l": 8,
+    "hip_abd_r": 8,
+    "ankle_flex_l": 16,
+    "ankle_flex_r": 16,
+    "ankle_roll_l": -6,
+    "ankle_roll_r": -6,
+    "waist_flex": 1,
+    "shoulder_swing_l": -5,
+    "shoulder_raise_l": -75,
+    "shoulder_twist_l": 0,
+    "elbow_l": 20,
+    "shoulder_swing_r": -5,
+    "shoulder_raise_r": -75,
+    "shoulder_twist_r": 10,
+    "elbow_r": 15
+   },
+   "slap": {
+    "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Matt: a big hip and trunk wind-up and a long, fairly straight arm; slow phases.",
+    "guess_deg": {
+     "waist_twist": [
+      -20,
+      15,
+      15
+     ],
+     "waist_flex": [
+      0,
+      3,
+      2
+     ],
+     "waist_side": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_swing_r": [
+      15,
+      -70,
+      -75
+     ],
+     "shoulder_raise_r": [
+      25,
+      22,
+      18
+     ],
+     "shoulder_twist_r": [
+      -20,
+      -40,
+      -40
+     ],
+     "elbow_r": [
+      60,
+      15,
+      25
+     ],
+     "wrist_flex_r": [
+      -25,
+      20,
+      10
+     ],
+     "wrist_dev_r": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_swing_l": [
+      -5,
+      -5,
+      -5
+     ],
+     "shoulder_raise_l": [
+      -75,
+      -75,
+      -75
+     ],
+     "elbow_l": [
+      20,
+      20,
+      20
+     ],
+     "hip_flex_l": [
+      12,
+      12,
+      12
+     ],
+     "hip_flex_r": [
+      12,
+      12,
+      12
+     ],
+     "knee_l": [
+      22,
+      26,
+      26
+     ],
+     "knee_r": [
+      22,
+      26,
+      26
+     ],
+     "hip_rot_l": [
+      -8,
+      8,
+      8
+     ],
+     "hip_rot_r": [
+      -8,
+      8,
+      8
+     ]
+    },
+    "times_s": [
+     0.5,
+     0.35,
+     0.45
+    ],
+    "delays_s": {
+     "hip_rot_l": 0.0,
+     "hip_rot_r": 0.0,
+     "waist_twist": 0.03,
+     "waist_flex": 0.03,
+     "shoulder_swing_r": 0.07,
+     "shoulder_raise_r": 0.07,
+     "shoulder_twist_r": 0.1,
+     "elbow_r": 0.13,
+     "wrist_flex_r": 0.16
+    },
+    "search_sigma_deg": 12.0
+   }
+  },
+  "sparring": {
+   "head": [
+    0.8,
+    0.0,
+    0.64
+   ],
+   "shorter_max": 0.15,
+   "lean": 1.0,
+   "note": "Practice opponent: Grandpa's face from Matt's start pelvis (Grandpa's own 0.74 m less the 0.1 m their pelvises differ); up to 15 cm lower for Kim; leaning in when braced"
+  }
+ },
+ "git_sha": "065efe74f1a09d4523cddc3ad9a3b414273a732a",
+ "git_dirty": true,
+ "versions": {
+  "python": "3.11.9",
+  "torch": "2.11.0+cu128",
+  "mujoco": "3.10.0"
+ },
+ "obs_dim": 136,
+ "ppo": {
+  "lr": 0.001,
+  "init_std": 0.8,
+  "max_std": 0.3,
+  "entropy": 0.001
+ },
+ "worlds": 8192,
+ "gaze_servo": true,
+ "servo_mix": "0.0"
+}
