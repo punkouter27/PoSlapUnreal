@@ -7,7 +7,7 @@ TensorBoard starts with the run (http://localhost:6006). A brain is exported to 
 level's own exam passed by the deterministic policy. runs/<run>/: latest.pt, telemetry.jsonl, meta.json,
 report.html (runs over 30 min). At start, runs older than 24 h are pruned (housekeeping).
 """
-import argparse, copy, json, shutil, socket, subprocess, sys, time
+import argparse, copy, json, os, shutil, socket, subprocess, sys, time
 from collections import deque
 from pathlib import Path
 
@@ -15,7 +15,7 @@ import torch
 import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
-from brain_cpu import LAGS, OBS, video
+from brain_cpu import LAGS, OBS, pca_projection, video
 from constants import GAZE_ON
 from envs.arena import ArenaEnv, VsFrozen
 from envs.locomotion import LocomotionEnv
@@ -247,6 +247,10 @@ def main():
     ap.add_argument("--reach-start", type=float, default=None, help="strike target from easy (0) to the real head (1); overrides the level's start")
     ap.add_argument("--imit-start", type=float, default=None, help="reference-slap imitation weight at the start; overrides the level's (0: no reference slap)")
     ap.add_argument("--keep-going", action="store_true", help="after graduating (ONNX exported), keep training; best.pt keeps the best exam")
+    ap.add_argument("--obs-project", type=int, default=0,
+                    help="prune the observation to N channels INSIDE the network's input layer (a fixed projection, "
+                         "baked into the exported ONNX: the brain I/O stays the same 136 floats and the C++/JS "
+                         "engines need no change)")
     a = ap.parse_args()
     RUNS.mkdir(exist_ok=True)
     run_dir = RUNS / (a.run or "")
@@ -266,7 +270,18 @@ def main():
     env = VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs)
     global ppo_stream
     ppo_stream = env.stream
-    ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100))
+    proj = None
+    if a.obs_project > 0:   # Realism 5: the redundant channels pruned inside the network (the I/O is unchanged)
+        import numpy as np
+        s = [env.observe().detach().cpu().numpy()]
+        for _ in range(20):
+            env.step(torch.randn(env.N, env.A, device="cuda") * 0.2)
+            s.append(env.observe().detach().cpu().numpy())
+        _, comp = pca_projection(np.concatenate(s, 0), a.obs_project)
+        proj = torch.tensor(comp, device="cuda")
+        print(f"input projection: {OBS} -> {comp.shape[1]} (a fixed PCA basis, baked into the ONNX)")
+        env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
+    ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100), proj=proj)
     extra = ppo.load(a.resume, widen=True) if a.resume else {}
     if a.resume:   # carry on at the rate it had reached: the 1e-3 default broke a resumed slap within minutes (2026-10-23)
         ppo.cfg.lr = float(extra.get("lr", ppo.cfg.lr_min))

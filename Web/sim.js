@@ -15,6 +15,15 @@ const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
 export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
 const BOX = [0.20, 0.25], KICK_STEPS = 2;
 const WEIGHTS = [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]];      // judges: speed, head, stagger, defence
+// Eye contact (2026-10-24): match.py's GAZE_*/WATCH_* constants and Unreal's ApplyGaze run IDENTICAL maths.
+// The bias lives in WORLD space (a great-circle walk toward the eye line) and is turned into a neck goal in the
+// chest frame; the pitch is NOT driven (turn only, 2026-10-29: the nod tilted Kim's face up off her target).
+const GAZE_GAIN = 1.0;      // the bias OWNS the neck goal pre-touch (the mandate beats the brain's habit)
+const GAZE_MAX_STEP = 0.08; // rad per decision the bias may walk: the deliberate head turn of a man squaring up
+const WATCH_MAX_STEP = 0.25;// rad per decision while PLANTED: re-acquiring a snapping head inside a short window
+const GAZE_ON = typeof window !== "undefined"
+  ? !new URLSearchParams(location.search).has("nogaze")
+  : true;                  // ?nogaze=1 turns it off (the browser's SLAP_EYE_CONTACT=0)
 
 const quatMat = (w, x, y, z) => [
   1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
@@ -64,9 +73,41 @@ class Athlete {
     this.kneeL = this.order.indexOf("knee_l"); this.kneeR = this.order.indexOf("knee_r");
     this.ankleL = this.order.indexOf("ankle_flex_l"); this.ankleR = this.order.indexOf("ankle_flex_r");
     this.shL = this.order.indexOf("shoulder_swing_l"); this.shR = this.order.indexOf("shoulder_swing_r");
+    this.chest = id("body", "chest"); this.iYaw = this.order.indexOf("neck_turn");
     this.fp = fp; this.mem = [0, 0]; this.stamina = 1; this.neckStrength = 1; this.reset();
   }
   reset() { this.goal = this.standPose.slice(); this.prev = new Float32Array(this.order.length); this.hist = []; }
+  // match.py gaze_desire: the unit world direction from this athlete's eyes to the opponent's eyes (the eye line)
+  gazeDesire(d, oppHead) {
+    const own = v3(d.geom_xpos, this.head), op = v3(d.geom_xpos, oppHead);
+    const u = [op[0] - own[0], op[1] - own[1], op[2] - own[2]];
+    const n = Math.hypot(u[0], u[1], u[2]) || 1;
+    return [u[0] / n, u[1] / n, u[2] / n];
+  }
+  // match.py gaze_walk: walk the WORLD-space bias toward the desire by at most step radians (great circle, never a teleport)
+  gazeWalk(d, oppHead, step) {
+    const wd = this.gazeDesire(d, oppHead), bw = this.wbias;
+    const c = Math.max(-1, Math.min(1, bw[0] * wd[0] + bw[1] * wd[1] + bw[2] * wd[2]));
+    const theta = Math.acos(c);
+    if (theta <= step) { this.wbias = wd; return; }
+    const p = [wd[0] - c * bw[0], wd[1] - c * bw[1], wd[2] - c * bw[2]];
+    const pn = Math.hypot(p[0], p[1], p[2]);
+    if (pn < 1e-9) { this.wbias = wd; return; }   // antipodal: snap (physically unreachable for two facing athletes)
+    const cs = Math.cos(step), sn = Math.sin(step);
+    const v = [bw[0] * cs + p[0] / pn * sn, bw[1] * cs + p[1] / pn * sn, bw[2] * cs + p[2] / pn * sn];
+    const vn = Math.hypot(v[0], v[1], v[2]) || 1;
+    this.wbias = [v[0] / vn, v[1] / vn, v[2] / vn];
+  }
+  // match.py gaze_apply: turn only (the nod stays the brain's) - the world bias projected into the chest frame
+  gazeApply(d, oppHead, step) {
+    this.gazeWalk(d, oppHead, step);
+    const xm = d.xmat, b = 9 * this.chest;
+    const rx = xm[b] * this.wbias[0] + xm[b + 3] * this.wbias[1] + xm[b + 6] * this.wbias[2];
+    const ry = xm[b + 1] * this.wbias[0] + xm[b + 4] * this.wbias[1] + xm[b + 7] * this.wbias[2];
+    const want = clamp(Math.atan2(ry, rx), this.lo[this.iYaw], this.hi[this.iYaw]);
+    const blend = (1 - GAZE_GAIN) * this.goal[this.iYaw] + GAZE_GAIN * want;
+    this.goal[this.iYaw] = clamp(blend, this.lo[this.iYaw], this.hi[this.iYaw]);
+  }
 
   obs(d, role = 0, clock = 0, target = null, hand = null) {
     const o = new Float64Array(OBS), N = this.order.length, q = d.qpos, v = d.qvel;
@@ -152,10 +193,13 @@ export class Match {
     const { m, d } = this;
     this.s = this.turnInRound === 0 ? this.first : 1 - this.first;
     this.stand();
-    for (const x of this.sides) {
+    for (let a = 0; a < this.sides.length; a++) {
+      const x = this.sides[a];
       x.reset();
-      x.act.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.frAll[i][0]; m.actuator_forcerange[2 * a + 1] = x.frAll[i][1]; });   // back from any faint
-      x.neck.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.fr0[i][0] * x.neckStrength; m.actuator_forcerange[2 * a + 1] = x.fr0[i][1] * x.neckStrength; });
+      x.act.forEach((a2, i) => { m.actuator_forcerange[2 * a2] = x.frAll[i][0]; m.actuator_forcerange[2 * a2 + 1] = x.frAll[i][1]; });   // back from any faint
+      x.neck.forEach((a2, i) => { m.actuator_forcerange[2 * a2] = x.fr0[i][0] * x.neckStrength; m.actuator_forcerange[2 * a2 + 1] = x.fr0[i][1] * x.neckStrength; });
+      // match.py: the world bias starts on the eye line (gaze_desire)
+      x.wbias = x.gazeDesire(d, this.sides[1 - a].head);
     }
     this.mj.mj_forward(m, d);
     this.feet0 = this.sides.map(x => x.feet.map(f => [d.geom_xpos[3 * f], d.geom_xpos[3 * f + 1]]));
@@ -226,6 +270,10 @@ export class Match {
       const dObs = this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), this.seen[0]) : D.obs(d, 0);
       const aS = await S.policy(S.obs(d, 1, clock, hd)), aD = await D.policy(dObs);
       S.decide(aS); D.decide(aD);
+      if (GAZE_ON) {   // match.py: eye contact until the slap lands, then the striker watches the verdict
+        if (this.touchK === null) D.gazeApply(d, S.head, GAZE_MAX_STEP);
+        else S.gazeApply(d, D.head, WATCH_MAX_STEP);
+      }
       this.clock = STRIKE_CLOCK - t;
     }
     this.applyCtrl();
@@ -321,6 +369,11 @@ export class Match {
     if (this.holdLeft % 4 === 0) {
       mj.mj_kinematics(m, d);
       for (const x of this.sides) x.decide(await x.policy(x.obs(d, 0)));
+      // Unreal's ApplyGaze runs through the hold too (display-only: the next turn resets everybody)
+      if (GAZE_ON && this.touchK !== null) {
+        const st = this.sides[this.s], df = this.sides[1 - this.s];
+        st.gazeApply(d, df.head, WATCH_MAX_STEP);
+      }
       if (this.phase === "after" && this.lastWinner !== null) {
         const w = this.sides[this.lastWinner];
         if (w.shL >= 0) w.goal[w.shL] = clamp(w.standPose[w.shL] + 0.85, w.lo[w.shL], w.hi[w.shL]);
