@@ -32,6 +32,7 @@ import mujoco
 import numpy as np
 
 from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, muscle_step, muscle_vmax, onnx_policy, settle_muscles
+from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, WATCH_MAX_STEP
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -42,17 +43,16 @@ DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and ha
 EXAM_JITTER = 0.01     # rad per joint on each exam turn's start pose (0.6 deg: below what a judge would see)
 
 # Eye contact (user 2026-10-24): the defender squares up and holds the striker's eyes through the whole turn.
-# The neck's yaw/pitch motors are walked to a gaze bias (smooth PD, no teleporting); the brain owns every other
-# joint and regains the neck the instant the slap lands (he braces for it). Pure maths - Unreal's Decide() runs
-# the identical formulas, so the match log still compares event for event.
-GAZE_GAIN = 1.0        # the bias OWNS the neck goal pre-touch (the mandate is stronger than the brain's habit)
-GAZE_MAX_STEP = 0.08    # rad per decision the bias may walk: the deliberate head turn of a man squaring up
-WATCH_MAX_STEP = 0.25   # rad per decision while PLANTED: re-acquiring a snapping head inside a short window
+# The neck's yaw motor is walked to a gaze bias (a smooth PD, no teleporting); the brain owns every other joint and
+# regains the neck the instant the slap lands (he braces for it). Pure maths - Unreal's Decide() runs the identical
+# formulas, so the match log still compares event for event.
+# The numbers live in constants.py (one source of truth): the L4 training env (envs/arena.py) runs the same servo,
+# so the brains train in the world the match plays.  GAZE_GAIN, GAZE_MAX_STEP, WATCH_MAX_STEP and GAZE_ON are
+# imported at the top of this file.
 # NB (2026-10-25 QA): an imposed post-slap POSE hold was tried and rejected - freezing any joints after the
 # touch fought the brain's own balance and tripled striker self-knockdowns (7-9/3 matches vs a 1.3 baseline,
 # even at barely-there strengths and restricted to the striking arm). The striker's "stay balanced" duty is
 # served by leaving the brain in charge of the body; the servo contributes only the WATCH (below).
-GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
 
 
 def mix(*v):
@@ -141,8 +141,6 @@ class Match:
             sd.own_head = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, sd.prefix + "head")
             sd.op_head = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, opp.prefix + "head")
             sd.i_yaw = sd.a.order.index("neck_turn")
-            sd.i_pitch = sd.a.order.index("neck_nod")
-            sd.bias = [sd.a.goal[sd.i_yaw], sd.a.goal[sd.i_pitch]]
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
         self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
         self.blowup = False
@@ -194,21 +192,20 @@ class Match:
         side.wbias = [v[0] / vn, v[1] / vn, v[2] / vn]
 
     def gaze_apply(self, side, m, d, step=None):
-        """Drive the neck GOAL to the world bias projected into the chest frame (ZYX yaw/pitch; the head hangs
+        """Drive the neck GOAL to the world bias projected into the chest frame (the yaw only - the nod stays the brain's; the head hangs
         rigid off the neck body, whose hinge axes are the chest frame's Z/Y/X), blended with the brain's own
         neck goal by GAZE_GAIN. Called right after each decision, as Unreal does."""
         step = GAZE_MAX_STEP if step is None else step
         self.gaze_walk(side, d, step)
         Rc = d.xmat[side.chest].reshape(3, 3)
         u = Rc.T @ side.wbias
-        yc = math.atan2(u[1], u[0])
-        # turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off the target his slap
-        # trained on (training has no gaze servo); the nod stays the brain's (Unreal ApplyGaze)
-        for idx, targ in ((side.i_yaw, yc),):
-            lo, hi = side.a.lo[idx], side.a.hi[idx]
-            want = max(lo, min(hi, targ))
-            blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * want
-            side.a.goal[idx] = max(lo, min(hi, blend))
+        # turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off where his slap trained to
+        # land; the nod stays the brain's in every engine (constants.py GAZE_* block: Unreal ApplyGaze, arena.py, sim.js)
+        idx = side.i_yaw
+        lo, hi = side.a.lo[idx], side.a.hi[idx]
+        want = max(lo, min(hi, math.atan2(u[1], u[0])))
+        blend = (1.0 - GAZE_GAIN) * side.a.goal[idx] + GAZE_GAIN * want
+        side.a.goal[idx] = max(lo, min(hi, blend))
 
     def strike_hold(self, side, m, d):
         """Post-slap watch (user 2026-10-24: the striker "awaits to see if his opponent falls"): his eyes track

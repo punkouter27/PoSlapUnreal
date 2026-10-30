@@ -11,6 +11,7 @@ is real. Feints: the striker earns a bonus when the defender's head had already 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import mujoco
@@ -18,7 +19,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from brain_cpu import LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
+from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP
 from envs.slap import DECIM, WAIT, hill, quat_mat
 from levels import LEVELS
 
@@ -56,6 +57,7 @@ class ArenaEnv:
         self.rq = t([m.jnt_qposadr[m.joint(p + "root").id] for p in PREFIX])  # (2,)
         self.rv = t([m.jnt_dofadr[m.joint(p + "root").id] for p in PREFIX])
         self.pelvis = t([m.body(p + "pelvis").id for p in PREFIX])
+        self.chest = t([m.body(p + "chest").id for p in PREFIX])
         self.head_g = t([m.geom(p + "head").id for p in PREFIX])
         self.hand_g = t([m.geom(p + "hand_r").id for p in PREFIX])
         self.head_b = t([m.geom_bodyid[m.geom(p + "head").id] for p in PREFIX])
@@ -98,6 +100,7 @@ class ArenaEnv:
         T = lambda a: wp.to_torch(a)
         self.qpos, self.qvel, self.ctrl = T(self.dw.qpos), T(self.dw.qvel), T(self.dw.ctrl)
         self.xpos, self.com = T(self.dw.xpos), T(self.dw.subtree_com)
+        self.xmat = T(self.dw.xmat)   # the body frames (the gaze servo projects into the chest frame)
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.con_frame = T(self.dw.contact.frame)
@@ -149,6 +152,23 @@ class ArenaEnv:
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
         self.hand_seen = z(W, REACT + 1, 2, 3)   # both right hands, oldest first: the defender sees [:, 0] (0.12 s late)
+
+        # The eye-contact servo (match.py gaze_desire/gaze_walk/gaze_apply/strike_hold, ported to the batch):
+        # each athlete keeps a WORLD-space gaze bias that walks toward the opponent's eye line; the driven
+        # athlete's neck yaw goal is set from that bias. The brain keeps every other joint (see the QA note in
+        # constants.py: an imposed pose hold tripled the self-knockdowns).
+        self.i_yaw = order.index("neck_turn")          # the neck's yaw motor (the nod stays the brain's)
+        self.lo_yaw, self.hi_yaw = self.lo[:, self.i_yaw], self.hi[:, self.i_yaw]   # (2,) the range per corner
+        self.wbias = z(W, 2, 3)                        # the world bias, per athlete
+        self.gaze_off = z(W, 2)                        # |the servo's yaw - the brain's own neck goal| (rad), applied
+        self.gaze_bias = z(W, 2)                       # the same, always computed: what the servo would do
+        self.gaze_step = z(W)                          # the walk's step (rad per decision): watch faster after the touch
+        # How many worlds train WITHOUT the servo (SLAP_SERVO_MIX, 0 = the match's world: the servo is always on).
+        # A brain that only ever sees the servo-owned neck learns to depend on it: with the servo off it falls
+        # apart (the 2026-10-29 retrain: 60/120 strikes with the servo on, 18/109 and 45 % self-falls with it
+        # off). Mixing the two worlds in training is what makes a brain servo-robust.
+        self.servo_mix = float(os.environ.get("SLAP_SERVO_MIX", "0.0"))
+        self.servo_on = torch.ones(W, dtype=torch.bool, device=dev)
 
         mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
         with wp.ScopedCapture() as c:
@@ -215,6 +235,67 @@ class ArenaEnv:
         self.hand_prev[mask], self.hand_prev_ctrl[mask] = hs[0][mask], hs[0][mask]
         self.phi_prev[mask] = self._palm_phi(hs[0], ht[1])[mask]
         self.com_err[mask] = 0.0
+        # the gaze bias starts on the eye line (match.py: the bias is reseeded at every turn start)
+        eye = self._gaze_desire()
+        self.wbias[mask] = eye[mask]
+        self.gaze_off[mask] = 0.0
+        # the servo is on in every world by default (the match's world); SLAP_SERVO_MIX trains a share without it
+        self.servo_on[mask] = torch.rand(n, device=self.device) >= self.servo_mix
+
+    # ------------------------------------------------------------------ the eye-contact servo
+    def _gaze_desire(self):
+        """The unit world direction from each athlete's eyes to the opponent's eyes (the eye line)."""
+        head = self.geom_xpos[:, self.head_g]                       # (W, 2, 3)
+        u = head[:, [1, 0], :] - head                               # the opponent's eyes - mine
+        return u / u.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+
+    def _gaze(self, tgt2):
+        """The eye-contact servo, ported from match.py (gaze_desire / gaze_walk / gaze_apply / strike_hold).
+
+        Before the touch the DEFENDER squares up to the striker; after it the STRIKER watches the defender
+        (WATCH_MAX_STEP: fast enough to re-acquire a snapping head).  Gaze only: the brain keeps every other
+        joint - the imposed post-slap pose hold tripled the self-knockdowns (see constants.py).
+
+        The bias is WORLD space: the chest whips through a slap's follow-through and a chest-relative bias would
+        chase a target spinning hundreds of degrees per second, while the world bias keeps the head glued to the
+        opponent and lets the neck quietly counter-rotate the torso.  It walks by at most `step` radians on the
+        great circle: never a teleport.
+
+        `tgt2` is the (W, 2, A) view of the motor goals; the neck yaw goal of the driven athlete is overwritten
+        in place, exactly as match.py does it after the decision.  The observation is untouched: the servo moves
+        motors, not what the brain sees.
+        """
+        W = self.W
+        eye = self._gaze_desire()                                  # (W, 2, 3)
+        # the walk: the world bias toward the eye line, at most `step` rad on the great circle
+        bw = self.wbias
+        c = (bw * eye).sum(-1).clamp(-1.0, 1.0)
+        theta = torch.acos(c)
+        p = eye - c[..., None] * bw
+        pn = p.norm(dim=-1)
+        p = torch.where((pn < 1e-9)[..., None], eye, p / pn.clamp(min=1e-9)[..., None])
+        cs, sn = torch.cos(self.gaze_step)[:, None, None], torch.sin(self.gaze_step)[:, None, None]
+        v = bw * cs + p * sn
+        v = v / v.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        self.wbias = torch.where((theta <= self.gaze_step[:, None])[..., None], eye, v)
+        # the goal: the world bias projected into the chest frame (the neck's hinges hang off the chest)
+        Rc = self.xmat[:, self.chest].reshape(W, 2, 3, 3)          # body -> world
+        u = (Rc.transpose(-1, -2) @ self.wbias[..., None]).squeeze(-1)
+        yaw = torch.atan2(u[..., 1], u[..., 0])
+        lo, hi = self.lo_yaw, self.hi_yaw
+        want = torch.clamp(yaw, lo, hi)
+        blend = torch.clamp((1.0 - GAZE_GAIN) * tgt2[..., self.i_yaw] + GAZE_GAIN * want, lo, hi)
+        # only the driven athlete's row is written: the defender until the touch, the striker after it
+        driven = torch.where(self.struck, self.striker, 1 - self.striker)       # (W,)
+        corner = torch.arange(2, device=self.device)
+        drive = (corner[None, :] == driven[:, None]) & self.servo_on[:, None]    # (W, 2)
+        own = tgt2[..., self.i_yaw]
+        off = torch.where(drive, (blend - own).abs(), torch.zeros_like(own))
+        self.gaze_bias = off          # what the servo WOULD do (always computed: the check reads it)
+        if not GAZE_ON:
+            return                   # SLAP_EYE_CONTACT=0: the brain keeps the neck
+        self.gaze_off = off
+        tgt2[..., self.i_yaw] = torch.where(drive, blend, own)
 
     # ------------------------------------------------------------------ step
     def step(self, action):
@@ -229,6 +310,10 @@ class ArenaEnv:
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
         tw, ow = tgt.view(self.W, 2, self.A), old.view(self.W, 2, self.A)
+        # the walk's step: the defender squares up slowly, the planted striker re-acquires fast (match.py)
+        self.gaze_step = torch.where(self.struck, torch.full_like(self.gaze_step, WATCH_MAX_STEP),
+                                     torch.full_like(self.gaze_step, GAZE_MAX_STEP))
+        self._gaze(tw)          # the eye-contact servo writes the neck yaw goal (match.py: after the decision)
         for s in range(DECIM):
             on = (s >= self.delay)[:, None, None]
             u = torch.where(on, tw, ow)
@@ -244,7 +329,7 @@ class ArenaEnv:
             self._strike_check()
         wp.capture_launch(self.g_kin)
 
-        fell = self._fallen()                                  # (W, 2)
+        fell = self.fell_now = self._fallen()                  # (W, 2)
         rew, out = self._reward(a, fell)                       # (2W,), (W, 2)
         self.prev2_action = self.prev_action
         self.prev_action = a

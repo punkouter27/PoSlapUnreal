@@ -10,17 +10,83 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from constants import HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT   # the shared numbers (DOCS/BRAIN_IO.md)
+
 HERE = Path(__file__).parent
-OBS = 136                          # DOCS/BRAIN_IO.md (108 before memory and fatigue, 130 before the own palm; older brains read their first n)
-LAGS = (5, 10, 15)                 # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
-REACT = 6                          # the defender sees the opponent's hand 6 decisions (0.12 s) late: human visual reaction
-HILL_K = 0.25                      # Hill's force-velocity curvature (a / F0, human muscle ~0.25): see hill()
-MIN_STAMINA, MIN_NECK = 0.7, 0.5   # fatigue floors (the card sets how fast an athlete gets there)
+# OBS, LAGS, REACT, HILL_K, MIN_STAMINA and MIN_NECK live in constants.py (one source of truth for the three
+# engines); they are re-exported here so `from brain_cpu import OBS` keeps working.
 
 
 def card(fp):
     """The character card (training/characters/<name>.json): the source of truth, the fingerprint keeps a build-time copy."""
     return json.loads((HERE / "characters" / f"{fp['card']['name']}.json").read_text())
+
+
+# ---------------------------------------------------------------- the streamlined sensory view (Option 5)
+# The 136 floats carry redundancy: the 18 memory floats repeat inputs 102-107, the palm facing (133-135) is
+# implied by the palm centre and the arm joints, and the previous action (70-99) is a second copy of the
+# command the brain has just sent.  Changing the layout would break the three-engine parity (Blueprint 8),
+# so the pruning happens INSIDE the network's input layer instead: a fixed linear projection (PCA over a
+# sample of real observations) maps 136 -> N before the first hidden layer.  The projection is baked into the
+# exported ONNX, so Unreal's NNE and the browser's onnxruntime-web run exactly the same graph and need no
+# change at all: the ONNX input stays [1, 136].
+#
+# summarise() is the same idea in readable form: a named, redundant-free summary of the observation, used by
+# the reference path (this module) for logs and by the trainer for the projection's warm-up statistics.
+
+SUMMARY_FIELDS = (
+    "pelvis_z", "gravity_x", "gravity_y", "gravity_z",          # 60-63: height and the tilt of the body
+    "v_fwd", "v_lat", "v_up",                                  # 64-66: the velocity in the heading frame
+    "roll", "pitch", "yaw_rate",                               # 67-69: the angular velocity (scaled)
+    "action_mean", "action_std",                               # 70-99: the previous action, summarised
+    "role", "clock",                                           # 100-101
+    "target_fwd", "target_lat", "target_up",                   # 102-104: the target / foot box
+    "hand_fwd", "hand_lat", "hand_up",                         # 105-107: the opponent's hand (6 decisions late)
+    "mem_strike_time", "mem_strike_speed",                     # 126-127
+    "stamina", "neck_strength",                                # 128-129
+    "palm_fwd", "palm_lat", "palm_up",                         # 130-132
+    "palm_facing_x", "palm_facing_y", "palm_facing_z",         # 133-135
+)
+
+
+def summarise(obs):
+    """A compact, redundant-free view of the 136-float observation (numpy, one row or a batch).
+
+    31 numbers instead of 136: the state that actually drives a decision, with the duplicated channels
+    (the joint-by-joint history, the lagged memory) collapsed into their statistics.  Used for logs and for
+    the projection's warm-up sample; the brain itself still reads the full 136 (the ONNX input is [1, 136])."""
+    o = np.atleast_2d(np.asarray(obs, float))
+    n = o.shape[-1]
+    a = o[:, 70:100]
+    out = np.stack([
+        o[:, 60], o[:, 61], o[:, 62], o[:, 63],
+        o[:, 64], o[:, 65], o[:, 66],
+        o[:, 67], o[:, 68], o[:, 69],
+        a.mean(-1), a.std(-1),
+        o[:, 100], o[:, 101],
+        o[:, 102], o[:, 103], o[:, 104],
+        o[:, 105], o[:, 106], o[:, 107],
+        o[:, 126], o[:, 127],
+        o[:, 128], o[:, 129],
+        o[:, 130], o[:, 131], o[:, 132],
+        o[:, 133], o[:, 134], o[:, 135],
+    ], -1)
+    assert out.shape[-1] == len(SUMMARY_FIELDS) == 31, (out.shape, len(SUMMARY_FIELDS))
+    assert n >= 136, f"the observation is {n} floats, expected 136"
+    return out
+
+
+def pca_projection(sample, n_components):
+    """The fixed linear map (136 -> n_components) that prunes the redundant channels: the principal
+    directions of a sample of real observations, mean-centred.
+
+    Returns (mean, components) so the map is x -> (x - mean) @ components.T.  The trainer bakes both into
+    the exported ONNX (the network's first layer), which is why Unreal and the browser need no change."""
+    s = np.atleast_2d(np.asarray(sample, float))
+    mean = s.mean(0)
+    _, _, vt = np.linalg.svd(s - mean, full_matrices=False)
+    k = int(min(n_components, vt.shape[0]))
+    return mean.astype(np.float32), vt[:k].T.astype(np.float32)
 
 
 class Athlete:

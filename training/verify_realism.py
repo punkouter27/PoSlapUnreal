@@ -3,6 +3,7 @@
     .venv/Scripts/python.exe verify_realism.py
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -15,7 +16,7 @@ ROOT = HERE.parent
 
 
 def main():
-    print("=== [1/5] Validating AI Realism Config Files ===")
+    print("=== [1/6] Validating AI Realism Config Files ===")
     cfg_dir = HERE / "configs"
     j_cfg = json.loads((cfg_dir / "joint_and_strength_config.json").read_text())
     s_cfg = json.loads((cfg_dir / "sensory_profile.json").read_text())
@@ -28,7 +29,7 @@ def main():
     assert "Stage_2_Steady_Natural_Walk" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
     print("  [PASS] All 3 realism configuration files verified.")
 
-    print("\n=== [2/5] Verifying Body Mechanics, Joint Limits, Self-Collision & COM (Options 1, 2, 4) ===")
+    print("\n=== [2/6] Verifying Body Mechanics, Joint Limits, Self-Collision & COM (Options 1, 2, 4) ===")
     cards = list(dict.fromkeys(r["card"] for r in json.loads((HERE / "roster.json").read_text())))   # every roster athlete
     for card in cards:
         res = subprocess.run([sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / f"{card}.json")],
@@ -39,7 +40,7 @@ def main():
         assert "swing & stride arcs" in res.stdout and "A13 shoulder cone" in res.stdout
         print(f"  [PASS] {card}: A8 rig, A9 anti-hyperextension, A10 self-collision, A11 COM balance, A12 fingerprint, A13 shoulder cone.")
 
-    print("\n=== [3/5] Verifying the S2 Walking & Proprioception Env on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
+    print("\n=== [3/6] Verifying the S2 Walking & Proprioception Env on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
     from envs.locomotion import LocomotionEnv
 
     for stage in ("S2",):
@@ -64,7 +65,7 @@ def main():
     assert torch.isfinite(obs148).all()
     print(f"  [PASS] Extended 148-dim Locomotion Proprioception (Kim S2): shape={tuple(obs148.shape)}, foot contacts & phase clock active.")
 
-    print("\n=== [4/5] Verifying SlapEnv (L0-L3) & ArenaEnv (L4) Realism Upgrades ===")
+    print("\n=== [4/6] Verifying SlapEnv (L0-L3) & ArenaEnv (L4) Realism Upgrades ===")
     import numpy as np
     from brain_cpu import hill
     from envs.slap import SlapEnv, hill as hill_t
@@ -92,7 +93,26 @@ def main():
     assert torch.isfinite(o_a).all() and torch.isfinite(r_a).all()
     print(f"  [PASS] ArenaEnv L4 (Grandpa vs Kim) with realism suite: mean_rew={r_a.mean().item():.3f}")
 
-    print("\n=== [5/5] Verifying L5 Match & Gameplay JSONL Telemetry Logging (Logs/Gameplay/YYMMDD/) ===")
+    print("\n=== [5/6] Verifying the eye-contact servo in the L4 arena env (gaze_check.py, ON vs OFF) ===")
+
+    def gaze(env_var=None):
+        e = dict(os.environ)
+        e.pop("SLAP_EYE_CONTACT", None)
+        if env_var is not None:
+            e["SLAP_EYE_CONTACT"] = env_var
+        res = subprocess.run([sys.executable, str(HERE / "gaze_check.py")], capture_output=True, text=True, check=True, env=e)
+        return json.loads([l for l in res.stdout.strip().splitlines() if l.startswith("{")][-1])
+
+    on, off = gaze(), gaze("0")
+    assert on["gaze_on"] and not off["gaze_on"], (on, off)
+    assert on["applied_rad"] > 0.01, on            # the servo IS wired in: the neck yaw goal moves off the brain's own
+    assert off["applied_rad"] == 0.0, off          # SLAP_EYE_CONTACT=0: the brain keeps the neck
+    assert off["would_apply_rad"] > 0.01, off      # the servo's maths still runs (not a dead branch)
+    assert on["obs_dim"] == off["obs_dim"] == 136, (on, off)   # the observation is unchanged: the servo moves motors only
+    print(f"  [PASS] gaze servo: ON moves the neck yaw goal by {on['applied_rad']:.3f} rad on average; OFF leaves it at "
+          f"{off['applied_rad']:.3f} (it would have moved it {off['would_apply_rad']:.3f} rad); the observation is 136 floats either way.")
+
+    print("\n=== [6/6] Verifying L5 Match & Gameplay JSONL Telemetry Logging (Logs/Gameplay/YYMMDD/) ===")
     res_m = subprocess.run(
         [
             sys.executable, str(HERE / "match.py"), "play",
