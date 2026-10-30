@@ -50,6 +50,7 @@
 #include "SlapController.h"
 #include "SlapNames.h"
 #include "SceneView.h"
+#include "ShaderCompiler.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundBase.h"
@@ -453,6 +454,30 @@ void ASlapHUD::DrawHUD()
 			FScreenshotRequest::RequestScreenshot(ShotFile, true, false);
 		}
 	}
+
+	// The loading curtain: until the shaders are compiled the athletes draw as grey T-posed placeholders on a checker
+	// floor (uncooked -game, 2026-10-30). Black until then, and the walk-in waits behind it (MarkDrawn feeds the
+	// controller's frame heartbeat). 30 s at most, so a stuck compile cannot hide the match for good.
+	if (!bSceneReady)
+	{
+		const int32 Jobs = GShaderCompilingManager ? GShaderCompilingManager->GetNumRemainingJobs() : 0;
+		const double Now = FPlatformTime::Seconds();
+		if (Jobs > 0 || LoadStart < 0.0) QuietSince = -1.0;
+		else if (QuietSince < 0.0) QuietSince = Now;
+		if (LoadStart < 0.0) LoadStart = Now;
+		bSceneReady = (QuietSince >= 0.0 && Now - QuietSince >= 0.3) || Now - LoadStart > 30.0;
+		if (bSceneReady) UE_LOG(LogTemp, Log, TEXT("SlapHUD: scene ready after %.1f s (%d shader jobs left)"), Now - LoadStart, Jobs);
+	}
+	if (!bSceneReady)
+	{
+		DrawRect(FLinearColor::Black, 0.f, 0.f, Canvas->ClipX, Canvas->ClipY);
+		const FString Msg = TEXT("LOADING THE ARENA");
+		float W = 0.f, TH = 0.f;
+		Canvas->TextSize(GEngine->GetLargeFont(), Msg, W, TH);
+		Canvas->SetDrawColor(FColor(200, 200, 200));
+		Canvas->DrawText(GEngine->GetLargeFont(), Msg, (Canvas->ClipX - W) * 0.5f, Canvas->ClipY * 0.5f);
+	}
+	else if (Controller.IsValid()) Controller->MarkDrawn();
 }
 
 void ASlapHUD::EndPlay(const EEndPlayReason::Type Reason)
@@ -506,6 +531,16 @@ void ASlapHUD::BuildUi()
 	Pairing = HerePairing = Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName == Here; });
 
 	LoadRoster();
+	{	// the menu opens on the pairing that is loaded ("L_Arena" is build_scene.py's grandpa vs grandpa)
+		const FString N = Here.ToString();
+		FString R = TEXT("grandpa"), B = TEXT("grandpa");
+		if (N.StartsWith(TEXT("L_Arena_"))) N.RightChop(8).Split(TEXT("_vs_"), &R, &B);
+		for (int32 a = 0; a < 2; ++a)
+		{
+			const int32 Slot = SlotCards.Find((a ? B : R).ToLower());
+			if (Slot != INDEX_NONE) SelectedFighter[a] = Slot;
+		}
+	}
 
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	TSharedPtr<SWidget> Spare;	// SAssignNew needs somewhere to put the widgets the test doesn't click
@@ -601,7 +636,7 @@ void ASlapHUD::BuildUi()
 	auto NextBrain = [Self, Fits](int32 a, int32 Dir)
 	{
 		const TArray<int32> F = Fits(a);	// empty when the HUD or the controller is gone: nothing below runs
-		if (F.Num() == 0 || Self->bTravelling || Self->Pairing != Self->HerePairing) return FReply::Handled();	// another pairing: its own brains, picked there
+		if (F.Num() == 0 || Self->bTravelling || Self->PairingFor(Self->SelectedFighter[0], Self->SelectedFighter[1]) != Self->HerePairing) return FReply::Handled();	// another pairing: its own brains, picked there
 		int32& P = Self->Pick[a];
 		if (P == INDEX_NONE)	// from the brain the corner plays now
 		{
@@ -620,21 +655,33 @@ void ASlapHUD::BuildUi()
 		return Box;
 	};
 	const FLinearColor RedTeam(0.85f, 0.22f, 0.18f), BlueTeam(0.2f, 0.45f, 0.9f);
+	auto StepFighter = [Self](int32 a, int32 Dir)	// the next character with an arena (Matt has none yet: skipped)
+	{
+		if (!Self.IsValid()) return FReply::Handled();
+		const int32 Cur = Self->SelectedFighter[a];
+		for (int32 s = 1; s < RosterSize; ++s)
+		{
+			const int32 Cand = (Cur + Dir * s + RosterSize * RosterSize) % RosterSize;
+			if (Self->Playable(Cand)) { Self->SelectedFighter[a] = Cand; Self->RosterSel = Cand; Self->Pick[a] = INDEX_NONE; break; }
+		}
+		return FReply::Handled();
+	};
 	auto Corner = [&](int32 a)
 	{
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[Arrow(TEXT("<"), [Self, a]
+		TSharedRef<SHorizontalBox> BrainRow = SNew(SHorizontalBox)	// the corner's brain, among those made for its character (this level only)
+			+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT("<"), [NextBrain, a] { return NextBrain(a, -1); }, Spare)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).HAlign(HAlign_Center)
+			[Label(TAttribute<FText>::CreateLambda([Self, a]
 			{
-				if (!Self.IsValid()) return FReply::Handled();
-				int32 Cur = Self->SelectedFighter[a];
-				for (int32 s = 1; s < RosterSize; ++s)
-				{
-					int32 Cand = (Cur - s + RosterSize) % RosterSize;
-					if (!Self->Slots[Cand].Key.IsEmpty()) { Self->SelectedFighter[a] = Cand; Self->RosterSel = Cand; break; }
-				}
-				return FReply::Handled();
-			}, Spare)]
+				if (!Self.IsValid()) return FText();
+				if (Self->PairingFor(Self->SelectedFighter[0], Self->SelectedFighter[1]) != Self->HerePairing) return FText::FromString(TEXT("level default"));
+				const int32 P = Self->Pick[a];
+				return FText::FromString(Self->Brains.IsValidIndex(P) ? Self->Brains[P].AssetName.ToString() : Self->Last.Brain[a]);
+			}), 11, Hi)]
+			+ SHorizontalBox::Slot().AutoWidth()[Arrow(TEXT(">"), [NextBrain, a] { return NextBrain(a, 1); }, a == 0 ? Hit[HitRedNext] : Spare)];
+		TSharedRef<SHorizontalBox> FighterRow = SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[Arrow(TEXT("<"), [StepFighter, a] { return StepFighter(a, -1); }, Spare)]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(FMargin(2.f, 0.f))
 			[
 				SNew(SBox).MinDesiredHeight(Touch)
@@ -664,17 +711,10 @@ void ASlapHUD::BuildUi()
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[Arrow(TEXT(">"), [Self, a]
-			{
-				if (!Self.IsValid()) return FReply::Handled();
-				int32 Cur = Self->SelectedFighter[a];
-				for (int32 s = 1; s < RosterSize; ++s)
-				{
-					int32 Cand = (Cur + s) % RosterSize;
-					if (!Self->Slots[Cand].Key.IsEmpty()) { Self->SelectedFighter[a] = Cand; Self->RosterSel = Cand; break; }
-				}
-				return FReply::Handled();
-			}, a == 0 ? Hit[HitRedNext] : Spare)];
+			[Arrow(TEXT(">"), [StepFighter, a] { return StepFighter(a, 1); }, Spare)];
+		return SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()[FighterRow]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)[BrainRow];
 	};
 	auto PairStep = [Self](int32 Dir)
 	{
@@ -700,7 +740,7 @@ void ASlapHUD::BuildUi()
 	for (int32 i = 0; i < RosterSize; ++i)
 	{
 		const bool bOpen = Slots[i].Key.IsEmpty();
-		if (!bOpen)
+		if (Playable(i))
 		{
 			StartGrid->AddSlot(i % 4, i / 4)
 			[
@@ -742,7 +782,7 @@ void ASlapHUD::BuildUi()
 		}
 		else
 		{
-			// Empty slot: kept blank for now as requested
+			// an open slot (kept blank), or a character with no arena yet (Matt: still in training) - not a pick
 			StartGrid->AddSlot(i % 4, i / 4)
 			[
 				SNew(SBorder)
@@ -753,7 +793,7 @@ void ASlapHUD::BuildUi()
 				[
 					SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(Touch).HAlign(HAlign_Center).VAlign(VAlign_Center)
 					[
-						Label(FText::FromString(FString::Printf(TEXT("%d"), i + 1)), 12, Dim * 0.35f)
+						Label(FText::FromString(bOpen ? FString::Printf(TEXT("%d"), i + 1) : FString::Printf(TEXT("%d. %s\nin training"), i + 1, *Slots[i].Key)), 11, Dim * (bOpen ? 0.35f : 0.7f))
 					]
 				]
 			];
@@ -775,31 +815,9 @@ void ASlapHUD::BuildUi()
 	{
 		if (!Self.IsValid() || Self->bTravelling) return FReply::Handled();	// a second tap while the level opens does nothing
 
-		const int32 RedSlot = Self->SelectedFighter[0];
-		const int32 BlueSlot = Self->SelectedFighter[1];
-		const FString RedCard = Self->SlotCards.IsValidIndex(RedSlot) && !Self->SlotCards[RedSlot].IsEmpty() ? Self->SlotCards[RedSlot] : TEXT("grandpa");
-		const FString BlueCard = Self->SlotCards.IsValidIndex(BlueSlot) && !Self->SlotCards[BlueSlot].IsEmpty() ? Self->SlotCards[BlueSlot] : TEXT("grandpa");
-
-		// Find the level for this matchup
-		FString WantedLevel = (RedCard == TEXT("grandpa") && BlueCard == TEXT("grandpa"))
-			? TEXT("L_Arena")
-			: FString::Printf(TEXT("L_Arena_%s_vs_%s"), *RedCard, *BlueCard);
-
-		int32 TargetPairing = Self->Pairings.IndexOfByPredicate([&](const FAssetData& A)
-		{
-			return A.AssetName.ToString().Equals(WantedLevel, ESearchCase::IgnoreCase);
-		});
-
-		if (TargetPairing == INDEX_NONE)
-		{
-			// Check reverse level
-			FString AltLevel = FString::Printf(TEXT("L_Arena_%s_vs_%s"), *BlueCard, *RedCard);
-			TargetPairing = Self->Pairings.IndexOfByPredicate([&](const FAssetData& A)
-			{
-				return A.AssetName.ToString().Equals(AltLevel, ESearchCase::IgnoreCase);
-			});
-		}
-
+		// the level for this pairing; none (a character without an arena) starts nothing rather than replaying this level
+		const int32 TargetPairing = Self->PairingFor(Self->SelectedFighter[0], Self->SelectedFighter[1]);
+		if (TargetPairing == INDEX_NONE && Self->HerePairing != INDEX_NONE) return FReply::Handled();
 		if (TargetPairing != INDEX_NONE && TargetPairing != Self->HerePairing)
 		{
 			Self->Travel(TargetPairing);
@@ -808,25 +826,10 @@ void ASlapHUD::BuildUi()
 
 		if (Self->Controller.IsValid())
 		{
-			UNNEModelData* B[2] = {};
+			UNNEModelData* B[2] = {};	// the brain each corner picked; none keeps the one it plays now (not the first "<card>_" brain)
 			for (int32 a = 0; a < 2; ++a)
 			{
-				if (Self->Brains.IsValidIndex(Self->Pick[a]))
-				{
-					B[a] = Cast<UNNEModelData>(Self->Brains[Self->Pick[a]].GetAsset());
-				}
-				else
-				{
-					const FString CardPrefix = (a == 0 ? RedCard : BlueCard) + TEXT("_");
-					for (const FAssetData& Asset : Self->Brains)
-					{
-						if (Asset.AssetName.ToString().StartsWith(CardPrefix))
-						{
-							B[a] = Cast<UNNEModelData>(Asset.GetAsset());
-							break;
-						}
-					}
-				}
+				if (Self->Brains.IsValidIndex(Self->Pick[a])) B[a] = Cast<UNNEModelData>(Self->Brains[Self->Pick[a]].GetAsset());
 			}
 			Self->Controller->RequestMatch(B[0], B[1]);
 			Self->Pick[0] = Self->Pick[1] = INDEX_NONE;
@@ -1254,6 +1257,30 @@ void ASlapHUD::LoadRoster()
 	TArray<FString> Names;
 	for (const FAssetData& B : Brains) Names.Add(B.AssetName.ToString());
 	Slap::LoadRoster(RosterSize, Slots, Names, &SlotCards);
+}
+
+int32 ASlapHUD::PairingFor(int32 RedSlot, int32 BlueSlot) const
+{
+	if (!SlotCards.IsValidIndex(RedSlot) || !SlotCards.IsValidIndex(BlueSlot) || SlotCards[RedSlot].IsEmpty() || SlotCards[BlueSlot].IsEmpty()) return INDEX_NONE;
+	auto Find = [this](const FString& Level)
+	{
+		return Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName.ToString().Equals(Level, ESearchCase::IgnoreCase); });
+	};
+	const FString& R = SlotCards[RedSlot];
+	const FString& B = SlotCards[BlueSlot];
+	int32 P = Find(FString::Printf(TEXT("L_Arena_%s_vs_%s"), *R, *B));
+	if (P == INDEX_NONE && R == TEXT("grandpa") && B == TEXT("grandpa")) P = Find(TEXT("L_Arena"));
+	if (P == INDEX_NONE) P = Find(FString::Printf(TEXT("L_Arena_%s_vs_%s"), *B, *R));	// only the other corner order was built
+	return P;
+}
+
+bool ASlapHUD::Playable(int32 Slot) const
+{
+	for (int32 o = 0; o < SlotCards.Num(); ++o)
+	{
+		if (PairingFor(Slot, o) != INDEX_NONE) return true;
+	}
+	return false;
 }
 
 void ASlapHUD::LayoutAudit()

@@ -746,6 +746,8 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 			A.WalkPhase = 0.0;
 			A.WalkT = 0;
 			A.bArrived = A.bFell = false;
+			A.SettleK = A.SettleN = 0;
+			A.WalkHold.Reset();
 		}
 		PlaceWalkers(m, d);
 		StepWalkIn(m, d);	// sets the walk-in HUD state
@@ -852,12 +854,65 @@ void USlapController::PlaceWalkers(const mjModel* m, mjData* d)
 	mj_forward(m, d);
 }
 
+void USlapController::HoldWalkers(const mjModel* m, mjData* d)
+{
+	for (FAthlete& A : Athletes)
+	{
+		if (!A.WalkNet || A.WalkHold.Num() != 7 + A.Act.Num()) continue;
+		for (int32 k = 0; k < 7; ++k) d->qpos[A.RootQ + k] = A.WalkHold[k];
+		for (int32 k = 0; k < 6; ++k) d->qvel[A.RootV + k] = 0.0;
+		for (int32 j = 0; j < A.Act.Num(); ++j)
+		{
+			d->qpos[A.Qadr[j]] = A.WalkHold[7 + j];
+			d->qvel[A.Vadr[j]] = 0.0;
+			A.Goal[j] = A.WalkHold[7 + j];
+		}
+	}
+	mj_forward(m, d);
+}
+
+void USlapController::BeginSettle(const mjModel* m, const mjData* d, FAthlete& A, bool bDown) const
+{
+	A.SettleFrom.SetNumUninitialized(7 + A.Act.Num());
+	for (int32 k = 0; k < 7; ++k) A.SettleFrom[k] = d->qpos[A.RootQ + k];
+	for (int32 j = 0; j < A.Act.Num(); ++j) A.SettleFrom[7 + j] = d->qpos[A.Qadr[j]];
+	const double Off = FMath::Sqrt(FMath::Square(d->qpos[A.RootQ] - m->qpos0[A.RootQ]) + FMath::Square(d->qpos[A.RootQ + 1] - m->qpos0[A.RootQ + 1]));
+	const double Seconds = FMath::Min(SettleMax, (bDown ? 1.2 : 0.6) + Off);	// longer from the floor or from farther off
+	A.SettleK = 0;
+	A.SettleN = FMath::Max<int64>(1, HoldSteps(Seconds));
+}
+
+void USlapController::StepSettle(const mjModel* m, mjData* d, FAthlete& A) const
+{
+	A.SettleK = FMath::Min(A.SettleK + 1, A.SettleN);
+	const double S = (double)A.SettleK / (double)A.SettleN;
+	const double U = S * S * (3.0 - 2.0 * S);
+	for (int32 k = 0; k < 3; ++k) d->qpos[A.RootQ + k] = FMath::Lerp(A.SettleFrom[k], m->qpos0[A.RootQ + k], U);
+	const double* Q0 = A.SettleFrom.GetData() + 3;	// the root's turn: nlerp on the near hemisphere
+	const mjtNum* Q1 = m->qpos0 + A.RootQ + 3;
+	const double Sgn = Q0[0] * Q1[0] + Q0[1] * Q1[1] + Q0[2] * Q1[2] + Q0[3] * Q1[3] < 0.0 ? -1.0 : 1.0;
+	mjtNum Q[4];
+	for (int32 k = 0; k < 4; ++k) Q[k] = FMath::Lerp(Sgn * Q0[k], Q1[k], U);
+	mju_normalize4(Q);
+	for (int32 k = 0; k < 4; ++k) d->qpos[A.RootQ + 3 + k] = Q[k];
+	for (int32 j = 0; j < A.Act.Num(); ++j)
+	{
+		const double V = FMath::Lerp(A.SettleFrom[7 + j], A.Stand[j], U);
+		d->qpos[A.Qadr[j]] = V;
+		d->qvel[A.Vadr[j]] = 0.0;
+		A.Goal[j] = V;
+	}
+	for (int32 k = 0; k < 6; ++k) d->qvel[A.RootV + k] = 0.0;
+}
+
 void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 {
 	// Pre-match walk-in. An athlete with a walking brain (S2) walks the aisle on it - MuJoCo moves him; the brain gets a
 	// speed and a heading toward his foot box, as in training (envs/locomotion.py) - and his match brain takes over, on
 	// guard, once he is there. Without one, the scripted stride: the root slides in from 1.6 m while the legs swing on a
 	// clock. Display only either way: when the walk-in ends, StartTurn() resets mjData to the exact stand pose (parity).
+	// A brain walker who arrives (or falls, or runs out of time) settles from where he is onto that stand pose and holds
+	// it while the other finishes, so the reset moves nobody: no teleport at the podium (user 2026-10-30).
 	const double Prog = FMath::Clamp((WalkInTotal - WalkInLeft) * m->opt.timestep / FMath::Max(WalkInHold, 0.1), 0.0, 1.0);	// the scripted stride's
 	const double S = FMath::Clamp(Prog / 0.85, 0.0, 1.0);
 	const double U = S * S * (3.0 - 2.0 * S);
@@ -866,17 +921,30 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	const double Phase = 2.0 * PI * 1.8 * Prog * WalkInHold;
 	float Obs[NumObs];
 	const bool bRunNet = StepCount % ControlEvery == 0;	// 50 Hz, also while WalkInLeft holds still (level load)
-	const bool bReady = bHudReady.load(std::memory_order_relaxed);
-	if (!bReady) PlaceWalkers(m, d);	// the level is still loading: the walkers wait at the top of the aisle
+	const bool bReady = HudLive();
+	if (!bReady)	// nothing is being drawn (level load, a hitch): the walk waits for the screen
+	{
+		if (WalkInLeft == WalkInTotal) PlaceWalkers(m, d);	// not begun: at the top of the aisle
+		else HoldWalkers(m, d);	// begun: frozen where the screen last showed them
+	}
 	FString Note;
-	bool bDone = true;	// everybody at the box or down
+	bool bDone = true;	// everybody on the stand pose
+	bool bPlaced = false;	// a settling athlete was placed this step
+	const bool bLate = bReady && WalkInLeft * m->opt.timestep <= SettleMax;	// the timeout is near: whoever still walks settles now
 	for (int32 a = 0; a < FMath::Min(2, Athletes.Num()); ++a)
 	{
 		FAthlete& A = Athletes[a];
 		if (A.WalkNet)
 		{
-			bDone &= A.bArrived || A.bFell;
-			if (!bReady || !bRunNet || A.bFell) continue;	// a fallen walker lies where he fell until the turn's reset
+			if (bReady && A.SettleN == 0 && bLate) BeginSettle(m, d, A, false);
+			if (A.SettleN > 0)
+			{
+				if (bReady) { StepSettle(m, d, A); bPlaced = true; }
+				bDone &= A.SettleK >= A.SettleN;
+				continue;
+			}
+			bDone = false;
+			if (!bReady || !bRunNet) continue;
 			const FString Fell = Down(m, d, A, false);
 			if (!Fell.IsEmpty() || d->xpos[3 * A.Pelvis + 2] < 0.45)	// locomotion.py's fall
 			{
@@ -884,6 +952,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 					Fell.IsEmpty() ? TEXT("pelvis low") : *Part(Fell), d->xpos[3 * A.Pelvis + 2], FMath::Abs(m->qpos0[A.RootQ] - d->xpos[3 * A.Pelvis]));
 				A.bFell = true;
 				Note = A.Name.ToUpper() + TEXT(" stumbles on the walk-in!");
+				BeginSettle(m, d, A, true);	// he gets up onto his box
 				continue;
 			}
 			const double* P = d->xpos + 3 * A.Pelvis;
@@ -892,6 +961,8 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 			{
 				UE_LOG(LogSlap, Log, TEXT("walk-in: %s at the box after %.1f s"), *A.Name, A.WalkT * 0.02);
 				A.bArrived = true;
+				BeginSettle(m, d, A, false);	// the last few cm onto the stand pose; standing on the walking brain dropped Kim
+				continue;
 			}
 			float Value = 0.f;
 			{	// the walking brain to the box and then standing in it (command 0, as S2 trains) until the first turn's reset:
@@ -961,7 +1032,16 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 		SetJ(A.ShSwingL, -0.30 * SinP);
 		SetJ(A.ShSwingR, 0.30 * SinP);
 	}
-	if (!(Athletes[0].WalkNet && Athletes[1].WalkNet)) mj_forward(m, d);	// a scripted athlete was placed
+	if (bPlaced || !(Athletes[0].WalkNet && Athletes[1].WalkNet)) mj_forward(m, d);	// a scripted or settling athlete was placed
+	if (bReady)
+		for (FAthlete& A : Athletes)
+		{
+			if (!A.WalkNet) continue;
+			A.WalkHold.SetNumUninitialized(7 + A.Act.Num());
+			for (int32 k = 0; k < 7; ++k) A.WalkHold[k] = d->qpos[A.RootQ + k];
+			for (int32 j = 0; j < A.Act.Num(); ++j) A.WalkHold[7 + j] = d->qpos[A.Qadr[j]];
+		}
+	if (bReady && !bDone && WalkInLeft <= 2) WalkInLeft = 3;	// a settle still running at the timeout: wait for it
 	double Walked = 1.0;	// the HUD's progress: the slower of the two
 	for (const FAthlete& A : Athletes)
 	{
@@ -1470,7 +1550,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		if (WalkInLeft > 0)
 		{
 			StepWalkIn(m, d);
-			if (bHudReady.load(std::memory_order_relaxed)) --WalkInLeft;
+			if (HudLive()) --WalkInLeft;
 		}
 		else
 		{

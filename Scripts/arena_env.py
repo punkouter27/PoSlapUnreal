@@ -15,6 +15,12 @@ PROJ = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 ASSETS = unreal.EditorAssetLibrary
 ENV = "/Game/Arena/Env"
 LABELS = ("Env_", "KeyLight", "TrussSpot", "HouseLight", "RimRed", "RimBlue", "ArenaHaze", "ArenaEnvironment")
+# The broadcast side (user 2026-10-30): the camera looks from MuJoCo -Y (UE +Y), so red (-X) is on the screen's left under
+# the HUD's red-first rows. Arena_v2.blend was dressed for a camera at MuJoCo +Y (press row on the camera side, judges'
+# table across), so the dressing is turned SET_YAW about the arena's centre; the foot boxes are the referee's (red -X,
+# blue +X) and stay put.
+CAM, CAM_YAW, SET_YAW = (0, 520, 130), -90.0, 180.0
+FIXED = ("FootBox_",)   # env meshes that keep the physics frame
 
 
 def log(msg):
@@ -59,6 +65,8 @@ def build(spawn, reimport=True):
         a.static_mesh_component.set_static_mesh(m)
         a.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
         a.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+        if not m.get_name().removeprefix("SM_").startswith(FIXED):
+            a.set_actor_rotation(unreal.Rotator(roll=0.0, pitch=0.0, yaw=SET_YAW), False)   # baked at the origin: turns about the centre
         a.set_folder_path("ArenaEnv")
 
     def spot(label, loc, lumens, cone, to=(0, 0, 100), color=None, beams=0.6, shadows=True):
@@ -83,9 +91,9 @@ def build(spawn, reimport=True):
         t = k / 16 * 4; side, f = int(t), t - int(t)
         (x0, y0), (x1, y1) = cs[side], cs[(side + 1) % 4]
         spot(f"TrussSpot{k}", (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 675), 1000.0, 20.0, beams=0.3, shadows=False)
-    # rims: behind the athletes from the camera (camera at UE y = -520, so behind = +y), warm red corner, cool blue corner
-    spot("RimRed", (-180, 320, 320), 2500.0, 22.0, to=(-43, 0, 130), color=(255, 140, 90), beams=0.3)
-    spot("RimBlue", (180, 320, 320), 2500.0, 22.0, to=(43, 0, 130), color=(115, 150, 255), beams=0.3)
+    # rims: behind the athletes from the camera (camera at UE y = +520, so behind = -y), warm red corner, cool blue corner
+    spot("RimRed", (-180, -320, 320), 2500.0, 22.0, to=(-43, 0, 130), color=(255, 140, 90), beams=0.3)
+    spot("RimBlue", (180, -320, 320), 2500.0, 22.0, to=(43, 0, 130), color=(115, 150, 255), beams=0.3)
     for k in range(8):
         a = k / 8 * 2 * math.pi
         p = spawn(unreal.PointLight, f"HouseLight{k}", (1100 * math.cos(a), 1100 * math.sin(a), 1150))
@@ -138,6 +146,7 @@ if __name__ == "__main__":
     build(spawn, reimport=__import__("os").environ.get("SLAP_REIMPORT") == "1")   # the look only, unless asked
     for a in eas.get_all_level_actors():
         if isinstance(a, unreal.CineCameraActor):
+            a.set_actor_location_and_rotation(unreal.Vector(*CAM), unreal.Rotator(roll=0.0, pitch=0.0, yaw=CAM_YAW), False, False)   # the broadcast side
             cc = a.get_cine_camera_component()
             cc.set_editor_property("post_process_settings", grade(cc.get_editor_property("post_process_settings")))
     les.save_current_level()

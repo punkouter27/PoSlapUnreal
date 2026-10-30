@@ -94,6 +94,8 @@ private:
 	void CacheAthletes();	// Skin and Body, until both athletes are found
 	TArray<float> Frames;
 	double FpsSince = 0.0;
+	bool bSceneReady = false;	// the loading curtain is up until the shaders are compiled (DrawHUD)
+	double LoadStart = -1.0, QuietSince = -1.0;	// FPlatformTime: the first frame, and since when no shader job is left
 	float ShotAt = -1.f, FxTestAt = -1.f;
 	FDateTime ShotRequested;			// when the last -SlapShot screenshot request went out (retried after 5 s)
 	int32 ShotRetries = 0;
@@ -135,6 +137,8 @@ private:
 	TArray<FAssetData> Pairings;	// /Game/Levels/L_Arena*: one level per pairing (build_scene.py SLAP_RED / SLAP_BLUE)
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
 	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
+	int32 PairingFor(int32 RedSlot, int32 BlueSlot) const;	// the level for these two slots (either corner order), or none
+	bool Playable(int32 Slot) const;	// the slot's character has an arena level with somebody (Matt: still in training)
 	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/L_Arena open the next pairing at 3 s, then log what loaded
 	enum EHit { HitMenu, HitTabMatch, HitTabData, HitTabSci, HitTabRoster, HitTabSet, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad, HitRematch, HitCount };
 	bool bQuarter = false;	// the replay runs at 1/4 speed instead of 1/2 (the MATCH tab's x1/4 badge)

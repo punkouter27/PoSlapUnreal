@@ -32,12 +32,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if not self._guard():
             return          # refuse: do NOT fall through and serve the file anyway
-        super().do_GET()
+        try:
+            super().do_GET()
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError):
+            pass
 
     def do_HEAD(self):
         if not self._guard():
             return
-        super().do_HEAD()
+        try:
+            super().do_HEAD()
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError):
+            pass
 
     def _guard(self):
         """Refuse anything outside Web/ and training/ (the .git directory, Saved/, Logs/, the venv).
@@ -68,4 +74,11 @@ opts = ap.parse_args()
 host, port = opts.host, opts.port
 handler = functools.partial(Handler, directory=str(ROOT))
 print(f"PoSlap: http://{'localhost' if host == '127.0.0.1' else host}:{port}/Web/", flush=True)
-http.server.ThreadingHTTPServer((host, port), handler).serve_forever()
+server = http.server.ThreadingHTTPServer((host, port), handler)
+while True:
+    try:
+        server.serve_forever()
+    except (KeyboardInterrupt, SystemExit):
+        break
+    except Exception:
+        continue

@@ -214,8 +214,8 @@ for team, prefix, card in (("Red", "red_", RED), ("Blue", "blue_", BLUE)):
 import arena_env   # Scripts/ is on sys.path (broadcast_fx above)
 arena_env.build(spawn, reimport=False)   # the shared env meshes; Scripts/arena_env.py standalone re-imports them
 
-# portrait 9:16 camera, side-on to the X axis the athletes face along (Blueprint 3)
-cam = spawn(unreal.CineCameraActor, "PortraitCamera", (0, -520, 130), (0, 90, 0))
+# portrait 9:16 camera, side-on to the X axis the athletes face along (Blueprint 3), on the broadcast side (arena_env.CAM)
+cam = spawn(unreal.CineCameraActor, "PortraitCamera", arena_env.CAM, (0, arena_env.CAM_YAW, 0))
 cc = cam.get_cine_camera_component()
 fb = cc.get_editor_property("filmback")
 fb.sensor_width, fb.sensor_height = 13.5, 24.0

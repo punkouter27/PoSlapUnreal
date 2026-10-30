@@ -10,7 +10,11 @@ export const MATCHUPS = {
         corners: [{ prefix: "red_", char: "kim", brain: "kim_L4" }, { prefix: "blue_", char: "kim", brain: "kim_L4" }] },
   gk: { name: "Grandpa vs Kim", xml: "grandpa_vs_kim_arena.xml", defenderRole: -1,
         corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_final_vs_kim" }, { prefix: "blue_", char: "kim", brain: "kim_final_vs_grandpa" }] },
+  kg: { name: "Kim vs Grandpa", xml: "kim_vs_grandpa_arena.xml", defenderRole: -1,
+        corners: [{ prefix: "red_", char: "kim", brain: "kim_final_vs_grandpa" }, { prefix: "blue_", char: "grandpa", brain: "grandpa_final_vs_kim" }] },
 };
+// the key of a pairing: each corner's character initial, red first ("gk" = Grandpa red, Kim blue); null = not on this page
+export const matchupKey = (red, blue) => Object.keys(MATCHUPS).find(k => MATCHUPS[k].corners[0].char === red && MATCHUPS[k].corners[1].char === blue) ?? null;
 
 export async function loadMatch(mj, ort, get, emit, key = "gg") {
   const mu = MATCHUPS[key];

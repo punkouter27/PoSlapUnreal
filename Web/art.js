@@ -13,6 +13,13 @@ export async function loadArena(scene) {
   const gltf = await load("./assets/arena.glb");
   const root = new THREE.Group();
   root.rotation.x = Math.PI / 2;   // glTF is Y-up; the arena was modelled in MuJoCo's Z-up frame
+  // the broadcast side (Scripts/arena_env.py SET_YAW): the dressing turned 180 degrees about the centre, so the camera
+  // at -Y sees the set as designed (judges' table across, press row behind it); the foot boxes keep the physics frame
+  gltf.scene.rotation.y = Math.PI;
+  for (const n of [...gltf.scene.children]) {
+    if (!/^FootBox/.test(n.name)) continue;
+    n.position.set(-n.position.x, n.position.y, -n.position.z); n.rotation.y += Math.PI;   // undo the turn for these
+  }
   root.add(gltf.scene); scene.add(root);
   gltf.scene.traverse(o => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = /podium|pod/i.test(o.name); } });
   return root;

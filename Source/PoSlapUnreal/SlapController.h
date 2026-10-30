@@ -144,7 +144,7 @@ public:
 	int32 DefenderRole = -1;
 
 	/** Thread-safe copy of the match state for the HUD (into a kept FSlapHud: its strings reuse their buffers). */
-	void GetHud(FSlapHud& Out) const { bHudReady.store(true, std::memory_order_relaxed); FScopeLock L(&HudLock); Out = Hud; Out.Steps = StepCount.load(std::memory_order_relaxed); Out.Timestep = Timestep; }
+	void GetHud(FSlapHud& Out) const { FScopeLock L(&HudLock); Out = Hud; Out.Steps = StepCount.load(std::memory_order_relaxed); Out.Timestep = Timestep; }
 
 	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
 	 *  physics step; the match in progress is abandoned, unscored. */
@@ -196,6 +196,11 @@ private:
 		double WalkPhase = 0.0;
 		int32 WalkT = 0;
 		bool bArrived = false, bFell = false;
+		// the settle at the end of the walk-in: from where he stopped (or fell) onto the exact stand pose, so the first
+		// turn's reset moves nothing (user 2026-10-30: no teleport at the podium)
+		TArray<double> SettleFrom;	// root (7) + joints in Qadr order, captured when the settle began
+		int64 SettleK = 0, SettleN = 0;	// steps into the settle / its length (0 = not settling)
+		TArray<double> WalkHold;	// root (7) + joints at the last drawn step: held through a render hitch
 	};
 
 	// Eye contact + post-slap poise (match.py GAZE_/WATCH_/PLANT_/STAB_ constants): identical maths both sides -
@@ -216,14 +221,24 @@ private:
 	void Faint(mjModel* m);	// a faint starting or ending this step (before the referee looks, as match.py)
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
 	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
-	mutable std::atomic<bool> bHudReady = false;	// set once ASlapHUD::DrawHUD begins rendering so walk-in isn't consumed during level load
+	mutable std::atomic<double> HudAt = 0.0;	// FPlatformTime of the last frame ASlapHUD drew with the curtain down (MarkDrawn)
+	// The walk-in runs only while frames are being drawn: a level-load hitch froze the screen for ~3 s while the physics
+	// thread walked both athletes to the podium unseen, so they appeared there (2026-10-30)
+public:
+	void MarkDrawn() const { HudAt.store(FPlatformTime::Seconds(), std::memory_order_relaxed); }	// ASlapHUD: a frame of the scene was drawn (curtain down)
+private:
+	bool HudLive() const { return FPlatformTime::Seconds() - HudAt.load(std::memory_order_relaxed) < 0.12; }
 	bool bWalkIn = true;	// -SlapWalkIn=0 disables pre-match walk-in
 	static int64 HoldSteps(double Seconds);
 	void StepWalkIn(const mjModel* m, mjData* d);
 	void PlaceWalkers(const mjModel* m, mjData* d);	// brain walkers back at the top of the aisle, standing
+	void HoldWalkers(const mjModel* m, mjData* d);	// brain walkers frozen where the screen last showed them
+	void BeginSettle(const mjModel* m, const mjData* d, FAthlete& A, bool bDown) const;
+	void StepSettle(const mjModel* m, mjData* d, FAthlete& A) const;	// one physics step of the settle, then holds the stand pose
 	static constexpr double Aisle = 2.4;	// m behind the foot box where a brain walker starts
 	static constexpr double WalkSpeed = 1.1;	// m/s (S2 trained 1.0-1.4)
-	static constexpr double WalkTimeout = 8.0;	// s: whoever hasn't arrived is placed at the box by the first turn's reset
+	static constexpr double WalkTimeout = 8.0;	// s: whoever hasn't arrived by then settles onto the box from where he is
+	static constexpr double SettleMax = 1.8;	// s: the longest settle (started this long before the timeout)
 	bool bInTurn = false;
 	FTurn Turn;
 	FArchive* Log = nullptr;
