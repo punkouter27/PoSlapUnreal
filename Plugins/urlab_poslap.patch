@@ -1,7 +1,7 @@
 From e9fc1d6c4106aa75e1959df2b37c09aadf3d2ecd Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:28:05 -0400
-Subject: [PATCH 1/6] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
+Subject: [PATCH 1/7] Pin MuJoCo to 3.10.0 (match PoSlap trainer)
 
 ---
  third_party/MuJoCo/src | 2 +-
@@ -21,7 +21,7 @@ index 67a1ea6..28009f9 160000
 From 14373b8981961f5a52e5d7c457f6f26cd094f84c Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:50:39 -0400
-Subject: [PATCH 2/6] UE 5.8: JSON object keys are FSharedString
+Subject: [PATCH 2/7] UE 5.8: JSON object keys are FSharedString
 
 ---
  .../URLab/Private/Bridge/MsgpackHelpers.cpp   |  2 +-
@@ -145,7 +145,7 @@ index 9758d6f..2f812b9 100644
 From c6589d1397d809140d40f1debc8788426bd8d4f3 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Wed, 21 Oct 2026 14:51:00 -0400
-Subject: [PATCH 3/6] UE 5.8: remaining FSharedString keys
+Subject: [PATCH 3/7] UE 5.8: remaining FSharedString keys
 
 ---
  Source/URLab/Private/Bridge/RpcDispatcher.cpp | 4 ++--
@@ -180,7 +180,7 @@ index 2f812b9..a9adf88 100644
 From 165aef616968628d30116a7bdb1095b2d3437565 Mon Sep 17 00:00:00 2001
 From: punkouter26 <punkouter26@gmail.com>
 Date: Sun, 25 Oct 2026 12:19:00 -0400
-Subject: [PATCH 4/6] feat(android): add Android arm64-v8a build support for
+Subject: [PATCH 4/7] feat(android): add Android arm64-v8a build support for
  MuJoCo 3.10.0
 
 ---
@@ -368,7 +368,7 @@ index 0000000..8ce516f
 From 74606a4dc2b4c2738a0832816bfed9236787ffc6 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Mon, 26 Oct 2026 04:09:43 -0400
-Subject: [PATCH 5/6] Android: stub libzmq/CoACD headers, package libmujoco.so
+Subject: [PATCH 5/7] Android: stub libzmq/CoACD headers, package libmujoco.so
 
 The dev bridge (ZMQ) and mesh decomposition (CoACD) have no Android build;
 stub headers make their calls fail cleanly. URLab_UPL.xml copies
@@ -478,7 +478,7 @@ index 0000000..a152b3f
 From 3a79fffe9d0d7dd649b8e711c5e2ddb2a921c3d1 Mon Sep 17 00:00:00 2001
 From: PoSlap <punkouter26@gmail.com>
 Date: Mon, 26 Oct 2026 10:14:25 -0400
-Subject: [PATCH 6/6] Android: 16 KB page-aligned libmujoco.so (Android 15+)
+Subject: [PATCH 6/7] Android: 16 KB page-aligned libmujoco.so (Android 15+)
 
 ---
  third_party/MuJoCo/build_android.ps1 | 2 ++
@@ -501,6 +501,52 @@ index 8ce516f..380c80b 100644
  Pop-Location
  Write-Host "MuJoCo Android build complete: $stageDir/libmujoco.so" -ForegroundColor Green
 +
+-- 
+2.55.0.windows.3
+
+
+From b696fd1ba3628bb42ad94094c62d1f130a8e437d Mon Sep 17 00:00:00 2001
+From: punko <punko@users.noreply.github.com>
+Date: Fri, 30 Oct 2026 16:59:41 -0400
+Subject: [PATCH 7/7] Twist controller: don't cache input assets in
+ GC-invisible statics
+
+AMjArticulation::PostInitializeComponents kept IMC_TwistControl, IA_TwistMove and IA_TwistTurn in
+function-local static raw pointers. GC cannot see those, so after the first world was torn down (level
+travel) the assets could be collected and every later articulation got dangling pointers, which then
+reached the twist controller and Enhanced Input. The next GC walked them and asserted
+IsValidIndex(Index) in a slow AddReferencedObjects call (FSlowARO) - at the latest at exit.
+Repro (PoSlap): open an arena level, travel to another arena level, quit: 7/10 crashed; 0/16 after.
+LoadObject returns the already-loaded asset, so loading per articulation costs nothing.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp b/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
+index 3b9dc2a..bb93761 100644
+--- a/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
++++ b/Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp
+@@ -86,11 +86,15 @@ void AMjArticulation::PostInitializeComponents()
+ 	{
+ 		UMjTwistController* TwistCtrl = NewObject<UMjTwistController>(this, TEXT("TwistController"));
+ 
+-		static UInputMappingContext* DefaultIMC = LoadObject<UInputMappingContext>(
++		// Not cached in function-local statics: those raw pointers are invisible to GC, so once the first world was
++		// torn down the assets could be collected and every later world handed dangling pointers to the twist
++		// controller and Enhanced Input (a garbage InternalIndex at the next GC: IsValidIndex assert on level
++		// travel + exit). LoadObject returns the already-loaded asset, so loading per articulation is cheap.
++		UInputMappingContext* DefaultIMC = LoadObject<UInputMappingContext>(
+ 			nullptr, TEXT("/UnrealRoboticsLab/Input/IMC_TwistControl.IMC_TwistControl"));
+-		static UInputAction* DefaultMove = LoadObject<UInputAction>(
++		UInputAction* DefaultMove = LoadObject<UInputAction>(
+ 			nullptr, TEXT("/UnrealRoboticsLab/Input/IA_TwistMove.IA_TwistMove"));
+-		static UInputAction* DefaultTurn = LoadObject<UInputAction>(
++		UInputAction* DefaultTurn = LoadObject<UInputAction>(
+ 			nullptr, TEXT("/UnrealRoboticsLab/Input/IA_TwistTurn.IA_TwistTurn"));
+ 
+ 		if (DefaultIMC)
 -- 
 2.55.0.windows.3
 
