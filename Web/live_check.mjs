@@ -7,9 +7,16 @@ const port = 8799, url = `ws://127.0.0.1:${port}`, key = "check-key";
 const relay = spawn("python", ["Web/live.py", "--port", String(port), "--key", key], { stdio: "ignore" });
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const open = u => new Promise((ok, bad) => { const w = new WebSocket(u); w.onopen = () => ok(w); w.onerror = bad; });
+// the relay needs a moment to bind (a busy machine can take seconds): wait for it instead of guessing
+async function waitForRelay() {
+  for (let i = 0; i < 80; i++) {
+    try { await fetch(`http://127.0.0.1:${port}/`); return true; } catch { await wait(250); }
+  }
+  return false;
+}
 let ok = false;
 try {
-  await wait(800);
+  await waitForRelay();
   const got = [], late = [];
   const viewer = await open(url); viewer.onmessage = e => got.push(JSON.parse(e.data));
   const ue = await open(`${url}/ue?key=${key}`);

@@ -13,6 +13,13 @@ const check = (name, cond, extra = "") => {
 };
 
 const startRelay = (port, args) => spawn("python", ["Web/live.py", "--port", String(port), ...args], { stdio: ["ignore", "inherit", "inherit"] });
+// the relay needs a moment to bind (a busy machine can take seconds): wait for it instead of guessing
+async function waitForRelay(port) {
+  for (let i = 0; i < 80; i++) {
+    try { await fetch(`http://127.0.0.1:${port}/`); return true; } catch { await wait(250); }
+  }
+  return false;
+}
 
 // ---- the main relay: a publisher key and a separate API key -----------------------------------------------
 const port = 8801, base = `http://127.0.0.1:${port}`;
@@ -21,7 +28,7 @@ const relay = startRelay(port, ["--key", key, "--api-key", apiKey]);
 const withKey = (p = "") => `${base}${p}${p.includes("?") ? "&" : "?"}key=${apiKey}`;
 
 try {
-  await wait(800);
+  await waitForRelay(port);
   const ue = await open(`ws://127.0.0.1:${port}/ue?key=${key}`);
   const ev = e => ue.send(JSON.stringify({ t: "ev", e }));
   ue.send(JSON.stringify({ t: "pose", c: ["grandpa", "kim"], m: 3, r: 1, s: "red", w: false, slow: 1, q: new Array(74).fill(0) }));
@@ -131,7 +138,7 @@ try {
   const port2 = 8802, base2 = `http://127.0.0.1:${port2}`;
   const relay2 = startRelay(port2, ["--key", key]);
   try {
-    await wait(800);
+    await waitForRelay(port2);
     check("inherit: no key is refused", (await fetch(`${base2}/api/health`)).status === 401);
     check("inherit: the publisher's key opens the API", (await fetch(`${base2}/api/health?key=${key}`)).status === 200);
   } catch (err) {
@@ -147,7 +154,7 @@ try {
   const port3 = 8803, base3 = `http://127.0.0.1:${port3}`;
   const relay3 = startRelay(port3, ["--api-public"]);
   try {
-    await wait(800);
+    await waitForRelay(port3);
     let limited = false;
     for (let i = 0; i < 140 && !limited; i++) limited = (await fetch(`${base3}/api/health`)).status === 429;
     check("rate: the limiter answers 429", limited);
