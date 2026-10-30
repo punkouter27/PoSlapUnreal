@@ -54,6 +54,9 @@ jobs:
       - name: Every python file parses
         run: python -m compileall -q training Web
 
+      - name: Asset naming and folder conventions
+        run: python Scripts/check_naming.py
+
       - name: Install the CPU simulation dependencies
         run: python -m pip install --upgrade pip && python -m pip install "mujoco==3.10.0" numpy
 
