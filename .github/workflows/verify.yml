@@ -63,6 +63,9 @@ jobs:
       - name: Character cards, models and packaged staging
         run: python training/verify_cards.py
 
+      - name: The three engines agree on the shared numbers
+        run: python training/verify_constants.py
+
       - name: The dev server serves only Web/ and training/
         run: |
           python Web/serve.py --port 8099 &
