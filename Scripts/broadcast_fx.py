@@ -24,12 +24,23 @@ def log(msg):
 
 
 def add_ripple(skin):
-    """A damped ring of world-position offset around RipplePoint, at most 14 cm across. No-op if the skin has one."""
-    if MEL.get_material_property_input_node(skin, unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET):
-        return False
+    """A damped ring of world-position offset around RipplePoint, at most 14 cm across, PLUS a one-sided push along
+    RippleDir: the cheek is deformed by the slap, not only rippled. An older ring (the first version) is rebuilt;
+    a material with anything else in the offset is left alone."""
+    prop = unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET
+    src = MEL.get_material_property_input_node(skin, prop)
+    if src is not None:
+        if not isinstance(src, unreal.MaterialExpressionCustom) or src.get_editor_property("code") != RIPPLE_OLD:
+            return False
+        old_inputs = [n for n in MEL.get_inputs_for_material_expression(skin, src) if n]
+        MEL.delete_material_expression(skin, src)
+        for n in old_inputs:
+            MEL.delete_material_expression(skin, n)
     wp = MEL.create_material_expression(skin, unreal.MaterialExpressionWorldPosition, -900, 900)
     pt = MEL.create_material_expression(skin, unreal.MaterialExpressionVectorParameter, -900, 1000)
     pt.set_editor_property("parameter_name", "RipplePoint")
+    dr = MEL.create_material_expression(skin, unreal.MaterialExpressionVectorParameter, -900, 1150)
+    dr.set_editor_property("parameter_name", "RippleDir")
     dist = MEL.create_material_expression(skin, unreal.MaterialExpressionDistance, -650, 950)
     MEL.connect_material_expressions(wp, "", dist, "A")
     MEL.connect_material_expressions(pt, "", dist, "B")
@@ -41,10 +52,10 @@ def add_ripple(skin):
         params[name] = p
     normal = MEL.create_material_expression(skin, unreal.MaterialExpressionVertexNormalWS, -650, 1250)
     code = MEL.create_material_expression(skin, unreal.MaterialExpressionCustom, -350, 1000)
-    code.set_editor_property("code", "float fall = saturate(1 - D / 14);\nreturn N * (A * exp(-T * 7) * sin(D * 0.7 - T * 45) * fall);")
+    code.set_editor_property("code", RIPPLE)
     code.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     ins = []
-    for n in ("D", "T", "A", "N"):
+    for n in ("D", "T", "A", "N", "W"):
         c = unreal.CustomInput()
         c.set_editor_property("input_name", n)
         ins.append(c)
@@ -53,9 +64,22 @@ def add_ripple(skin):
     MEL.connect_material_expressions(params["RippleTime"], "", code, "T")
     MEL.connect_material_expressions(params["RippleAmp"], "", code, "A")
     MEL.connect_material_expressions(normal, "", code, "N")
-    MEL.connect_material_property(code, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    MEL.connect_material_expressions(dr, "", code, "W")
+    MEL.connect_material_property(code, "", prop)
+    try:
+        skin.set_editor_property("max_world_position_offset_displacement", 25.0)   # the cheek's own bounds
+    except Exception:
+        pass
     MEL.recompile_material(skin)
     return True
+
+
+RIPPLE_OLD = "float fall = saturate(1 - D / 14);\nreturn N * (A * exp(-T * 7) * sin(D * 0.7 - T * 45) * fall);"
+RIPPLE = ("float fall = saturate(1 - D / 14);\n"                                     # the ring, 14 cm across
+          "float ring = A * exp(-T * 7) * sin(D * 0.7 - T * 45) * fall;\n"
+          "float3 dir = normalize(W + float3(0, 0, 0.001));\n"                        # the slap's direction
+          "float push = A * exp(-T * 9) * fall * fall * saturate(dot(N, dir));\n"
+          "return N * ring + dir * push * 4.0;")                                       # the cheek is pushed along the slap
 
 
 WEAR = ("float f = A * saturate(1 - distance(P, F) / 9);\n"
@@ -132,15 +156,34 @@ def add_scuff():
 
 
 def add_reverb():
-    """/Game/Audio/RV_Arena: a big hall, ASlapHUD activates it at the start of play."""
-    path = "/Game/Audio/RV_Arena"
-    rv = ASSETS.load_asset(path) if ASSETS.does_asset_exist(path) else unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-        "RV_Arena", "/Game/Audio", unreal.ReverbEffect, unreal.ReverbEffectFactory())
-    for k, v in (("density", 1.0), ("diffusion", 1.0), ("gain", 0.4), ("gain_hf", 0.6), ("decay_time", 1.8),
-                 ("decay_hf_ratio", 0.7), ("reflections_gain", 0.3), ("reflections_delay", 0.02), ("late_gain", 1.4), ("late_delay", 0.035)):
-        rv.set_editor_property(k, v)
-    ASSETS.save_loaded_asset(rv)
-    log("RV_Arena")
+    """/Game/Audio/RV_Arena: the big hall (wide shots) and /Game/Audio/RV_Ringside: a tight, dry room (close-ups).
+    ASlapHUD activates both and blends them by the camera's distance to the contact."""
+    for name, settings in (
+        ("RV_Arena", (("density", 1.0), ("diffusion", 1.0), ("gain", 0.4), ("gain_hf", 0.6), ("decay_time", 1.8),
+                      ("decay_hf_ratio", 0.7), ("reflections_gain", 0.3), ("reflections_delay", 0.02), ("late_gain", 1.4), ("late_delay", 0.035))),
+        ("RV_Ringside", (("density", 1.0), ("diffusion", 0.55), ("gain", 0.22), ("gain_hf", 0.35), ("decay_time", 0.42),
+                         ("decay_hf_ratio", 0.5), ("reflections_gain", 0.12), ("reflections_delay", 0.006), ("late_gain", 0.55), ("late_delay", 0.018)))):
+        path = f"/Game/Audio/{name}"
+        rv = ASSETS.load_asset(path) if ASSETS.does_asset_exist(path) else unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            name, "/Game/Audio", unreal.ReverbEffect, unreal.ReverbEffectFactory())
+        for k, v in settings:
+            rv.set_editor_property(k, v)
+        ASSETS.save_loaded_asset(rv)
+        log(name)
+
+
+def add_dust():
+    """/Game/FX/NS_DustPuff: the puff where a body part (not a sole, not a palm) hit the ground. A copy of the
+    engine's radial burst template; ASlapHUD spawns it at the contact point the controller publishes."""
+    if ASSETS.does_asset_exist("/Game/FX/NS_DustPuff"):
+        return
+    src = unreal.load_asset("/Niagara/DefaultAssets/Templates/Systems/RadialBurst.RadialBurst")
+    if not src:
+        log("NS_DustPuff: the radial burst template is missing")
+        return
+    unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset("NS_DustPuff", "/Game/FX", src)
+    ASSETS.save_asset("/Game/FX/NS_DustPuff")
+    log("NS_DustPuff (the dust puff)")
 
 
 def add_lods(mesh):
@@ -154,9 +197,13 @@ def add_lods(mesh):
     return True
 
 
+CROWD_WPO_OLD = ("float h = frac(sin(dot(floor(P.xy / 45.0), float2(12.9898, 78.233))) * 43758.5453);\n"   # one seat ~45 cm
+                  "float j = max(0, sin(T * (7 + 4 * h) + h * 6.283));\n"
+                  "return float3(0, 0, R * step(0.4, h) * 7.0 * j * j);")                               # 60 % jump, up to 7 cm
 CROWD_WPO = ("float h = frac(sin(dot(floor(P.xy / 45.0), float2(12.9898, 78.233))) * 43758.5453);\n"   # one seat ~45 cm
              "float j = max(0, sin(T * (7 + 4 * h) + h * 6.283));\n"
-             "return float3(0, 0, R * step(0.4, h) * 7.0 * j * j);")                               # 60 % jump, up to 7 cm
+             "float cut = step(1.0 - C, h) * 400.0;\n"                                                # the seats a low tier drops
+             "return float3(0, 0, R * step(0.4, h) * 7.0 * j * j - cut);")
 CROWD_GLOW = ("float h = frac(sin(dot(floor(P.xy / 45.0), float2(39.346, 11.135))) * 43758.5453);\n"
               "return E + C * G * step(0.6, h) * (0.5 + 0.5 * sin(T * 21 + h * 40)) * float3(1, 0.95, 0.85);")
 
@@ -174,9 +221,27 @@ def custom(mat, code, inputs, x, y):
     return node
 
 
+def build_crowd_wpo(live):
+    """The crowd's seat bounce (Rise) and the seats a low tier drops (CrowdCut): the cut seats sink under the floor."""
+    wp = MEL.create_material_expression(live, unreal.MaterialExpressionWorldPosition, -900, 1400)
+    t = MEL.create_material_expression(live, unreal.MaterialExpressionTime, -900, 1500)
+    params = {}
+    for i, (name, default) in enumerate((("Rise", 0.0), ("Cheer", 0.0), ("CheerGlow", 0.0), ("CrowdCut", 0.0))):
+        p = MEL.create_material_expression(live, unreal.MaterialExpressionScalarParameter, -900, 1600 + 100 * i)
+        p.set_editor_property("parameter_name", name)
+        p.set_editor_property("default_value", default)
+        params[name] = p
+    bounce = custom(live, CROWD_WPO, ("P", "T", "R", "C"), -500, 1400)
+    for n, src in (("P", wp), ("T", t), ("R", params["Rise"]), ("C", params["CrowdCut"])):
+        MEL.connect_material_expressions(src, "", bounce, n)
+    MEL.connect_material_property(bounce, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    return wp, t, params
+
+
 def add_crowd():
     """The crowd reacts (ASlapHUD::Crowd): Rise lifts ~60 % of the seats in a bouncing jump, Cheer flickers phone lights
-    (CheerGlow per material: M_PhoneLight's lights, not the people). The glTF import made M_Crowd / M_PhoneLight instances
+    (CheerGlow per material: M_PhoneLight's lights, not the people), and CrowdCut drops a share of the seats (the low
+    quality tier). The glTF import made M_Crowd / M_PhoneLight instances
     of the engine's glTF master, so the nodes go on a copy of that master (/Game/FX/M_CrowdLive) and both are re-parented
     onto it; their own parameter values carry over by name."""
     insts = [ASSETS.load_asset(f"/Game/Arena/Env/Arena/Materials/{n}") for n in ("MI_Crowd", "MI_PhoneLight")]
@@ -187,19 +252,9 @@ def add_crowd():
             master = master.get_editor_property("parent")
         live = unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset("M_CrowdLive", "/Game/FX", master)
         log(f"M_CrowdLive copied from {master.get_path_name()}")
-    if not MEL.get_material_property_input_node(live, unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET):
-        wp = MEL.create_material_expression(live, unreal.MaterialExpressionWorldPosition, -900, 1400)
-        t = MEL.create_material_expression(live, unreal.MaterialExpressionTime, -900, 1500)
-        params = {}
-        for i, (name, default) in enumerate((("Rise", 0.0), ("Cheer", 0.0), ("CheerGlow", 0.0))):
-            p = MEL.create_material_expression(live, unreal.MaterialExpressionScalarParameter, -900, 1600 + 100 * i)
-            p.set_editor_property("parameter_name", name)
-            p.set_editor_property("default_value", default)
-            params[name] = p
-        bounce = custom(live, CROWD_WPO, ("P", "T", "R"), -500, 1400)
-        for n, src in (("P", wp), ("T", t), ("R", params["Rise"])):
-            MEL.connect_material_expressions(src, "", bounce, n)
-        MEL.connect_material_property(bounce, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    wpo = MEL.get_material_property_input_node(live, unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    if wpo is None:
+        wp, t, params = build_crowd_wpo(live)
         # the glTF master is Substrate: emissive is the front material's "emissive" input (its source a named reroute)
         front = MEL.get_material_property_input_node(live, unreal.MaterialProperty.MP_FRONT_MATERIAL)
         names = [str(n) for n in MEL.get_material_expression_input_names(front)]
@@ -212,6 +267,17 @@ def add_crowd():
         MEL.recompile_material(live)
         ASSETS.save_loaded_asset(live)
         log("M_CrowdLive: Rise (seat bounce) and Cheer (phone-light flicker)")
+    elif isinstance(wpo, unreal.MaterialExpressionCustom) and wpo.get_editor_property("code") == CROWD_WPO_OLD:
+        # the older bounce: rebuild it with the crowd cut
+        old_inputs = [n for n in MEL.get_inputs_for_material_expression(live, wpo) if n]
+        MEL.delete_material_expression(live, wpo)
+        for n in old_inputs:
+            MEL.delete_material_expression(live, n)
+        build_crowd_wpo(live)
+        live.set_editor_property("max_world_position_offset_displacement", 10.0)
+        MEL.recompile_material(live)
+        ASSETS.save_loaded_asset(live)
+        log("M_CrowdLive: rebuilt with CrowdCut (the low tier drops seats)")
     for inst in insts:
         if inst.get_editor_property("parent") != live:
             MEL.set_material_instance_parent(inst, live)
@@ -224,7 +290,7 @@ def add_crowd():
 
 def main():
     tools = unreal.AssetToolsHelpers.get_asset_tools()
-    for name in ("Slap", "Slap1", "Slap2", "Slap3", "Thud", "Squeak0", "Squeak1", "Scrape", "Breath", "CrowdReact", "CrowdLoop", "Bell"):
+    for name in ("Slap", "Slap1", "Slap2", "Slap3", "Thud", "Squeak0", "Squeak1", "Scrape", "Step", "Breath", "CrowdReact", "CrowdNear", "CrowdLoop", "Bell"):
         loop = name in ("CrowdLoop", "Breath")
         t = unreal.AssetImportTask()
         t.filename = os.path.join(PROJ, "Content/Art/Exports/Audio", f"{name}.wav")
@@ -241,6 +307,8 @@ def main():
         tools.duplicate_asset("NS_SlapSpray", "/Game/FX", src)
         ASSETS.save_asset("/Game/FX/NS_SlapSpray")
     log(f"NS_SlapSpray: {ASSETS.does_asset_exist('/Game/FX/NS_SlapSpray')}")
+    add_dust()
+    log(f"NS_DustPuff: {ASSETS.does_asset_exist('/Game/FX/NS_DustPuff')}")
 
     for folder in ASSETS.list_assets("/Game/Athletes", recursive=False, include_folder=True):   # every athlete built so far
         if not folder.endswith("/"):

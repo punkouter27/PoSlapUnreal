@@ -3,8 +3,10 @@
     training/.venv/Scripts/python.exe Scripts/broadcast_audio.py      (then Scripts/broadcast_fx.py imports them)
 
 Slap, Slap1-3: a broadband crack over a short flesh thump (four takes; ASlapHUD picks one and filters it by palm speed).
-Thud: a body landing (stumble, KO). Squeak0-1: a rubber sole skidding; Scrape: a sole dragged. Breath: two pants that loop
-(louder and faster as stamina drains). CrowdReact: an "ooh" swelling into a roar. CrowdLoop: 12 s of arena murmur that
+Thud: a body landing (stumble, KO). Squeak0-1: a rubber sole skidding; Scrape: a sole dragged. Step: a sole on the floor
+(a footstep, played from MuJoCo's own contact). Breath: two pants that loop
+(louder and faster as stamina drains). CrowdReact: an "ooh" swelling into a roar. CrowdNear: the groan of a near miss
+(a slap that landed but did not stagger). CrowdLoop: 12 s of arena murmur that
 loops seamlessly. Bell: three strikes of a boxing bell (inharmonic partials).
 """
 import wave
@@ -87,6 +89,23 @@ def crowd_react():
     return (ooh + roar) * env
 
 
+def crowd_near():
+    """The near miss: a gasp that sags into a groan. No roar - the slap landed but nobody was moved."""
+    s = t(2.4)
+    env = np.clip(s / 0.12, 0, 1) * np.exp(-np.clip(s - 0.12, 0, None) / 0.9)
+    gasp = band(pink(len(s)), 230, 640) * np.clip(1 - s / 0.65, 0, 1)
+    groan = band(pink(len(s)), 170, 1100) * np.clip((s - 0.08) / 0.35, 0, 1) * (1.0 - 0.45 * np.clip((s - 0.5) / 1.4, 0, 1))
+    return (gasp + groan) * env
+
+
+def step():
+    """A sole on the floor: a dull knock with a little grit under it."""
+    s = t(0.2)
+    knock = np.sin(2 * np.pi * (150 - 70 * s) * s) * np.exp(-s / 0.028)
+    grit = band(rng.standard_normal(len(s)), 700, 6000) * np.exp(-s / 0.018) * 0.4
+    return knock + grit
+
+
 def crowd_loop():
     n = int(12 * SR)
     s = np.arange(n + SR) / SR
@@ -119,5 +138,7 @@ if __name__ == "__main__":
     save("Scrape", scrape())
     save("Breath", breath())
     save("CrowdReact", crowd_react())
+    save("CrowdNear", crowd_near())
+    save("Step", step())
     save("CrowdLoop", crowd_loop())
     save("Bell", bell())

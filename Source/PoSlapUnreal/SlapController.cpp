@@ -317,7 +317,6 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
 		const TArray<TSharedPtr<FJsonValue>>& Range = Fp.GetArrayField(TEXT("ctrl_range_rad"));
 		const TSharedPtr<FJsonObject> StandRad = Fp.GetObjectField(TEXT("stand_pose_rad"));
-		Action.SetNumZeroed(Order.Num());
 		// the character card is the source of truth (the fingerprint keeps a build-time copy): fatigue, display name
 		CardName[c] = Fp.GetObjectField(TEXT("card"))->GetStringField(TEXT("name"));
 		// the card file, else the fingerprint's build-time copy of it: a build that staged only the fingerprint must not
@@ -364,7 +363,6 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 				A.NeckAct.Add(Act);
 				A.Fr0.Append({ m->actuator_forcerange[2 * Act], m->actuator_forcerange[2 * Act + 1] });
 				if (J == TEXT("neck_turn")) A.YawIdx = j;
-				if (J == TEXT("neck_nod")) A.PitchIdx = j;
 			}
 			if (J == TEXT("hip_flex_l")) A.HipL = j;
 			else if (J == TEXT("hip_flex_r")) A.HipR = j;
@@ -393,6 +391,8 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		}
 		A.Goal = A.Stand;
 		A.PrevAction.Init(0.f, Order.Num());
+		A.Action.SetNumZeroed(Order.Num());	// this athlete's own brain output buffer
+		A.WalkAction.SetNumZeroed(Order.Num());	// and the walking brain's
 		if (Card)
 		{
 			A.StaminaPerStrike = Card->GetNumberField(TEXT("stamina_per_strike"));
@@ -475,7 +475,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 	UE_LOG(LogSlap, Log, TEXT("Walk-in: walking brains for %s"), Walkers.IsEmpty() ? TEXT("nobody (scripted stride)") : *Walkers);
 	if (GhostD) mj_deleteData(GhostD);
 	GhostD = mj_makeData(m);
-	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes (%s vs %s), %d joints each, brain %s, defender role %d"), Athletes.Num(), *CardName[0], *CardName[1], Action.Num(),
+	UE_LOG(LogSlap, Log, TEXT("Policy: %d athletes (%s vs %s), %d joints each, brain %s, defender role %d"), Athletes.Num(), *CardName[0], *CardName[1], Athletes.Num() ? Athletes[0].Action.Num() : 0,
 		Athletes.Num() && Athletes[0].Net ? TEXT("loaded") : TEXT("MISSING (holding stand pose)"), DefenderRole);
 	SetHud([&](FSlapHud& H)
 	{
@@ -545,23 +545,23 @@ bool USlapController::MakeNet(UNNEModelData* Data, FNet& Out)
 	return true;
 }
 
-bool USlapController::Infer(const FAthlete& A, const float* InObs, float& Value)
+bool USlapController::Infer(FAthlete& A, const float* InObs, float& Value)
 {
-	return RunNet(*A.Net, A.NumIn, A.NumOut, InObs, Value);
+	return RunNet(*A.Net, A.NumIn, A.NumOut, InObs, Value, A.Action);
 }
 
-bool USlapController::RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value)
+bool USlapController::RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out)
 {
 	const UE::NNE::FTensorBindingCPU In{ (void*)InObs, (uint64)NumIn * sizeof(float) };
 	if (NumOut == 0)	// the rebuilt brain: one output, the actions then the value
 	{
-		Action.SetNumUninitialized(Action.Num() + 1, EAllowShrinking::No);
-		const bool bOk = Net.RunSync({ In }, { { Action.GetData(), (uint64)Action.Num() * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
-		Value = Action.Pop(EAllowShrinking::No);
+		Out.SetNumUninitialized(Out.Num() + 1, EAllowShrinking::No);
+		const bool bOk = Net.RunSync({ In }, { { Out.GetData(), (uint64)Out.Num() * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
+		Value = Out.Pop(EAllowShrinking::No);
 		return bOk;
 	}
-	const UE::NNE::FTensorBindingCPU Out[] = { { Action.GetData(), (uint64)Action.Num() * sizeof(float) }, { &Value, sizeof(float) } };
-	return Net.RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(Out, NumOut)) == UE::NNE::EResultStatus::Ok;
+	const UE::NNE::FTensorBindingCPU OutB[] = { { Out.GetData(), (uint64)Out.Num() * sizeof(float) }, { &Value, sizeof(float) } };
+	return Net.RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(OutB, NumOut)) == UE::NNE::EResultStatus::Ok;
 }
 
 void USlapController::RequestMatch(UNNEModelData* Red, UNNEModelData* Blue)
@@ -663,7 +663,7 @@ void USlapController::Emit(FStringView Json)
 	}
 }
 
-FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender) const
+FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos) const
 {
 	for (int32 c = 0; c < d->ncon; ++c)
 	{
@@ -672,7 +672,11 @@ FString USlapController::Down(const mjModel* m, const mjData* d, const FAthlete&
 		if (S0 == S1) continue;
 		const int32 G = S0 ? C.geom[1] : C.geom[0];
 		if (bDefender && (C.geom[0] == Podium || C.geom[1] == Podium) && A.Palms.Contains(G)) continue;	// his brace (match.py down())
-		if (m->body_rootid[m->geom_bodyid[G]] == A.Pelvis && !A.Feet.Contains(G)) return Slap::Name(m, mjOBJ_GEOM, G);
+		if (m->body_rootid[m->geom_bodyid[G]] == A.Pelvis && !A.Feet.Contains(G))
+		{
+			if (OutPos) *OutPos = MjUtils::MjToUEPosition(C.pos);	// where it landed (display only: the dust puff)
+			return Slap::Name(m, mjOBJ_GEOM, G);
+		}
 	}
 	return FString();
 }
@@ -903,14 +907,14 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 					(float)std::sin(2.0 * PI * A.WalkPhase), (float)std::cos(2.0 * PI * A.WalkPhase), (float)(V / 3.0) };
 				BuildObs(m, d, A, 0.f, 0.f, nullptr, Obs, Cmd);
 				Obs[3 * A.Act.Num() + 11] = (float)(1.0 - A.WalkT / 1000.0);	// locomotion.py feeds its episode clock at role 0 (BuildObs O[11 + N])
-				if (!RunNet(*A.WalkNet, A.WalkIn, A.WalkOut, Obs, Value)) continue;
+				if (!RunNet(*A.WalkNet, A.WalkIn, A.WalkOut, Obs, Value, A.WalkAction)) continue;
 				A.WalkPhase = V > 0.1 ? FMath::Fmod(A.WalkPhase + 1.8 * 0.02, 1.0) : 0.0;	// locomotion.py: the clock rests at 0 below 0.1 m/s
 				++A.WalkT;
 			}
 			for (int32 j = 0; j < A.Act.Num(); ++j)	// Decide's mapping and rate limit; the walking brain trained with an 0.85 EMA on top
 			{
 				const double Step = A.MaxStep[j] * A.Stamina;
-				const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
+				const double Act = FMath::Clamp((double)A.WalkAction[j], -1.0, 1.0);
 				const double Tgt = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
 				A.Goal[j] = 0.85 * Tgt + 0.15 * A.Goal[j];
 				A.PrevAction[j] = (float)Act;
@@ -932,7 +936,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 			{
 				for (int32 j = 0; j < A.Act.Num(); ++j)
 				{
-					const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
+					const double Act = FMath::Clamp((double)A.Action[j], -1.0, 1.0);
 					const double Tgt = Target(A.Stand[j], A.Lo[j], A.Hi[j], Act, 0.25);
 					d->qpos[A.Qadr[j]] = Tgt;
 					A.Goal[j] = Tgt;
@@ -1040,12 +1044,41 @@ bool USlapController::PreStep(const mjModel* m, mjData* d)
 	const FAthlete& D = Athletes[1 - Turn.Striker];
 	if (Turn.Step % ControlEvery == 0)	// the referee looks every brain step, before the brains decide
 	{
+		// Sole contacts (display only): a footstep when a sole touches the floor, straight from MuJoCo's own contact
+		// list, not from a timer. The rising edge of each sole's contact is the step.
+		for (int32 a = 0; a < 2; ++a)
+		{
+			FAthlete& A = Athletes[a];
+			bool Touched[2] = { false, false };
+			FVector Pos[2];
+			for (int32 c = 0; c < d->ncon; ++c)
+			{
+				const mjContact& C = d->contact[c];
+				const bool S0 = C.geom[0] == Floor || C.geom[0] == Podium, S1 = C.geom[1] == Floor || C.geom[1] == Podium;
+				if (S0 == S1) continue;
+				const int32 G = S0 ? C.geom[1] : C.geom[0];
+				for (int32 f = 0; f < 2; ++f)
+				{
+					if (A.Feet.Num() > f && A.Feet[f] == G) { Touched[f] = true; Pos[f] = MjUtils::MjToUEPosition(C.pos); }
+				}
+			}
+			for (int32 f = 0; f < 2; ++f)
+			{
+				if (Touched[f] && !A.bFootDown[f])
+				{
+					SetHud([&](FSlapHud& H) { H.StepPos[a] = Pos[f]; ++H.StepSeq[a]; });
+				}
+				A.bFootDown[f] = Touched[f];
+			}
+		}
 		for (const FAthlete* X : { &D, &S })
 		{
-			const FString Geom = Down(m, d, *X, X == &D);
+			FVector At;
+			const FString Geom = Down(m, d, *X, X == &D, &At);
 			if (Geom.IsEmpty()) continue;
 			Emit(FString::Printf(TEXT("{\"type\": \"knockdown\", \"t\": %s, \"athlete\": %s, \"part\": %s}"), *Num(T, 3), *Str(X->Name), *Str(Part(Geom))));
 			UE_LOG(LogSlap, Log, TEXT("t=%.3f knockdown: %s %s"), T, *X->Name, *Part(Geom));
+			SetHud([&](FSlapHud& H) { H.DownPos = At; ++H.DownSeq; });	// where it landed: the dust puff
 			if (X == &D && Turn.TouchStep >= 0)
 			{
 				Turn.bKO = true;
@@ -1189,8 +1222,10 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	SetHud([&](FSlapHud& H)
 	{
 		H.HeadPeak = Turn.HeadPeak; H.Event = Call; H.Hic = Turn.Hic; H.Bric = Turn.Bric;
+		H.bStagger = Turn.bStagger;		// the near-miss cue: it landed, but he did not stagger
 		for (int32 a = 0; a < 2; ++a) { H.Stamina[a] = Athletes[a].Stamina; H.Neck[a] = Athletes[a].NeckStrength; }
 		if (Turn.bKO) ++H.KOSeq;
+		++H.TurnSeq;	// the turn is over: the HUD's near-miss, feint and judges cues watch this
 	});
 	RoundTurns.Add(Turn);
 	bInTurn = false;
@@ -1272,7 +1307,7 @@ void USlapController::Score(int32 (&Out)[3][2])
 
 // Eye contact + post-slap poise: pure maths, mirrors match.py gaze_desire/gaze_walk/gaze_apply/strike_hold.
 // PRE-touch: the defender's neck goals walk to meet the striker's eyes (world-space bias converted to the
-// chest frame's ZYX yaw/pitch - world space because the chest WHIPS during a follow-through); he regains
+// chest frame's yaw (the turn only: the nod stays the brain's) - world space because the chest WHIPS during a follow-through); he regains
 // the neck the instant the slap lands (he braces).
 // POST-touch: the striker PLANTS - goals melt back to his balanced stand pose - and his eyes track the
 // defender to see whether he goes down; this continues through the inter-turn hold (display-only).
@@ -1286,7 +1321,7 @@ void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 	const bool bPlanted = Turn.TouchStep >= 0;
 	FAthlete& Watcher = Athletes[bPlanted ? Turn.Striker : 1 - Turn.Striker];	// defender pre-touch, striker after
 	const FAthlete& Focus = Athletes[bPlanted ? 1 - Turn.Striker : Turn.Striker];
-	if (Watcher.YawIdx < 0 || Watcher.PitchIdx < 0) return;
+	if (Watcher.YawIdx < 0) return;
 	// NB (2026-10-25 QA): an imposed post-slap POSE hold was tried and rejected - freezing any joints after
 	// the touch fought the brain's own balance and tripled striker self-knockdowns. The striker's "stay
 	// balanced" duty is served by leaving the brain in charge of the body; only the WATCH below remains.
@@ -1327,18 +1362,12 @@ void USlapController::ApplyGaze(const mjModel* m, mjData* d)
 	const double* Xm = d->xmat + 9 * Watcher.Chest;
 	mjtNum Rx[3];
 	mju_mulMatTVec3(Rx, Xm, WB);	// R^T * bias
-	const double Want[2] = { FMath::Atan2(Rx[1], Rx[0]),
-							 -FMath::Asin(FMath::Clamp(Rx[2], -1.0, 1.0)) };
-	// turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off the target his slap trained
-	// on (training has no gaze servo); the nod stays the brain's (match.py gaze_apply)
-	const int32 Idx[1] = { Watcher.YawIdx };
-	for (int32 s = 0; s < 1; ++s)
-	{
-		const int32 j = Idx[s];
-		const double Clamped = FMath::Clamp(Want[s], Watcher.Lo[j], Watcher.Hi[j]);
-		const double Blend = (1.0 - GazeGain) * Watcher.Goal[j] + GazeGain * Clamped;
-		Watcher.Goal[j] = FMath::Clamp(Blend, Watcher.Lo[j], Watcher.Hi[j]);
-	}
+	// turn only (2026-10-29): the nod tilted Kim's face up toward a taller Grandpa, off where his slap trained to
+	// land; the nod stays the brain's in every engine (training/constants.py GAZE_* block: match.py, arena.py, sim.js)
+	const int32 j = Watcher.YawIdx;
+	const double Want = FMath::Clamp(FMath::Atan2(Rx[1], Rx[0]), Watcher.Lo[j], Watcher.Hi[j]);
+	const double Blend = (1.0 - GazeGain) * Watcher.Goal[j] + GazeGain * Want;
+	Watcher.Goal[j] = FMath::Clamp(Blend, Watcher.Lo[j], Watcher.Hi[j]);
 }
 
 void USlapController::Decide(const mjModel* m, mjData* d)
@@ -1367,7 +1396,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		for (int32 j = 0; j < A.Act.Num(); ++j)
 		{
 			const double Step = A.MaxStep[j] * A.Stamina;	// fatigue: a tired athlete moves slower
-			const double Act = FMath::Clamp((double)Action[j], -1.0, 1.0);
+			const double Act = FMath::Clamp((double)A.Action[j], -1.0, 1.0);
 			A.Goal[j] = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
@@ -1630,7 +1659,7 @@ void USlapController::XRay(FAthlete& A, const float* Obs, float (&Out)[10])
 	if (A.XPrev.Num() == A.NumIn && N == 30)
 	{
 		float Base[30], Probe[NumObs];
-		FMemory::Memcpy(Base, Action.GetData(), N * sizeof(float));
+		FMemory::Memcpy(Base, A.Action.GetData(), N * sizeof(float));
 		double Total = 0.0;
 		for (int32 g = 0; g < 10; ++g)
 		{
@@ -1643,13 +1672,13 @@ void USlapController::XRay(FAthlete& A, const float* Obs, float (&Out)[10])
 			double Moved = 0.0;
 			if (Infer(A, Probe, Value))
 			{
-				for (int32 j = 0; j < N; ++j) Moved += FMath::Square(FMath::Clamp(Action[j], -1.f, 1.f) - FMath::Clamp(Base[j], -1.f, 1.f));
+				for (int32 j = 0; j < N; ++j) Moved += FMath::Square(FMath::Clamp(A.Action[j], -1.f, 1.f) - FMath::Clamp(Base[j], -1.f, 1.f));
 			}
 			Out[g] = (float)FMath::Sqrt(Moved);
 			Total += Out[g];
 		}
 		for (float& F : Out) F = Total > 1e-4 ? (float)(F / Total) : 0.f;
-		FMemory::Memcpy(Action.GetData(), Base, N * sizeof(float));
+		FMemory::Memcpy(A.Action.GetData(), Base, N * sizeof(float));
 	}
 	A.XPrev = TArray<float>(Obs, A.NumIn);
 }

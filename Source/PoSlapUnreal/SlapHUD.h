@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetData.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
+#include "Math/IntRect.h"
 #include "SlapController.h"
 #include "SlapHUD.generated.h"
 
@@ -51,11 +52,14 @@ public:
 	virtual void DrawHUD() override;
 
 private:
-	enum class EShot : uint8 { WalkIn, Wide, Tension, Strike, KO, Replay };
+	enum class EShot : uint8 { WalkIn, Wide, Tension, Strike, Impact, KO, Replay };
 
 	void DrawMatch(const FSlapHud& H);
 	void DrawTelemetry(const FSlapHud& H);
 	void DrawOverlays(const FSlapHud& H);	// slide-in cards, tale of the tape, result banner, commentary, shockwave, flash
+	void DrawJudges(const FSlapHud& H);		// the judges' conference: three score bars, then the decision
+	void DrawTell(const FSlapHud& H);		// the striker's wind-up tell (the read a spectator can learn)
+	void DrawDanger(const FSlapHud& H);		// the per-athlete danger meter (how close to a knockdown, right now)
 	void Direct(ACameraActor* Cam, const FSlapHud& H);
 	void Cues(const FSlapHud& H);			// one-shot effects when the controller's counters move on
 	void Stage(double Now);					// light flare on a strike, chase on a KO
@@ -63,7 +67,14 @@ private:
 	void Scuffs(const FSlapHud& H);			// a skidding sole or a palm braced on the podium: a mark and a squeak
 	void Scuff(const FVector& At, float Yaw, const FVector& Size);
 	void Pant(const FSlapHud& H);			// breathing, louder and faster as stamina drains
+	void Steps(const FSlapHud& H);			// a footstep when a sole really touches the floor (MuJoCo's own contacts)
+	void Dust(const FSlapHud& H);			// a puff of dust where a bone (not a sole, not a palm) hit the ground
+	void ReverbMix(double Now);			// the hall vs the ringside: blended by the camera's distance to the contact
+	void Burst(double Now);				// the 120 fps burst capture at the impact (render side only)
 	void Text(const FString& Str, float X, float Y, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);
+	void TextBox(const FString& Str, float X, float Y, float MaxW, FColor C, float Scale, bool bCentre = false, UFont* Font = nullptr);	// a line that may not overflow its box
+	int32 DetectTier() const;				// the quality tier of this device (0 low, 1 medium, 2 high)
+	void ApplyTier();						// the tier in force: the spray rate, the crowd, the shadows
 	void BuildUi();
 	void LoadRoster();	// training/characters/*.json into the 16 roster slots
 	void UiTest(const FSlapHud& H);
@@ -105,6 +116,10 @@ private:
 		float DpiScale = 1.f;	// the Slate scale the layer is laid out at: the audit reports it next to the measured sizes
 	float SafeBottomSlate = 0.f;	// the platform's bottom safe inset in Slate units: the sheet sits above it and the anchor row
 		int32 Tab = 0;
+		int32 TextOverflows = 0;	// lines that did not fit their box: the audit reports them
+		struct FCanvasBox { FString Name; FIntRect Rect; };	// what the canvas drew, where: the audit checks it does not overlap
+		TArray<FCanvasBox> Boxes;
+		void TrackBox(const FString& Name, float X, float Y, float W, float H);
 	static constexpr int32 RosterSize = 16;	// the roster grows to 16 athletes (user, 2026-10-22); open slots are placeholders
 	TArray<TPair<FString, FString>> Slots;	// per slot: tile text, detail text (empty tile text = open)
 	int32 RosterSel = 0;
@@ -116,7 +131,7 @@ private:
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;	// the one START plays, the one loaded now
 	void Travel(int32 P);	// START on another pairing: open its level (a fresh match there, its own default brains)
 	bool bPairTest = false;	// -SlapPairTest: from /Game/Levels/L_Arena open the next pairing at 3 s, then log what loaded
-	enum EHit { HitMenu, HitTabMatch, HitTabRoster, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad, HitRematch, HitCount };
+	enum EHit { HitMenu, HitTabMatch, HitTabData, HitTabSci, HitTabRoster, HitTabSet, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad, HitRematch, HitCount };
 	bool bQuarter = false;	// the replay runs at 1/4 speed instead of 1/2 (the MATCH tab's x1/4 badge)
 	FVector2D PadDown = FVector2D::ZeroVector;	// where a press on the play area began: a swipe cycles the view presets
 	int32 Preset = 0;	// 0 none, 1 TEL, 2 TEL+SCI, 3 XRAY: what a swipe steps through
@@ -132,13 +147,47 @@ private:
 	double UiAt = 0.0;
 
 	// cue state (game time)
-	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0;
+	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0, SeenTurn = 0, SeenDown = 0, SeenStep[2] = {};
 	double StrikeAt = -100.0, KOAt = -100.0, TapeAt = -100.0, CardAt = -100.0;
 	FVector StrikePos = FVector::ZeroVector;
 	double StrikeSpeed = 0.0;
+	FVector StrikeCom0 = FVector::ZeroVector;	// the defender's centre of mass at the touch (the near-miss test)
+	bool bNearMiss = false;			// the slap landed, but he did not stagger
+	double NearMissAt = -100.0;
 	double StrikeK = 0.25;	// the last strike's speed over a clean one, clamped to 0.25-1.5: scales every effect
+	double MassK = 1.0;	// the last strike's mass over the card's 3 kg: the contact burst and the sound scale with it
 	int32 Struck = 0;
 	TArray<float> HeadG;	// the defender's head g, one sample per frame (last ~2 s)
+
+	// F2: the palm-impact close-up and the 120 fps burst capture (render side only; the physics step never changes)
+	EShot ShotBeforeImpact = EShot::Wide;
+	double ImpactAt = -100.0;
+	bool bBurst = false;				// -SlapBurst: capture the impact at up to 120 fps (desktop only)
+	int32 BurstFrames = 0, BurstCaptured = 0;
+	float BurstCap = 0.f;				// the frame cap the burst raised (0 = the engine's own)
+
+	// F6: the danger meters (how close each athlete is to a knockdown right now)
+	float DangerShown[2] = {};
+	bool bDangerHigh[2] = {};
+
+	// F10: the feint classifier (a swing that starts, peaks and pulls back without contact)
+	double PeakHand = 0.0, PeakHandAt = -100.0, LastClock = 0.0;
+	int32 Feints = 0, Commits = 0;
+	bool bSwing = false, bFeintTagged = false;
+	FString SwingTag;					// "FEINT" / "COMMIT"
+	double SwingTagAt = -100.0;
+
+	// F3: the striker's tell (a wind-up the spectator can read)
+	float Tell = 0.f;
+
+	// F9: the kinetic chain's slow reveal
+	double ChainRevealAt = -100.0;
+
+	// the quality tier: 0 low, 1 medium, 2 high (-1 = auto)
+	int32 Tier = -1;
+	int32 TierLive = 1;
+	int32 CrowdKeep = 0;
+	bool bTabDown = false;				// the TAB key's latch (the detailed stats panel)
 
 	// momentum bar: what each brain's critic usually says in each role (index role + 1), and the bar's red share
 	double RoleMean[3] = {}, RoleVar[3] = {};
@@ -211,16 +260,21 @@ private:
 	double LiveSent = 0.0, LiveRetry = 0.0;
 
 	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> Spray;
+	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> DustPuff;	// the puff where a bone hit the ground
 	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> SlapTakes;	// S_Slap, S_Slap1-3
 	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> Squeaks;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Thud;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Scrape;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> Step;			// a sole on the floor (MuJoCo's own contact)
 	UPROPERTY(Transient) TObjectPtr<USoundBase> BreathLoop;
 	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> ScuffMat;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdReact;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdNear;		// the "ooooh" of a near miss
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdLoop;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Bell;
 	UPROPERTY(Transient) TObjectPtr<USoundAttenuation> Ringside;	// the slap pans with where it lands on screen
+	UPROPERTY(Transient) TObjectPtr<UReverbEffect> HallVerb;		// the arena (wide shots)
+	UPROPERTY(Transient) TObjectPtr<UReverbEffect> CloseVerb;	// ringside (tight shots): the two are blended by the camera's distance
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> Skin;	// red, blue: the cheek ripple, flush, fatigue
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> CrowdSkin;	// the crowd mesh's materials: Rise, Cheer (Scripts/broadcast_fx.py)
 };

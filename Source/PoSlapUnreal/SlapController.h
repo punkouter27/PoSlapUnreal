@@ -51,6 +51,15 @@ struct FSlapHud
 	FVector StrikePos, StrikeDir;			// contact point (Unreal cm), the palm's direction of travel
 	int32 StrikeDefender = 0;
 
+	// display-only publishes (read-only: nothing here reaches the physics). Every one of them is a counter the HUD
+	// watches, so the effect fires exactly once per event.
+	int32 TurnSeq = 0;					// a turn ended (the referee called it)
+	bool bStagger = false;				// the last strike moved the defender's centre of mass over 5 cm
+	FVector DownPos;					// where a body part (not a sole, not a palm) hit the floor or the podium (Unreal cm)
+	int32 DownSeq = 0;					// a counter per knockdown: the dust puff's cue
+	FVector StepPos[2];				// where each athlete's sole last touched the floor (Unreal cm)
+	int32 StepSeq[2] = {};				// a counter per athlete: one per footfall
+
 	// tale of the tape, series
 	FString Name[2], Brain[2], Tape[2], Card[2];	// Card: the character card's name ("grandpa"): which brains fit
 	int32 Wins[2] = {}, Draws = 0;
@@ -171,11 +180,14 @@ private:
 		TArray<double> FrAll;	// every motor's own forcerange (lo, hi per motor): a faint slackens them all
 		TArray<double> MaxStep;	// joint speed limit per brain step, per joint (card speed)
 		TArray<double> Vmax;	// the same per second: Hill's top speed (ApplyHill)
-		int32 YawIdx = -1, PitchIdx = -1;	// indices of neck_turn / neck_nod in the arrays above (eye contact)
+		TArray<float> Action;	// this athlete's own brain output buffer (a shared one would mix the two brains up)
+		TArray<float> WalkAction;	// the same for the walking brain (the walk-in's S2 brain)
+		int32 YawIdx = -1;	// index of neck_turn in the arrays above (eye contact turns the head; the nod stays the brain's)
 		int32 HipL = -1, HipR = -1, KneeL = -1, KneeR = -1, AnkleL = -1, AnkleR = -1, ShSwingL = -1, ShSwingR = -1;
 		int32 WaistTwist = -1, ElbowR = -1;	// kinetic chain links
 		double BiasWX = 0.0, BiasWY = 0.0, BiasWZ = 1.0;	// WORLD-space gaze bias (unit); seeded at each turn start
 		TArray<int32> Bodies, BodyParent;	// this athlete's bodies (id order) and each one's parent index in Bodies (-1 = root)
+		bool bFootDown[2] = { false, false };	// each sole's last contact state (the footstep's rising edge)
 		TArray<float> XPrev;				// brain X-ray: the observation at the last X-ray tick (empty = none yet)
 		// walk-in on the walking brain (training/envs/locomotion.py S2): command along the aisle, its gait clock
 		TSharedPtr<UE::NNE::IModelInstanceCPU> WalkNet;
@@ -232,7 +244,7 @@ private:
 	int32 Cards[3][2] = {};
 	TArray<FTurn> RoundTurns;
 	FArchive* Log = nullptr;
-	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
+	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos = nullptr) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
 	void StartMatch(mjModel* m, mjData* d);
 	void StartTurn(mjModel* m, mjData* d);
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
@@ -297,9 +309,8 @@ private:
 	std::atomic<int64> StepCount = 0;	// physics thread writes; the HUD's step counter reads it (GetHud)
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
-	TArray<float> Action;	// brain output scratch, sized once
-	bool Infer(const FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into Action, its critic into Value
-	bool RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value);
+	bool Infer(FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into A.Action, its critic into Value
+	bool RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out);
 
 	/** Runtime brains from -SlapRedBrain= / -SlapBlueBrain= (.onnx files), kept alive here. */
 	UPROPERTY(Transient)
