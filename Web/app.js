@@ -10,6 +10,8 @@ import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
 import { loadMatch, MATCHUPS, matchupKey } from "./loader.js";
 import { loadArena, loadAthlete } from "./art.js";
+import { Look, TIERS } from "./fx.js";
+import { Sound } from "./audio.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
 ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
@@ -191,6 +193,8 @@ function onEvent(e) {
       MOM.red = MOM.blue = 0; momentum();
       S.phase = LIVE ? "live" : "practice";
       $("cardsLine").textContent = ""; renderCards();
+      sound.bell();
+      for (const w of wear) Object.assign(w, { local: null, at: -99, speed: 0 });
       break;
     case "turn_start":
       stopTenCount();
@@ -210,7 +214,8 @@ function onEvent(e) {
       $("call").textContent = `${e.speed.toFixed(1)} m/s · ${String(e.part || "").replace("_r", "")}${palm ? " · palm" : ""}`;
       banner(e.speed >= 8 ? (palm ? "Clean Palm Strike" : "Clean Hit") : (palm ? "Palm Strike" : "Hit"),
         `${e.speed.toFixed(1)} m/s${palm ? "" : " · not the palm"}`, 1.4, palm ? "var(--gold)" : "");
-      if (e.pos) flash(e.pos);   // (Unreal's strike line has no contact point)
+      sound.strike(e.speed, e.pos ? e.pos[0] : 0);
+      if (e.pos) struck(e.striker, e.pos, e.speed);   // (Unreal's strike line has no contact point)
       break;
     }
     case "impact":   // Unreal's broadcast science (the browser sim does not write it)
@@ -225,6 +230,7 @@ function onEvent(e) {
       startTenCount();
       $("call").textContent = `${e.athlete} down (${e.part})`;
       if (e.athlete === "red" || e.athlete === "blue") { S.danger[e.athlete] = 1; MOM[e.athlete === "red" ? "blue" : "red"] += 15; momentum(); }
+      sound.knockdown(e.athlete === "red" ? -0.4 : 0.4);
       break;
     case "foul":
       S.fouls++;
@@ -237,6 +243,8 @@ function onEvent(e) {
       const call = e.ko ? "KO" : e.end === "recovered" ? `Recovered · head snap ${Number(e.head_peak).toFixed(1)} m/s`
         : (e.fouls && e.fouls.length) ? `Foul: ${foulText(e.fouls)}` : e.end;
       $("call").textContent = call;
+      if (e.ko) sound.bell(true);
+      else sound.reaction(!!e.stagger, e.touch !== null && e.touch !== undefined, Math.min(1, (e.speed || 0) / 10));
       if (e.ko) { S.kos++; banner("KNOCKOUT!", `${e.striker ? e.striker.toUpperCase() : "Striker"} wins by KO`, 2.2, "var(--gold)"); }
       if (e.touch !== null && e.touch !== undefined && (e.striker === "red" || e.striker === "blue")) {
         MOM[e.striker] += (e.speed || 0) + 5 * (e.head_peak || 0) + (e.stagger ? 10 : 0);
@@ -448,6 +456,8 @@ const TABS = {
       btn("¼×", "speed", speed === 0.25), btn("1×", "speed", speed === 1), btn("2×", "speed", speed === 2),
       btn("Camera", "cam"), btn("Physics", "phys", art.physics));
     wrap.append(el("h3", "", "Playback"), play);
+    wrap.append(el("h3", "", "Sound and picture"), row(btn(sound.muted ? "Sound off" : "Sound on", "sound", !sound.muted),
+      ...["auto", ...TIERS.slice().reverse()].map(t => btn(t === "auto" ? `Auto (${look.tier})` : t[0].toUpperCase() + t.slice(1), "gfx", look.auto ? t === "auto" : t === look.tier))));
     wrap.append(el("h3", "", "Session"), row(btn("Back to the menu", "reset")));
     const note = LIVE
       ? `Watching the live match on ${LIVE}. The relay's API answers on the same host: /api/match, /api/events, /api/events/stream.`
@@ -501,6 +511,8 @@ $("panel").addEventListener("click", e => {
   else if (act === "cam") { view = (view + 1) % VIEWS.length; setView(view); }
   else if (act === "phys") { art.physics = !art.physics; showArt(); renderSheet(); }
   else if (act === "reset") { showMenu(); }
+  else if (act === "sound") { sound.unlock(); sound.setMuted(!sound.muted); renderSheet(); }
+  else if (act === "gfx") { const t = b.textContent.toLowerCase().split(" ")[0]; look.setTier(t); localStorage.setItem("poslap.gfx", t); renderSheet(); }
 });
 addEventListener("keydown", e => {
   if (e.key === "Tab") { e.preventDefault(); toggleSheet(); }   // TAB: the detailed stats panel
@@ -644,6 +656,11 @@ scene.add(new THREE.HemisphereLight(0x8890a8, 0x201814, 1.1));
 const key = new THREE.SpotLight(0xfff1dc, 60, 12, 0.55, 0.5, 1.2);
 key.position.set(0.3, -1.2, 5.5); key.target.position.set(0, 0, 1); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
 scene.add(key, key.target);
+const look = new Look(renderer, scene, camera, key);   // the post chain, the beam, the spray (fx.js)
+look.setTier(new URLSearchParams(location.search).get("gfx") || localStorage.getItem("poslap.gfx") || "auto");
+const sound = new Sound();
+addEventListener("pointerdown", () => sound.unlock(), { once: true });   // browsers start audio on a gesture
+addEventListener("keydown", () => sound.unlock(), { once: true });
 for (const [x, c] of [[-2.4, 0xff8a5c], [2.4, 0x7aa0ff]]) { const r = new THREE.PointLight(c, 6, 6); r.position.set(x, 1.6, 2.6); scene.add(r); }   // rims behind the athletes, across from the camera
 
 // the mat: dark floor, a red half and a blue half under the corners, a white ring, the foot boxes
@@ -686,8 +703,70 @@ function footBoxes(d, sides) {
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf1c24b })));
   }
 }
+// the drawn hand stays outside the face it hits: at 200 Hz a 10 m/s palm moves 5 cm a step and MuJoCo's soft contact
+// lets it sink 4-7 cm into the head sphere; the bone is moved out along the contact normal (drawing only)
+const pushers = [];
+function buildPushers(m, sides) {
+  sides.forEach((s, i) => {
+    const o = sides[1 - i], r = m.geom_size[3 * o.head];
+    const thick = g => Math.min(m.geom_size[3 * g], m.geom_size[3 * g + 1], m.geom_size[3 * g + 2]);
+    const hands = { hand_l: s.hands[0], hand_r: s.hands[1] };
+    pushers[i] = (name, p, d) => {
+      const g = hands[name];
+      if (g === undefined) return;
+      const P = d.geom_xpos, dx = P[3 * g] - P[3 * o.head], dy = P[3 * g + 1] - P[3 * o.head + 1], dz = P[3 * g + 2] - P[3 * o.head + 2];
+      const dist = Math.hypot(dx, dy, dz), need = r + thick(g) + 0.004 - dist;
+      if (need > 0 && dist > 1e-6) p.set(p.x + dx / dist * need, p.y + dy / dist * need, p.z + dz / dist * need);
+    };
+  });
+}
+// the skin's wear (Unreal's ASlapHUD): the cheek rings and is pushed in where the slap landed, flushes red round that
+// spot (following the head) with the neck damage plus the sting of the last slap, and greys with the lost stamina
+const wear = [{ local: null, at: -99, speed: 0, dir: new THREE.Vector3() }, { local: null, at: -99, speed: 0, dir: new THREE.Vector3() }];
+const MIN_NECK = 0.5, MIN_STAMINA = 0.7, CLEAN = 8;
+const headFrame = (d, b) => [new THREE.Vector3(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]),
+  new THREE.Matrix3().set(...Array.from(d.xmat.subarray(9 * b, 9 * b + 9)))];   // MuJoCo's xmat is row-major, as set() takes it
+function struck(striker, pos, speed) {
+  const sides = game.match.sides, j = sides.findIndex(s => s.name !== striker);
+  const [c, R] = headFrame(game.d, sides[j].headBody), p = new THREE.Vector3(...pos);
+  wear[j].local = p.clone().sub(c).applyMatrix3(R.transpose());
+  wear[j].dir = c.clone().sub(p).normalize();   // the cheek is pushed toward the head's centre
+  wear[j].at = performance.now() / 1000; wear[j].speed = speed;
+  look.hit(pos, wear[j].dir, speed);
+}
+function skinTick(d) {
+  const now = performance.now() / 1000;
+  art.athletes.forEach((a, i) => {
+    const s = game.match.sides[i], w = wear[i];
+    const P = w.local && (([c, R]) => w.local.clone().applyMatrix3(R).add(c))(headFrame(d, s.headBody));
+    for (const u of a.skins) {
+      if (P) { u.flushPoint.value.copy(P); u.ripplePoint.value.copy(P); u.rippleDir.value.copy(w.dir); }
+      u.rippleTime.value = now - w.at; u.rippleAmp.value = 0.2 * w.speed;
+      const sting = 0.5 * Math.min(1.5, w.speed / CLEAN) * Math.exp(-(now - w.at) / 2);
+      u.flush.value = Math.max(0, Math.min(1, (1 - s.neckStrength) / (1 - MIN_NECK) + sting));
+      u.tired.value = Math.max(0, Math.min(1, (1 - s.stamina) / (1 - MIN_STAMINA)));
+    }
+  });
+}
+// footsteps and skids, from MuJoCo's soles: a sole that lifts 1.5 cm and comes back down is a step; a planted sole
+// sliding faster than 0.6 m/s squeaks or scrapes (at most every 0.3 s per foot)
+const soles = [];
+function feetTick(d, dt) {
+  if (!dt) return;
+  game.match.sides.forEach((s, i) => s.feet.forEach((g, j) => {
+    const k = 2 * i + j, x = d.geom_xpos[3 * g], y = d.geom_xpos[3 * g + 1], z = d.geom_xpos[3 * g + 2];
+    const f = soles[k] ??= { z0: z, up: false, x, y, quiet: 0 };
+    const v = Math.hypot(x - f.x, y - f.y) / dt;
+    f.quiet -= dt;
+    if (z > f.z0 + 0.015) f.up = true;
+    else if (f.up && z < f.z0 + 0.005) { f.up = false; sound.step(x, 0.25 + 0.25 * Math.random()); }
+    else if (!f.up && z < f.z0 + 0.005 && v > 0.6 && v < 5 && f.quiet <= 0) { f.quiet = 0.3; sound.skid(x, v); }
+    Object.assign(f, { x, y });
+  }));
+}
 function draw(d) {
-  for (const a of art.athletes) a.update(d);
+  art.athletes.forEach((a, i) => a.update(d, pushers[i]));
+  if (art.athletes.length) skinTick(d);
   const P = d.geom_xpos, X = d.geom_xmat;
   for (const [mesh, g] of shapes) {
     const b = 9 * g;
@@ -705,7 +784,7 @@ function tickFx(dt) {
     if (f[1] > 0.45) { scene.remove(f[0]); f[0].geometry.dispose(); fx.splice(i, 1); }
   }
 }
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { const w = innerWidth, h = innerHeight; look.resize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener("resize", resize); resize();
 
 // ---- the loop: physics in real time, drawing every frame ---------------------------------------------------
@@ -722,7 +801,7 @@ try {
   const mj = await loadMujoco();
   $("loadmsg").textContent = "Loading the arena and both brains…";
   game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
-  buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides);
+  buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides); buildPushers(game.m, game.match.sides);
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
   buildDeters(); renderStreak(); renderMatchups(); renderBadges(); renderCards(); measureBottom();
@@ -773,7 +852,10 @@ function loop(now) {
     updateDeters(S.danger, S.danger.source);
     renderBadges();
   }
-  draw(game.d); tickFx(dt * (paused ? 0 : 1)); controls.update(); renderer.render(scene, camera);
+  draw(game.d); tickFx(dt * (paused ? 0 : 1)); controls.update();
+  feetTick(game.d, paused ? 0 : dt);
+  sound.tick(Math.max(S.danger.red || 0, S.danger.blue || 0), Math.min(...game.match.sides.map(s => s.stamina ?? 1)));
+  look.render(dt * (paused ? 0 : 1), fpsNow);
   requestAnimationFrame(loop);
 }
 

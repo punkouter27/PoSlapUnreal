@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { skin, envLight } from "./fx.js";
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const load = url => new Promise((ok, fail) => loader.load(url, ok, undefined, fail));
@@ -22,6 +23,7 @@ export async function loadArena(scene) {
   }
   root.add(gltf.scene); scene.add(root);
   gltf.scene.traverse(o => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = /podium|pod/i.test(o.name); } });
+  envLight(gltf.scene, 0.06);
   return root;
 }
 
@@ -39,6 +41,9 @@ export async function loadAthlete(scene, url, mj, m, prefix, tint) {
   const sk = skinned.skeleton;
   sk.pose(); gltf.scene.updateMatrixWorld(true);   // the bind (rest) pose
   if (tint) skinned.material.emissive = new THREE.Color(tint).multiplyScalar(0.12);   // a hint of the corner colour
+  const skins = [];   // the skin shader (fx.js): subsurface wrap, sheen, the cheek ripple and flush
+  gltf.scene.traverse(o => { if (o.isSkinnedMesh) { o.material = skin(o.material); skins.push(o.material.userData.skin); } });
+  envLight(gltf.scene, 0.3);
 
   // MuJoCo at rest: qpos0, kinematics
   const d0 = new mj.MjData(m); mj.mj_resetData(m, d0); mj.mj_kinematics(m, d0);
@@ -68,14 +73,16 @@ export async function loadAthlete(scene, url, mj, m, prefix, tint) {
   const W = new THREE.Matrix4(), inv = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3();
 
   return {
-    root: gltf.scene,
-    update(d) {
+    root: gltf.scene, skins,
+    // push(name, p, d): may move a driven bone's position (app.js keeps the drawn hand out of the face it hits)
+    update(d, push) {
       for (const bone of order) {
         const k = byBone.get(bone), parentW = bone.parent.matrixWorld;
         if (k) {
           const b = k.body;
           q.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]).multiply(k.offset);
           p.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]);
+          if (push) push(bone.name, p, d);
           W.compose(p, q, k.scale);
           bone.matrix.multiplyMatrices(inv.copy(parentW).invert(), W);
           bone.matrix.decompose(bone.position, bone.quaternion, bone.scale);

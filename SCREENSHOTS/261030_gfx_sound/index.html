@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Graphics, sound and collisions (261030)</title>
+  <style>
+    :root { --bg: #fcfcfb; --ink: #1f1f1e; --ink2: #5f5e58; --line: #e4e3de; --gold: #b8932a; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --line: #33332f; --gold: #d4af37; } }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    h1 { font-size: 28px; margin-bottom: 4px; letter-spacing: -0.5px; }
+    h2 { font-size: 20px; margin-top: 36px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    .subtitle { color: var(--ink2); margin-bottom: 24px; font-size: 15px; }
+    .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 20px 0; }
+    figure { margin: 0; }
+    img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+    figcaption { color: var(--ink2); font-size: 14px; margin-top: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 12px 0; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--ink2); font-weight: 600; }
+    code { font-size: 13px; }
+    .note { color: var(--ink2); font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Graphics, sound and collisions</h1>
+  <div class="subtitle">2026-10-30 · browser spectator site (Web/) and Unreal audio · build 261030</div>
+
+  <h2>Browser: before and after</h2>
+  <div class="pair">
+    <figure><img src="before_stand.png" alt="Before: flat forward render, dark stands, no ambient occlusion"><figcaption><b>Before.</b> Plain forward render: one spot light, the stands almost black, no contact shading.</figcaption></figure>
+    <figure><img src="after_stand.png" alt="After: ambient occlusion, bloom on the phone lights, image-based light, skin shading"><figcaption><b>After (Ultra).</b> Ground-truth AO, image-based light, bloom on the phone lights, SMAA, the lens pass (fringe, vignette, grain) and the skin shader.</figcaption></figure>
+  </div>
+  <div class="pair">
+    <figure><img src="before_impact.png" alt="Before: impact frame"><figcaption>Before, at a strike: a yellow ring.</figcaption></figure>
+    <figure><img src="after_impact.png" alt="After: impact frame"><figcaption>After, at a strike: the cheek is pushed in and ripples, then flushes red; sweat spray, a shock ring through the lens and a camera jolt scaled by palm speed.</figcaption></figure>
+  </div>
+
+  <table>
+    <tr><th>Added (Web/fx.js)</th><th>What it does</th></tr>
+    <tr><td>GTAO + Poisson denoise</td><td>Ground-truth ambient occlusion: contact shadows between arms and body, under the podium, at the feet.</td></tr>
+    <tr><td>Image-based light (PMREM room)</td><td>Reflections and fill on the athletes (0.3), barely on the arena (0.06), so the stage light stays the light.</td></tr>
+    <tr><td>Bloom (linear HDR, threshold 3)</td><td>Only real highlights glow: phone lights, speculars.</td></tr>
+    <tr><td>Lens pass</td><td>Shock ring from the contact point, chromatic fringe, vignette, film grain. Runs before the tone map (after it, it encoded the frame twice).</td></tr>
+    <tr><td>Key-light beam + 900 dust motes</td><td>A soft additive cone with drifting value-noise haze; dust lit only inside it.</td></tr>
+    <tr><td>Skin shader</td><td>Per-channel wrapped diffuse (red light travels further under skin), a warm fuzz rim, and Unreal's skin parameters: cheek ripple and push, red flush from neck damage plus the last slap's sting, greyer skin with lost stamina.</td></tr>
+    <tr><td>Impact spray, camera jolt</td><td>Droplets thrown along the slap with drag and gravity; a damped camera shake.</td></tr>
+    <tr><td>Hand clamp (drawing only)</td><td>The drawn hand is moved out of the head it hits along the contact normal (the physics lets it sink 4-7 cm, see below).</td></tr>
+    <tr><td>Quality tiers</td><td>Settings or <code>?gfx=ultra|high|low|auto</code>. Auto starts at Ultra on desktop and High on phones, and steps down a tier after 4 s under 30 fps.</td></tr>
+  </table>
+  <p class="note">Two bugs found on the way. (1) Wrapped light fed into the GGX specular made 152 pixels reach about 23,000 in linear HDR (it divides by ~0 at grazing angles), and bloom spread them over the whole frame: the wrap now feeds only the diffuse term. (2) three.js's physical material alone cost about 15 fps on the two athletes, so the skin is the standard material with the same hooks.<br>
+  Frame rate at 540×960 in headless Chrome on the training machine (the GPU shared with a training run, so ±2× noise): before 56-60 fps; after, Ultra 16-72 fps and Low 42-52 fps. On a free GPU, Ultra held 60 fps (vsync).</p>
+
+  <h2>Sound (Scripts/broadcast_audio.py)</h2>
+  <p>Every sound is now a small physical model, with the same files and loop points, used by Unreal (re-imported) and now by the browser (<code>Web/audio.js</code>: panned by position, a generated 1.8 s hall, a limiter; cued as Unreal's HUD cues them).</p>
+  <table>
+    <tr><th>Sound</th><th>Before</th><th>After</th></tr>
+    <tr><td>Slap ×4</td><td>noise burst + sine</td><td>palm and fingers landing over 2-5 ms (a flam), the air pocket's Helmholtz pop (1.6-2.5 kHz), skin crack, cheek and skull modes, an early reflection</td></tr>
+    <tr><td>Thud</td><td>one sagging sine</td><td>knees, hip, shoulder and head landing in turn on the pad, its foam "pomf", clothes</td></tr>
+    <tr><td>Squeak, Scrape</td><td>sine with vibrato</td><td>rubber stick-slip (sawtooth at the stick rate) through the sole's resonances; random slip events</td></tr>
+    <tr><td>Step</td><td>one knock</td><td>heel, then the ball of the foot 60-80 ms later</td></tr>
+    <tr><td>Breath</td><td>filtered pink noise</td><td>inhale and exhale through mouth formants, a voiced edge on the exhale</td></tr>
+    <tr><td>Crowd (react, near miss, loop)</td><td>filtered pink noise</td><td>55-90 synthesised voices (glottal pulses through vowel formants, men and women, at distances) going "ooh" into a cheer or a groan, clap-by-clap applause, a whistle and a cough in the murmur, a baked hall</td></tr>
+    <tr><td>Bell</td><td>4 clean partials</td><td>5 partials as detuned pairs that beat, plus the hammer click</td></tr>
+  </table>
+  <figure><img src="spectrograms.png" alt="Spectrograms of six sounds, before and after"><figcaption>Spectrograms, before (left) and after (right). Generated by <code>spectro.py</code>.</figcaption></figure>
+
+  <h2>Collisions (review, CPU MuJoCo; no physics changed)</h2>
+  <table>
+    <tr><th>Finding</th><th>Evidence</th><th>Fix (all change physics: retrain + parity)</th></tr>
+    <tr><td>The palm sinks into the head</td><td>40-71 mm deep (head radius 90 mm) for ~50 ms: at 200 Hz a 9 m/s hand moves 44 mm per step, and the contact is MuJoCo's default softness</td><td>solref 0.01 on hand and head (→ 37-49 mm). The rest can only be hidden on screen: done in the browser.</td></tr>
+    <tr><td>Four body pairs never collide</td><td>belly-upper arm (both), chest-head, pelvis-chest: welded bodies skip the parent filter; the upper arm overlaps the belly by 22-62 mm</td><td>explicit <code>&lt;pair&gt;</code>s in build_body.py and the fit check</td></tr>
+    <tr><td>Floor and podium as soft as skin</td><td>a stomp sinks 25 mm into the floor</td><td>stiffer solref/solimp on floor and podium</td></tr>
+    <tr><td>Minor</td><td>no torsional friction (condim 3); the strike impulse uses hand_r's velocity whatever touched; no safety-mat geom (Blueprint §5)</td><td>condim 4 on soles; the touching part's velocity in all three engines; a mat geom or a Blueprint edit</td></tr>
+  </table>
+  <p class="note">Passed: strike impulse (3.5 kg effective, 3.0-3.5 m/s head snap at 8.8 m/s), no tunnelling, no contact chatter, planted feet sink 0.5-0.9 mm, friction 0.8/0.9 within human ranges, verify_realism.py all PASS.</p>
+</main>
+</body>
+</html>
