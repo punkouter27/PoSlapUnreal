@@ -22,24 +22,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if code == 404:
             self.send_response(404)
             self.send_header("Content-Type", "text/plain")
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(b"not found")
+            self.close_connection = True
             return
         super().send_error(code, message, explain)
 
     def do_GET(self):
-        self._guard()
+        if not self._guard():
+            return          # refuse: do NOT fall through and serve the file anyway
         super().do_GET()
 
     def do_HEAD(self):
-        self._guard()
+        if not self._guard():
+            return
         super().do_HEAD()
 
     def _guard(self):
-        """Refuse anything outside Web/ and training/ (the .git directory, Saved/, Logs/, the venv)."""
-        path = self.path.split("?", 1)[0].split("#", 1)[0].lstrip("/")
-        top = path.split("/", 1)[0]
-        if top not in ALLOWED:
+        """Refuse anything outside Web/ and training/ (the .git directory, Saved/, Logs/, the venv).
+
+        The check is on the RESOLVED path, not the request path: SimpleHTTPRequestHandler
+        drops ".." segments, so "/Web/../AGENTS.md" would otherwise walk straight out of
+        the allowed directories.
+        """
+        try:
+            full = Path(super().translate_path(self.path)).resolve()
+        except Exception:
+            full = None
+        allowed = [(ROOT / d).resolve() for d in ALLOWED]
+        if full is None or not any(full == root or root in full.parents for root in allowed):
             self.send_error(404)
             return False
         return True
