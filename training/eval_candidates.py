@@ -9,7 +9,6 @@ brain), with the exam's own fixed seed, so the numbers line up.
 """
 import json
 import sys
-import time
 from pathlib import Path
 
 import torch

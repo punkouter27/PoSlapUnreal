@@ -17,7 +17,6 @@ runs/overnight_summary.html.
 import argparse, json, subprocess, sys, time
 from pathlib import Path
 
-import torch
 
 from brain_cpu import OBS
 from ppo import PPO, PPOConfig, export_onnx

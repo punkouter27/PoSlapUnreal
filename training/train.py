@@ -344,6 +344,10 @@ def main():
             m[f"{tag}_return"] = mean([e["ret"] for e in rec])
             m[f"{tag}_fall"] = mean([e["fell"] for e in rec])
             m[f"{tag}_episode_s"] = mean([e["len"] for e in rec]) / 50
+            if "clear" in rec[0]:      # the obstacle course: cleared the step, reached the last waypoint
+                m[f"{tag}_clear"] = mean([e["clear"] for e in rec])
+                m[f"{tag}_reach"] = mean([e["reach"] for e in rec])
+                m[f"{tag}_waypoints"] = mean([e["waypoints"] for e in rec])
             if r == 1:
                 m["strike_hit"] = mean([e["hit"] for e in rec])
                 m["strike_whiff"] = mean([e.get("whiff", False) for e in rec])   # missed swings (each ends the attempt)

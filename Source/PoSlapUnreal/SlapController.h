@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include <atomic>
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "SlapReferee.h"
 #include "SlapController.generated.h"
 
 class FArchive;
@@ -206,24 +207,8 @@ private:
 	void ApplyGaze(const mjModel* m, mjData* d);
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
-	struct FTurn
-	{
-		int32 Striker = 0;
-		int64 Step = 0, TouchStep = -1;			// physics steps into the turn
-		FString Part;
-		bool bPalm = false, bStagger = false, bKO = false;
-		double Speed = 0.0, HeadPeak = 0.0, Com0[2] = {};
-		TArray<TPair<int32, FString>> Fouls;	// (athlete, why)
-		double Feet0[2][2][2] = {}, HandPrev[3] = {}, HeadPrev[3] = {};
-		double Kick[6] = {};	// the slap's impact on the defender's head (force, torque) for KickSteps steps after the touch
-		// broadcast science (display and the "impact" log line only)
-		double HeadVel[3] = {}, HeadAcc[3] = {}, Hic = 0.0, Spin[3] = {}, Bric = 0.0;	// HeadAcc: the last 3 steps' g, newest first
-		int32 HeadSamples = -1;	// -1: no head velocity yet; then the acceleration samples since the touch
-		double Chain[5] = {};
-		int32 ChainOrder = -1;
-		int64 SlowSteps = 0;	// steps of pre-touch slow motion spent (capped: a slap that never lands)
-		int64 FaintAt[2] = { -1, -1 }, FaintEnd[2] = { -1, -1 };	// per athlete: the steps a faint starts and ends, -1 = none
-	};
+	using FTurn = Slap::FSlapTurn;	// one turn's record (SlapReferee.h)
+	Slap::FSlapReferee Referee;	// the judges' cards, the round's turns and the decision (SlapReferee.h)
 	int32 Floor = -1, Podium = -1;
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0, LastWinner = -1;
 	uint32 Seed = 0;	// the match's dice (fainting), logged in match_start; -SlapSeed= fixes the first match's (checks)
@@ -241,8 +226,6 @@ private:
 	static constexpr double WalkTimeout = 8.0;	// s: whoever hasn't arrived is placed at the box by the first turn's reset
 	bool bInTurn = false;
 	FTurn Turn;
-	int32 Cards[3][2] = {};
-	TArray<FTurn> RoundTurns;
 	FArchive* Log = nullptr;
 	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos = nullptr) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
 	void StartMatch(mjModel* m, mjData* d);
@@ -251,7 +234,6 @@ private:
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
 	void EndMatch(int32 Winner);	// series tally, HUD, post-match hold; -1 = draw / no contest
-	void Score(int32 (&Pts)[3][2]);
 	void Emit(FStringView Json);
 	void Decide(const mjModel* m, mjData* d);
 	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);

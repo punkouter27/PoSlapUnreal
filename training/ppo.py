@@ -53,9 +53,20 @@ class RunningMeanStd:
         self.count = float(sd["count"])
 
 
-def mlp(inp: int, hidden: Tuple[int, ...], out: int) -> nn.Sequential:
+def mlp(inp: int, hidden: Tuple[int, ...], out: int, proj: "torch.Tensor | None" = None) -> nn.Sequential:
+    """The policy's MLP.  `proj` is the FIXED linear projection (Realism 5: the redundant observation channels
+    pruned inside the network's input layer, so the brain I/O stays the same 136 floats).  Its weight is not
+    learned: it is the PCA basis of a sample of real observations, and it is baked into the exported ONNX -
+    which is why Unreal's NNE and the browser's onnxruntime-web need no change at all."""
     layers = []
     last = inp
+    if proj is not None:
+        fixed = nn.Linear(inp, proj.shape[1], bias=False)
+        with torch.no_grad():
+            fixed.weight.copy_(proj)
+        fixed.weight.requires_grad_(False)
+        layers.append(fixed)
+        last = proj.shape[1]
     for h in hidden:
         layers += [nn.Linear(last, h), nn.ELU()]
         last = h
@@ -64,13 +75,14 @@ def mlp(inp: int, hidden: Tuple[int, ...], out: int) -> nn.Sequential:
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, obs_dim: int, act_dim: int, hidden=(512, 256, 128), init_std: float = 0.8):
+    def __init__(self, obs_dim: int, act_dim: int, hidden=(512, 256, 128), init_std: float = 0.8,
+                 proj: "torch.Tensor | None" = None):
         super().__init__()
-        self.actor = mlp(obs_dim, hidden, act_dim)
-        self.critic = mlp(obs_dim, hidden, 1)
+        self.actor = mlp(obs_dim, hidden, act_dim, proj)
+        self.critic = mlp(obs_dim, hidden, 1, proj)
         self.log_std = nn.Parameter(torch.full((act_dim,), float(np.log(init_std))))
         for m in self.modules():
-            if isinstance(m, nn.Linear):
+            if isinstance(m, nn.Linear) and m.weight.requires_grad:   # the fixed projection is not re-initialised
                 nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
                 nn.init.zeros_(m.bias)
         nn.init.orthogonal_(self.actor[-1].weight, gain=0.01)
@@ -131,11 +143,16 @@ class PPOConfig:
 
 
 class PPO:
-    def __init__(self, obs_dim: int, act_dim: int, num_envs: int, device: str, cfg: PPOConfig):
+    def __init__(self, obs_dim: int, act_dim: int, num_envs: int, device: str, cfg: PPOConfig,
+                 proj: "torch.Tensor | None" = None):
         self.cfg = cfg
         self.device = device
         self.num_envs = num_envs
-        self.model = ActorCritic(obs_dim, act_dim, init_std=cfg.init_std).to(device)
+        # the optional fixed input projection (Realism 5): a (obs_dim, k) matrix that prunes the redundant
+        # channels inside the network's first layer.  The observation is still the same 136 floats, and the
+        # projection is baked into the exported ONNX, so the other two engines need no change.
+        self.proj = proj
+        self.model = ActorCritic(obs_dim, act_dim, init_std=cfg.init_std, proj=proj).to(device)
         self.obs_rms = RunningMeanStd(obs_dim, device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr)
         self.actor_frozen = False

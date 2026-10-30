@@ -1,0 +1,99 @@
+{
+ "run": "grandpa_servo_mix_1029",
+ "started": "2026-10-30 00:12:33",
+ "command": "train.py --level L4 --opponent kim:models/brains/kim_final_vs_grandpa.pt --resume runs/grandpa_servo_1029/best.pt --out grandpa_final_vs_kim_servo --run grandpa_servo_mix_1029 --minutes 18 --envs 2048",
+ "args": {
+  "char": "grandpa",
+  "level": "L4",
+  "minutes": 18.0,
+  "envs": 2048,
+  "run": "grandpa_servo_mix_1029",
+  "resume": "runs/grandpa_servo_1029/best.pt",
+  "max_std": 0.3,
+  "entropy": 0.001,
+  "critic_warmup": 0,
+  "roles": null,
+  "opponent": "kim:models/brains/kim_final_vs_grandpa.pt",
+  "out": "grandpa_final_vs_kim_servo",
+  "reach_start": null,
+  "imit_start": null,
+  "keep_going": false
+ },
+ "level": "L4",
+ "level_config": {
+  "model": "arena",
+  "roles": {
+   "1": 0.5,
+   "-1": 0.5
+  },
+  "seconds": 30.0,
+  "pushes": false,
+  "foot_box": [
+   0.2,
+   0.25
+  ],
+  "max_push": 0.6,
+  "hit_speed": 8.0,
+  "reward_target": {
+   "1": 100.0,
+   "-1": 300.0
+  },
+  "check": {
+   "episodes": 100,
+   "ko_rate": [
+    0.1,
+    0.4
+   ],
+   "max_self_fall": 0.05,
+   "min_strikes": 0.9
+  }
+ },
+ "character": "grandpa",
+ "card": {
+  "name": "grandpa",
+  "display": "GRANDPA",
+  "slot": 1,
+  "mesh": "Content/Art/Exports/Grandpa_rigged.fbx",
+  "skeleton": "characters/grandpa_skeleton.json",
+  "height_m": 1.7,
+  "mass_kg": 78.0,
+  "strength": 0.5,
+  "speed": 0.75,
+  "flexibility": 0.85,
+  "toughness": 1.0,
+  "stamina_per_strike": 0.05,
+  "neck_damage_per_snap": 0.04,
+  "strike_mass": 3.0,
+  "notes": "v1 athlete, used for both players. Strength/speed/flexibility are multiples of a trained adult (Blueprint section 1). Toughness = KO resistance: multiplies the neck motors' strength on top of strength (a tougher athlete braces the head; the same slap snaps it less). Fatigue (match only, resets each match): stamina drops by stamina_per_strike for every turn struck (joint speed x stamina, floor 0.7); the neck motors' strength drops by neck_damage_per_snap per m/s of head snap absorbed (floor 0.5). Strike mass = the body behind the palm (kg): the arm's motors are too soft to pass on more than the hand's own mass, so a touch adds strike_mass x hand velocity as a 10 ms impulse on the defender's head (calibrated 2026-10-23 against the L2 brain graduated at 11:08, clean slaps ~11.5 m/s: 3.0 kg for a 78 kg athlete knocks a braced guard off balance 31 % of clean slaps; scaled to body mass).",
+  "style": {
+   "summary": "Balance: upright and straight-legged, arms hanging. Slap: big and loopy - a long trunk wind-up and a full arm swing (his reference slap, found by search from the default guess)."
+  },
+  "sparring": {
+   "head": [
+    0.8015,
+    0.0,
+    0.74
+   ],
+   "shorter_max": 0.1,
+   "lean": 1.0,
+   "note": "Practice opponent (envs/slap.py): his face from own start pelvis vs a braced Grandpa; up to 10 cm shorter, leaning in like a braced Kim (her face sat 13-14 cm lower, 5-10 cm closer in Unreal, 2026-10-23)"
+  }
+ },
+ "git_sha": "0b5d133695a0ff6886dd0752c85a6bac8a9ee102",
+ "git_dirty": true,
+ "versions": {
+  "python": "3.11.9",
+  "torch": "2.11.0+cu128",
+  "mujoco": "3.10.0"
+ },
+ "obs_dim": 136,
+ "ppo": {
+  "lr": 0.001,
+  "init_std": 0.8,
+  "max_std": 0.3,
+  "entropy": 0.001
+ },
+ "worlds": 2048,
+ "gaze_servo": true,
+ "servo_mix": "0.5"
+}

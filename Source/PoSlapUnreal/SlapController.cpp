@@ -18,7 +18,7 @@
 
 #include <cmath>
 
-DEFINE_LOG_CATEGORY_STATIC(LogSlap, Log, All);
+DEFINE_LOG_CATEGORY(LogSlap);
 
 namespace
 {
@@ -640,7 +640,7 @@ namespace
 	using Slap::StrikeClock, Slap::Recovery;
 	constexpr double BoxX = 0.20, BoxY = 0.25;
 	constexpr int64 KickSteps = 2;	// the slap's impact impulse lasts 10 ms (match.py KICK_STEPS)
-	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };	// judges: speed, head, stagger, defence
+	// the judges' weights are in SlapReferee.cpp now (the referee's own file)
 }
 
 void USlapController::SetHud(TFunctionRef<void(FSlapHud&)> Edit)
@@ -713,8 +713,7 @@ void USlapController::StartMatch(mjModel* m, mjData* d)
 		: (uint32)(FDateTime::Now().GetTicks() * 2654435761ull >> 16) & 0x7FFFFFFFu;
 	Round = 1;
 	TurnInRound = 0;
-	FMemory::Memzero(Cards);
-	RoundTurns.Reset();
+	Referee.Reset();	// the judges start from zero (SlapReferee.h)
 	for (FAthlete& A : Athletes)	// fatigue and memory last one match
 	{
 		A.Mem[0] = A.Mem[1] = 0.0;
@@ -1132,7 +1131,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 	{
 		Emit(FString::Printf(TEXT("{\"type\": \"blowup\", \"t\": %s}"), *Num(T, 3)));
 		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"blow-up\", \"winner\": null, \"round\": %d, \"cards\": %s}"),
-			Round, *CardsJson(Cards)));
+			Round, *CardsJson(Referee.Cards)));
 		UE_LOG(LogSlap, Error, TEXT("t=%.3f sim blow-up: match abandoned"), T);
 		SetHud([&](FSlapHud& H) { H.Result = TEXT("No contest (simulation blow-up)"); });
 		bInTurn = false;
@@ -1227,12 +1226,12 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 		if (Turn.bKO) ++H.KOSeq;
 		++H.TurnSeq;	// the turn is over: the HUD's near-miss, feint and judges cues watch this
 	});
-	RoundTurns.Add(Turn);
+	Referee.RoundTurns.Add(Turn);
 	bInTurn = false;
 
 	if (Turn.bKO)
 	{
-		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"KO\", \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(S.Name), Round, *CardsJson(Cards)));
+		Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": \"KO\", \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(S.Name), Round, *CardsJson(Referee.Cards)));
 		const FString Res = FString::Printf(TEXT("%s wins by KO, round %d"), *S.Name.ToUpper(), Round);
 		SetHud([&](FSlapHud& H) { H.Result = Res; });
 		Round = Rounds + 1;	// match over; the next turn starts a new one
@@ -1241,26 +1240,19 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	}
 	if (++TurnInRound < 2) { HoldLeft = HoldSteps(TurnHold); return; }	// let the crowd see how the turn ended
 	int32 Pts[3][2];
-	Score(Pts);
-	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson(Cards)));
-	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Cards, sizeof(Cards)); FMemory::Memcpy(H.RoundCards, Pts, sizeof(Pts)); H.ScoredRound = Round; });
-	RoundTurns.Reset();
+	Referee.Score(Pts);	// the judges (SlapReferee.h)
+	Emit(FString::Printf(TEXT("{\"type\": \"round\", \"round\": %d, \"cards\": %s}"), Round, *CardsJson(Referee.Cards)));
+	SetHud([&](FSlapHud& H) { FMemory::Memcpy(H.Cards, Referee.Cards, sizeof(Referee.Cards)); FMemory::Memcpy(H.RoundCards, Pts, sizeof(Pts)); H.ScoredRound = Round; });
+	Referee.RoundTurns.Reset();
 	TurnInRound = 0;
 	if (++Round <= Rounds) { HoldLeft = HoldSteps(TurnHold); return; }
-	int32 Wins[2] = { 0, 0 };
-	for (int32 j = 0; j < 3; ++j)
-	{
-		if (Cards[j][0] != Cards[j][1]) ++Wins[Cards[j][1] > Cards[j][0] ? 1 : 0];
-	}
-	const int32 Top = Wins[1] > Wins[0] ? 1 : 0;
-	FString How = TEXT("draw");
-	if (Wins[Top] == 3) How = TEXT("unanimous decision");
-	else if (Wins[Top] == 2) How = Wins[1 - Top] == 1 ? TEXT("split decision") : TEXT("majority decision");
-	const bool Draw = How == TEXT("draw");
-	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Top].Name), Rounds, *CardsJson(Cards)));
-	const FString Res = Draw ? FString(TEXT("Draw")) : FString::Printf(TEXT("%s wins by %s"), *Athletes[Top].Name.ToUpper(), *How);
+	int32 Winner = -1;
+	const FString How = Referee.Decision(Winner);	// the decision (SlapReferee.h): the wording and the winner
+	const bool Draw = Winner < 0;
+	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Winner].Name), Rounds, *CardsJson(Referee.Cards)));
+	const FString Res = Draw ? FString(TEXT("Draw")) : FString::Printf(TEXT("%s wins by %s"), *Athletes[Winner].Name.ToUpper(), *How);
 	SetHud([&](FSlapHud& H) { H.Result = Res; });
-	EndMatch(Draw ? -1 : Top);
+	EndMatch(Winner);
 }
 
 int64 USlapController::HoldSteps(double Seconds)
@@ -1273,36 +1265,6 @@ void USlapController::EndMatch(int32 Winner)
 	LastWinner = Winner;
 	HoldLeft = HoldSteps(PostMatchHold);
 	SetHud([&](FSlapHud& H) { Winner < 0 ? ++H.Draws : ++H.Wins[Winner]; });
-}
-
-void USlapController::Score(int32 (&Out)[3][2])
-{
-	for (int32 j = 0; j < 3; ++j)	// 10-point must, three judges weighing (speed, head, stagger, defence) differently
-	{
-		double Eff[2] = { 0.0, 0.0 };
-		bool Stag[2] = { false, false };
-		for (const FTurn& R : RoundTurns)
-		{
-			if (R.TouchStep < 0) continue;
-			Eff[R.Striker] += Weights[j][0] * R.Speed + (Weights[j][1] * 5) * R.HeadPeak + (double)(Weights[j][2] * 10 * (R.bStagger ? 1 : 0));
-			Stag[R.Striker] = R.bStagger;
-			if (!R.bKO)	// the defender absorbed it: stayed put, small head snap
-			{
-				Eff[1 - R.Striker] += Weights[j][3] * ((double)(10 * (R.bStagger ? 0 : 1)) + FMath::Max(0.0, 10.0 - 5 * R.HeadPeak));
-			}
-		}
-		const int32 Hi = Eff[1] > Eff[0] ? 1 : 0;
-		int32 Pts[2] = { 10, 10 };
-		if (FMath::Abs(Eff[0] - Eff[1]) > 0.05 * FMath::Max(Eff[0], Eff[1])) Pts[1 - Hi] = Stag[Hi] && Eff[Hi] >= 2 * Eff[1 - Hi] ? 8 : 9;
-		for (const FTurn& R : RoundTurns)
-		{
-			for (const TPair<int32, FString>& F : R.Fouls) --Pts[F.Key];
-		}
-		Cards[j][0] += Pts[0];
-		Cards[j][1] += Pts[1];
-		Out[j][0] = Pts[0];
-		Out[j][1] = Pts[1];
-	}
 }
 
 // Eye contact + post-slap poise: pure maths, mirrors match.py gaze_desire/gaze_walk/gaze_apply/strike_hold.
@@ -1391,7 +1353,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		{
 			FString S;
 			for (int32 k = 0; k < A.NumIn; ++k) S += FString::Printf(TEXT("%.9g "), Obs[k]);
-			UE_LOG(LogSlap, Log, TEXT("first obs %s: %s"), *A.Prefix, *S);
+			UE_LOG(LogSlap, Verbose, TEXT("first obs %s: %s"), *A.Prefix, *S);
 		}
 		for (int32 j = 0; j < A.Act.Num(); ++j)
 		{

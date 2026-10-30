@@ -1,6 +1,5 @@
 """Monitor the unattended spar queue: milestones, reward/loss curves, checkpoints."""
 import json
-import sys
 import time
 from pathlib import Path
 

@@ -1064,59 +1064,10 @@ void ASlapHUD::CyclePreset(int32 Dir)
 
 void ASlapHUD::LoadRoster()
 {
-	// every character card in its slot ("slot": 1-16, else the first open one): the tape, its style, the brains made for it
-	// (a new one shows "in training" until it graduates); the other slots are placeholders for athletes still to come
-	// ponytail: the cards live in training/characters beside the project; a packaged (Android) build stages them in
-	// Content/Data, so both places are read
-	TArray<FString> Files;
-	for (const FString& Dir : { FPaths::ProjectDir() / TEXT("training/characters"), FPaths::ProjectContentDir() / TEXT("Data") })
-	{
-		TArray<FString> Found;
-		IFileManager::Get().FindFiles(Found, *(Dir / TEXT("*.json")), true, false);
-		for (const FString& F : Found)
-		{
-			if (F.EndsWith(TEXT("_skeleton.json")) || F.EndsWith(TEXT("_fingerprint.json"))) continue;	// not cards
-			Files.AddUnique(F);	// the editor has both places: one card, one slot
-		}
-	}
-	Files.Sort();
-	Slots.Init({}, RosterSize);
-	// the card of a slot is four lines, always: a long summary or brain list is cut, never wrapped (the sheet does not scroll)
-	auto Cut = [](FString S, int32 N)
-	{
-		S.ReplaceInline(TEXT("\n"), TEXT(" "));
-		if (S.Len() > N) S = S.Left(N - 1) + TEXT("...");
-		return S;
-	};
-	for (const FString& F : Files)
-	{
-		// the card by name, from either place: training/characters/<name>.json or the staged Content/Data/<name>.json
-		const TSharedPtr<FJsonObject> C = Slap::LoadJson(TEXT("training/characters/") + F);
-		if (!C) continue;
-		const FString Name = C->GetStringField(TEXT("name"));
-		FString Mine;
-		for (const FAssetData& B : Brains)
-		{
-			if (B.AssetName.ToString().StartsWith(Name + TEXT("_"))) Mine += (Mine.IsEmpty() ? TEXT("") : TEXT(", ")) + B.AssetName.ToString().RightChop(Name.Len() + 1);
-		}
-		const TSharedPtr<FJsonObject>* Style = nullptr;
-		const FString Summary = Cut(C->TryGetObjectField(TEXT("style"), Style) ? (*Style)->GetStringField(TEXT("summary")) : FString(), 74);
-		int32 Slot = INDEX_NONE;
-		if (C->TryGetNumberField(TEXT("slot"), Slot)) Slot -= 1;
-		if (!Slots.IsValidIndex(Slot) || !Slots[Slot].Key.IsEmpty()) Slot = Slots.IndexOfByPredicate([](const TPair<FString, FString>& X) { return X.Key.IsEmpty(); });
-		if (Slot == INDEX_NONE) break;	// more cards than slots
-		Slots[Slot].Key = C->GetStringField(TEXT("display"));
-		const FString Made = Cut(Mine.IsEmpty() ? FString(TEXT("none yet (in training)")) : Mine, 54);
-		Slots[Slot].Value = FString::Printf(TEXT("%s   %.2f m  %.0f kg\nSTR %.2f  SPD %.2f  FLX %.2f  TGH %.2f\n%s\nBrains: %s"),
-			*Slots[Slot].Key, C->GetNumberField(TEXT("height_m")), C->GetNumberField(TEXT("mass_kg")), C->GetNumberField(TEXT("strength")),
-			C->GetNumberField(TEXT("speed")), C->GetNumberField(TEXT("flexibility")), C->GetNumberField(TEXT("toughness")), *Summary,
-			*Made);
-	}
-	for (int32 i = 0; i < RosterSize; ++i)
-	{
-		if (!Slots[i].Key.IsEmpty()) continue;
-		Slots[i].Value = FString::Printf(TEXT("Slot %d is open.\nA new athlete: a rigged FBX -> Scripts/rig_mixamo.py -> a card\ntraining/characters/<name>.json with \"slot\": %d -> build_body.py\n-> its own ladder (overnight.py --char <name> --queue)"), i + 1, i + 1);
-	}
+	// every character card in its slot (SlapNames.h does the reading: the cards, their tape and the brains made for them)
+	TArray<FString> Names;
+	for (const FAssetData& B : Brains) Names.Add(B.AssetName.ToString());
+	Slap::LoadRoster(RosterSize, Slots, Names);
 }
 
 void ASlapHUD::LayoutAudit()
@@ -2167,7 +2118,6 @@ void ASlapHUD::Scuff(const FVector& At, float Yaw, const FVector& Size)
 	{
 		D->SetFadeScreenSize(0.f);
 		Marks.Add(D);
-		UE_LOG(LogTemp, Log, TEXT("SlapHUD: scuff at %s"), *At.ToCompactString());
 	}
 	while (Marks.Num() > 8)
 	{
@@ -2197,7 +2147,7 @@ int32 ASlapHUD::DetectTier() const
 {
 	// What this device can afford: 0 low, 1 medium, 2 high. The device profile's name (Config/DefaultDeviceProfiles.ini
 	// names the phone families), the core count and the memory decide it. Display only: the physics never changes.
-	const FString Profile = UDeviceProfileManager::Get().GetActiveProfileName();
+	const FString Profile = UDeviceProfileManager::Get().GetActiveDeviceProfileName();
 	const uint32 Cores = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
 	const uint64 GB = FPlatformMemory::GetConstants().TotalPhysicalGB;
 	int32 T = 2;
@@ -2248,7 +2198,7 @@ void ASlapHUD::Dust(const FSlapHud& H)
 	SeenDown = H.DownSeq;
 	if (!DustPuff || H.Match <= 0) return;
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DustPuff, H.DownPos, FRotator::ZeroRotator, FVector(0.5f));
-	UE_LOG(LogTemp, Log, TEXT("SlapHUD: dust at %s"), *H.DownPos.ToCompactString());
+	UE_LOG(LogSlap, Log, TEXT("t=%.2f dust at %s"), GetWorld()->GetTimeSeconds(), *H.DownPos.ToCompactString());
 }
 
 void ASlapHUD::ReverbMix(double Now)

@@ -310,11 +310,10 @@ def main():
     add_dust()
     log(f"NS_DustPuff: {ASSETS.does_asset_exist('/Game/FX/NS_DustPuff')}")
 
-    for folder in ASSETS.list_assets("/Game/Athletes", recursive=False, include_folder=True):   # every athlete built so far
-        if not folder.endswith("/"):
-            continue
-        name = folder.rstrip("/").split("/")[-1]
-        skin, mesh = f"/Game/Athletes/{name}/M_{name}", f"/Game/Athletes/{name}/SK_{name}"
+    for name in sorted(athlete_names()):
+        skin, mesh = f"/Game/Athletes/M_{name}", f"/Game/Athletes/SK_{name}"
+        if not ASSETS.does_asset_exist(skin):   # the per-athlete folder layout
+            skin, mesh = f"/Game/Athletes/{name}/M_{name}", f"/Game/Athletes/{name}/SK_{name}"
         if ASSETS.does_asset_exist(skin):
             skin = ASSETS.load_asset(skin)
             if add_ripple(skin) | add_wear(skin):
@@ -327,6 +326,18 @@ def main():
     add_scuff()
     add_reverb()
     add_crowd()
+
+
+def athlete_names():
+    """Every athlete in /Game/Athletes, from the M_<name> / SK_<name> pairs (the folder layout and the flat one)."""
+    names = set()
+    for asset in ASSETS.list_assets("/Game/Athletes", recursive=True):
+        base = asset.split(".")[0].rsplit("/", 1)[-1]
+        if base.startswith("M_"):
+            names.add(base[2:])
+        elif base.startswith("SK_"):
+            names.add(base[3:])
+    return names
 
 
 if __name__ == "__main__":

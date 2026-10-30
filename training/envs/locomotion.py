@@ -41,7 +41,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import LAGS, MIN_NECK, MIN_STAMINA, OBS
+from constants import LAGS, MIN_STAMINA, OBS
 from envs.slap import DECIM, hill, quat_mat
 from levels import LEVELS
 
@@ -63,11 +63,9 @@ class LocomotionEnv:
         torch.cuda.set_stream(self.stream)
         wp.set_stream(wp.stream_from_torch(self.stream))
 
-        # Load realism configs
+        # Load realism configs (the joint/strength config holds the fatigue rates the env uses)
         cfg_dir = HERE / "configs"
         self.joint_cfg = json.loads((cfg_dir / "joint_and_strength_config.json").read_text())
-        self.sens_cfg = json.loads((cfg_dir / "sensory_profile.json").read_text())
-        self.train_cfg = json.loads((cfg_dir / "training_realism_config.json").read_text())
 
         fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
         # S2 walks on the open floor of the solo scene; the obstacle courses need the low step and the podium
@@ -102,7 +100,6 @@ class LocomotionEnv:
         mujoco.mj_forward(m, d0)
         self.q0 = torch.tensor(d0.qpos, device=dev, dtype=torch.float32)
         self.h0 = float(d0.qpos[2])
-        self.total_weight_n = float(fp["mass_kg"] * 9.81)
 
         self.mw = mjw.put_model(m)
         self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
@@ -154,7 +151,6 @@ class LocomotionEnv:
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         self.foot_l, self.foot_r = feet[0], feet[1]
-        self.foot_bodies = torch.tensor([m.body("foot_l").id, m.body("foot_r").id], device=dev)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
         self.bad = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.bad[[g for g in body_geoms if g not in feet]] = True
@@ -285,7 +281,7 @@ class LocomotionEnv:
         self.goal[mask] = self.stand
         self.prev_action[mask], self.prev2_action[mask] = 0.0, 0.0
         self.t[mask], self.ret[mask] = 0, 0.0
-        self.push_wait[mask], self.push_left[mask] = self._u(n, 1.0, 3.0), 0.0
+        self.push_wait[mask], self.push_left[mask] = self._u(n, *self.cfg.get("push_start", (1.0, 3.0))), 0.0
         self.gait_phase[mask] = torch.rand(n, device=self.device)
         self.lead_swaps[mask], self.last_lead[mask] = 0, 0
         self.dist_walked[mask], self.speed_err_sum[mask], self.com_err[mask] = 0.0, 0.0, 0.0
@@ -386,11 +382,9 @@ class LocomotionEnv:
         # the first command, and the reaction delay before it (a human does not answer instantly)
         self.cmd_tgt[mask], self.pend_tgt[mask] = self.wp[mask, 0], self.wp[mask, 0]
         self.react_t[mask] = self._u(n, *self.reaction) if self.reaction[1] > 0 else torch.zeros(n, device=dev)
-        # the athlete faces the approach direction
-        q = self.qpos[mask]
-        flip = (d < 0)
-        quat = q[:, 3:7]
-        quat[:, 3] = torch.where(flip, -quat[:, 3], quat[:, 3])
+        # the athlete faces the approach direction (a half turn about the vertical: the quaternion (0,0,0,1))
+        quat = self.qpos[mask, 3:7].clone()
+        quat = torch.where((d < 0)[:, None], torch.tensor([0.0, 0.0, 0.0, 1.0], device=dev), quat)
         self.qpos[mask, 3:7] = quat
 
     def _command(self):
