@@ -33,6 +33,37 @@ bundle ships a CSP (`Web/build.py`).
 drops `..` segments instead of resolving them, so `/Web/../AGENTS.md` would otherwise walk out of the allowed
 directories, and the handler stops at the guard instead of writing a 404 and then serving the file anyway.
 
+**The relay's spectator API** (the same port as the WebSocket, `Web/live.py`; check `node Web/api_check.mjs`):
+`GET /api/match` (the state: the athletes' names/tints/health, the round, the turn, the clock, the judges' cards,
+the KO and knockdown flags, the danger meters, the stage of the match), `GET /api/events` (the match events as a
+JSON array, `?since=<seq>` to poll, `?limit=<n>` capped at 500), `GET /api/events/stream` (the same events as
+Server-Sent Events, `?since=` or the `Last-Event-ID` header to resume, a heartbeat every 15 s), `GET /api/health`,
+`GET /api/schema` (the event types and the state fields, machine-readable), `GET /api/poses` and `GET /` (a
+plain-text index). Every event carries a sequence number. The ring buffer keeps the last **5,000** events: older
+ones are dropped, and a `?since` that reaches past the buffer answers `X-Slap-Reset: 1`. The state is folded from
+the very events the WebSocket forwards (`{"t":"ev","e":{...}}`), so the API and the page read one story and
+Unreal's publisher format is unchanged. `health` and `danger` are **derived**, not simulated: health is 1.0 at
+the start of a match, −0.5 per knockdown, −0.25 per faint, 0 on a knockout; danger is the head snap of the last
+strike over 12 m/s (1.0 on a knockdown), because the publisher ships no capture point.
+
+**CORS and keys.** The API's reads answer with `Access-Control-Allow-Origin: *`: they are read-only, carry no
+credentials and show exactly what a WebSocket viewer already sees, so a scoreboard, a bot or an overlay on another
+origin can read them. The site's own CSP (`Web/build.py`) is untouched (`connect-src 'self' ws: wss:`), so the
+deployed site does not loosen its policy and the page keeps using the WebSocket. The publisher role always needs
+the shared key; the API's reads need it too when one is configured (`--api-key`, or the publisher's `--key`): pass
+it as `?key=...` or in the `X-Slap-Key` header, compared with `hmac.compare_digest`. `--api-public` opens the reads
+on purpose. Writes are refused (405), no request path is ever turned into a file, and a token bucket answers 429
+after 120 requests per 10 s per client.
+
+**The web HUD** (`Web/index.html` + `Web/app.js`): a portrait, zero-scroll broadcast layout - the corner anchors
+(TL the match state, TC the rate, TR the settings, BL the telemetry, BR the `YYMMDD` build stamp that `Web/build.py`
+writes), a bottom dock with the spectator's prediction (RED / BLUE / NEITHER, the streak and the best streak in
+`localStorage`) and the tab row, and a bottom sheet (Telemetry / Science / Roster / Settings) that TAB opens and
+closes. The pick is scored when the turn resolves - the strike landed (the striker) or nobody did (the clock, a
+foul, a fall) - from the same event stream the live feed and the local sim write, so it works in both. The danger
+meter mirrors Unreal's capture point (`USlapController::Wobble`): the local capture point when the browser runs the
+match, the event-derived head snap when it watches a live one (the meter says which).
+
 **CI.** `.github/workflows/verify.yml` runs on every push to `master`: the browser engine one turn each way for
 every pairing (`node Web/check.mjs gg|kk|gk`), the relay check, the spectator API check, a parse of every python
 file, the card/model/staging gate (`training/verify_cards.py`, CPU only) and the `serve.py` path guard.
