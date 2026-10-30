@@ -278,10 +278,14 @@ private:
 
 	void BindReplay(mjModel* m);
 	void BindPolicy(mjModel* m, const FJsonObject* const (&Fp)[2]);	// red's, blue's
+	void BindHillMotors(mjModel* m, const FJsonObject* const (&Fp)[2]);	// replay path: the Hill cap without the athletes
 	void StartFromRecordedPose(const mjModel* m, mjData* d) const;
 	void StepReplay(mjModel* m, mjData* d);
 	void StepPolicy(mjModel* m, mjData* d);
 	void ApplyHill(mjModel* m, const mjData* d);	// Hill's force-velocity cap for the coming step (FrSaved: the uncapped forceranges)
+	/** One motor for the Hill cap: the actuator, the joint's velocity dof and the joint's top speed (rad/s). */
+	struct FMotor { int32 Act = -1, Vadr = -1; double Vmax = 0; };
+	TArray<FMotor> HillMotors;	// every motor of both athletes, in joint order (the policy path fills it from the athletes)
 	TArray<mjtNum> FrSaved;
 	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs, const float* Cmd = nullptr) const;	// Cmd: inputs 102-107 (the walking brain's command)
 	void WriteQposDump(const mjModel* m, const FString& RelPath);

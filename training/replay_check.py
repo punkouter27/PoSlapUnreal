@@ -18,6 +18,7 @@ from brain_cpu import Athlete, muscle_step, muscle_vmax, settle_muscles
 
 HERE = Path(__file__).parent
 SECONDS, CONTROL_EVERY = 5.0, 4  # 50 Hz brain over 200 Hz physics
+AMP = 0.12  # rad of control swing around the stand pose: big enough to move every joint, small enough to stay standing
 
 
 def stand(m, d, fp):
@@ -64,14 +65,19 @@ def record(xml):
     lo, hi = m.actuator_ctrlrange.T
     f, ph = rng.uniform(0.3, 1.5, m.nu), rng.uniform(0, 2 * math.pi, m.nu)
     t = np.arange(int(SECONDS * 50))[:, None] / 50
-    ctrl = np.clip(base + 0.25 * np.sin(2 * math.pi * f * t + ph), lo, hi)  # smooth, deterministic
+    # AMP keeps both athletes standing (0.25 toppled them by 3 s): the 1 mm gate compares the SOLVER, and a fall is a
+    # chaotic attractor that amplifies any float residue into centimetres (measured: the XML and URLab's own compiled
+    # model drift 85 mm apart after a fall, with the same maths on both sides).
+    ctrl = np.clip(base + AMP * np.sin(2 * math.pi * f * t + ph), lo, hi)  # smooth, deterministic
     q = run(m, d, fp, names, ctrl)
     out = HERE / "replays" / f"{Path(xml).stem}_5s.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps({"model": Path(xml).name, "mujoco": mujoco.__version__, "timestep": m.opt.timestep,
                                "control_every": CONTROL_EVERY, "actuators": names, "ctrl": ctrl.tolist(),
                                "names": joint_names(m), "qpos": q.tolist()}))
-    print(f"recorded {out}: {len(ctrl)} control steps, {len(q)} physics steps, final pelvis z {q[-1][2]:.3f}")
+    pel = [q[:, joint_names(m).index(f"{p}_root[2]")].min() for p in ("red", "blue") if f"{p}_root[2]" in joint_names(m)]
+    print(f"recorded {out}: {len(ctrl)} control steps, {len(q)} physics steps, final pelvis z {q[-1][2]:.3f}, "
+          f"lowest pelvis z {min(pel) if pel else float('nan'):.3f}")
 
 
 def body_error(xml, ref_names, ref_q, names, q):

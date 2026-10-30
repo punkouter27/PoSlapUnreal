@@ -167,10 +167,11 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state
 	Athletes.Reset();
 	const TSharedPtr<FJsonObject> BlueFp = BlueFingerprint.IsEmpty() ? Fp : LoadJson(BlueFingerprint);
-	if (Mode == ESlapControlMode::Policy && Fp && BlueFp)
+	if (Fp && BlueFp)
 	{
 		const FJsonObject* const Fps[2] = { Fp.Get(), BlueFp.Get() };
-		BindPolicy(m, Fps);
+		if (Mode == ESlapControlMode::Policy) BindPolicy(m, Fps);
+		else BindHillMotors(m, Fps);	// replay: no athletes, but the Hill cap still has to be applied (see BindHillMotors)
 	}
 }
 
@@ -189,18 +190,52 @@ void USlapController::ApplyHill(mjModel* m, const mjData* d)
 	// The forceranges come back at the next step's start, so SetForce (faint, neck damage) keeps owning them.
 	FrSaved.SetNumUninitialized(2 * m->nu);
 	FMemory::Memcpy(FrSaved.GetData(), m->actuator_forcerange, 2 * m->nu * sizeof(mjtNum));
-	for (const FAthlete& A : Athletes)
-		for (int32 j = 0; j < A.Act.Num() && j < A.Vmax.Num(); ++j)
-		{
-			const double V = d->qvel[A.Vadr[j]];
-			const double U = std::min(std::abs(V) / A.Vmax[j], 1.0);
-			const double H = (1.0 - U) / (1.0 + U / HillK);
-			if (V < 0.0) m->actuator_forcerange[2 * A.Act[j]] *= H;
-			else if (V > 0.0) m->actuator_forcerange[2 * A.Act[j] + 1] *= H;
-		}
+	for (const FMotor& Motor : HillMotors)
+	{
+		if (Motor.Act < 0 || Motor.Vadr < 0 || Motor.Vmax <= 0.0) continue;
+		const double V = d->qvel[Motor.Vadr];
+		const double U = std::min(std::abs(V) / Motor.Vmax, 1.0);
+		const double H = (1.0 - U) / (1.0 + U / HillK);
+		if (V < 0.0) m->actuator_forcerange[2 * Motor.Act] *= H;
+		else if (V > 0.0) m->actuator_forcerange[2 * Motor.Act + 1] *= H;
+	}
 }
 
 // ---------------------------------------------------------------- replay (matching check)
+
+void USlapController::BindHillMotors(mjModel* m, const FJsonObject* const (&Fps)[2])
+{
+	// The replay path runs no brains, so it has no athletes - but the Hill force-velocity cap (G4) is part of the
+	// PHYSICS, not of the brain: Python's replay harness applies it (brain_cpu.muscle_step) while the replayed model
+	// must match it (2026-10-29: without it the replay diverged 1.2 m over 5 s). So the replay binds the same motor
+	// list the policy path does, straight from the fingerprints: per joint, the actuator, its joint's dof address and
+	// the joint's top speed (fp["max_joint_speed_rad_s"]).
+	HillMotors.Reset();
+	TArray<int32> Pelvises;
+	for (const TCHAR* Corner : { TEXT("red_pelvis"), TEXT("blue_pelvis") })
+		for (int32 b = 0; b < m->nbody; ++b)
+			if (Slap::Name(m, mjOBJ_BODY, b).EndsWith(Corner)) Pelvises.Add(b);
+	for (int32 i = 0; i < Pelvises.Num(); ++i)
+	{
+		const FString BodyName = Slap::Name(m, mjOBJ_BODY, Pelvises[i]);
+		const FString Prefix = BodyName.LeftChop(6);	// "..._red_pelvis" -> "..._red_" (as BindPolicy does)
+		const FJsonObject& Fp = *Fps[FMath::Min(i, 1)];
+		const TArray<TSharedPtr<FJsonValue>>& Order = Fp.GetArrayField(TEXT("joint_order"));
+		const TArray<TSharedPtr<FJsonValue>>* Speeds;
+		const bool bPerJoint = Fp.TryGetArrayField(TEXT("max_joint_speed_rad_s"), Speeds);
+		for (int32 j = 0; j < Order.Num(); ++j)
+		{
+			const FString J = Order[j]->AsString();
+			const int32 Act = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_UTF8(*(Prefix + J)));
+			if (Act < 0) continue;	// this corner does not have that joint (a mixed pairing)
+			FMotor Motor;
+			Motor.Act = Act;
+			Motor.Vadr = m->jnt_dofadr[m->actuator_trnid[2 * Act]];
+			Motor.Vmax = bPerJoint ? (*Speeds)[j]->AsNumber() : Fp.GetNumberField(TEXT("max_joint_speed_rad_s"));
+			HillMotors.Add(Motor);
+		}
+	}
+}
 
 void USlapController::BindReplay(mjModel* m)
 {
@@ -355,6 +390,14 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			else if (J == TEXT("shoulder_swing_r")) A.ShSwingR = j;
 			else if (J == TEXT("waist_twist")) A.WaistTwist = j;
 			else if (J == TEXT("elbow_r")) A.ElbowR = j;
+		}
+		for (int32 j = 0; j < A.Act.Num() && j < A.Vmax.Num(); ++j)
+		{
+			FMotor Motor;	// the Hill cap's list (ApplyHill): this joint's actuator, dof address and top speed
+			Motor.Act = A.Act[j];
+			Motor.Vadr = A.Vadr[j];
+			Motor.Vmax = A.Vmax[j];
+			HillMotors.Add(Motor);
 		}
 		for (int32 k = 0; k < m->nbody; ++k)	// the brain X-ray's ghost: every body of this athlete, linked to its parent
 		{
