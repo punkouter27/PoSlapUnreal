@@ -3,9 +3,10 @@
 // SSE stream (/api/events/stream), the health, the schema and the index. The API's reads need their own key (the
 // publisher's key does not open them), the CORS headers are there and the rate limiter answers 429. Exits 1 on a miss.
 import { spawn } from "node:child_process";
+import { connect } from "./ws_client.mjs";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const open = u => new Promise((ok, bad) => { const w = new WebSocket(u); w.onopen = () => ok(w); w.onerror = bad; });
+const open = u => new Promise((ok, bad) => { const w = connect(u); w.onopen = () => ok(w); w.onerror = bad; });
 const fails = [];
 const check = (name, cond, extra = "") => {
   if (!cond) fails.push(name);

@@ -2,11 +2,12 @@
 // fake Unreal and two viewers: every message reaches the viewer (one over 64 KiB, the long-length frame), a viewer who
 // joins late gets the last pose at once. A publisher without the key is refused. Exits 1 on a miss.
 import { spawn } from "node:child_process";
+import { connect } from "./ws_client.mjs";
 
 const port = 8799, url = `ws://127.0.0.1:${port}`, key = "check-key";
 const relay = spawn("python", ["Web/live.py", "--port", String(port), "--key", key], { stdio: "ignore" });
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const open = u => new Promise((ok, bad) => { const w = new WebSocket(u); w.onopen = () => ok(w); w.onerror = bad; });
+const open = u => new Promise((ok, bad) => { const w = connect(u); w.onopen = () => ok(w); w.onerror = bad; });
 // the relay needs a moment to bind (a busy machine can take seconds): wait for it instead of guessing
 async function waitForRelay() {
   for (let i = 0; i < 80; i++) {
