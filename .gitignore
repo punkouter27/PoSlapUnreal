@@ -30,6 +30,12 @@ Logs/
 *.blend1
 Content/Art/Exports/Kim_rigged.fbm/
 
+# Training scratch: a night driver's symlink farm over training/ (it runs a long job against its own
+# runs/ so the main runs are untouched) and the throwaway probes. Never commit these.
+training_night/
+training/_probe/
+training/_scratch_*.py
+
 # MuJoCo warning log (written next to whatever script ran)
 MUJOCO_LOG.TXT
 
