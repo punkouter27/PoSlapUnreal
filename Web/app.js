@@ -345,14 +345,14 @@ const TABS = {
     wrap.append(links);
     if (MATCHUPS[MATCHUP].untrained) wrap.append(el("div", "note", "* never trained together: expect falls"));
     wrap.append(el("h3", "", "Athletes"));
-    for (const s of game.match.sides) {
-      const c = s.card, l = league[game.matchup.corners[game.match.sides.indexOf(s)].brain];
+    game.match.sides.forEach((s, i) => {
+      const c = s.card, l = league[game.matchup.corners[i].brain];
       const box = el("div", "athlete");
       const b = el("b", s.name === "red" ? "red" : "blue", c.display);
       box.append(b, el("span", "", `${c.height_m} m · ${c.mass_kg} kg · STR ${c.strength} · SPD ${c.speed}`));
       if (l) box.append(el("span", "", `ELO ${Math.round(l.elo)} · KO ${Math.round(100 * l.ko_rate)}%`));
       wrap.append(box);
-    }
+    });
     return [wrap];
   },
   settings: () => {
