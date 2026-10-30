@@ -77,3 +77,22 @@ world from the match. The servo is now ported to the batched env with the same m
 numbers once; `match.py`, `envs/arena.py`, `USlapController::ApplyGaze` and `Web/sim.js gazeApply` all use them):
 the world-space bias walks to the eye line on the great circle, is projected into the chest frame and writes the
 neck **yaw** goal only. `training/gaze_check.py` proves it is wired in and that the observation is untouched.
+
+### The measurement that pins the problem down
+
+The reference engine, the shipped mixed brains, the same seed:
+
+| | strikes landed | result |
+|---|---|---|
+| the gaze servo **on** (the default) | **0 of 6 turns** — every turn ends with Grandpa down before he swings | unanimous decision, blue 30-24 |
+| the gaze servo **off** (`SLAP_EYE_CONTACT=0`) | **2 of 3 turns** — 8.56 m/s then 8.62 m/s, the second one a **KO** | KO in round 2, red wins |
+
+So the turn-only servo is not "a little off" with the current brains: it is catastrophic, and it is the servo and
+not the pairing that breaks it. The reason is visible in the maths — `GAZE_GAIN = 1.0` means the servo **fully
+replaces** the brain's neck goal every decision, so the brain is shown a neck angle it never saw in training and
+its balance controller reacts to an out-of-distribution pose. That is exactly what porting the servo into the
+training env fixes: the neck pose goes back inside the training distribution.
+
+The acceptance criteria for the retrain are therefore: strikes land with the servo **on** (the default), Grandpa's
+self-fall rate stays ≤ 5 % per strike, the KO rate per strike sits in the 10–40 % band, **and** the A/B holds —
+the retrained brain must not collapse when the servo is turned off, or it has merely learned to depend on it.
