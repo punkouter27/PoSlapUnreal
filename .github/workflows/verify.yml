@@ -1,0 +1,76 @@
+name: Verify
+
+# The gate that keeps the three engines in step. Runs on every push to master and on
+# every pull request. Nothing here needs a GPU: verify_realism.py (the CUDA env checks)
+# stays a local gate; this workflow runs the checks a plain runner can make.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      # pinned to commit SHAs: a moved tag must not change what runs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Pull the LFS assets the browser engine needs (brains + GLBs)
+        run: git lfs pull --include="training/models/brains/*.onnx,Web/assets/*.glb"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+
+      - name: Install the web dependencies
+        working-directory: Web
+        run: npm ci
+
+      - name: Browser engine (one turn each way, every pairing)
+        run: for p in gg kk gk; do node Web/check.mjs $p; done
+
+      - name: Live relay (the publisher key is enforced)
+        run: node Web/live_check.mjs
+
+      - name: Spectator API
+        run: if [ -f Web/api_check.mjs ]; then node Web/api_check.mjs; fi
+
+      - name: Every python file parses
+        run: python -m compileall -q training Web
+
+      - name: Install the CPU simulation dependencies
+        run: python -m pip install --upgrade pip && python -m pip install "mujoco==3.10.0" numpy
+
+      - name: Character cards, models and packaged staging
+        run: python training/verify_cards.py
+
+      - name: The dev server serves only Web/ and training/
+        run: |
+          python Web/serve.py --port 8099 &
+          sleep 2
+          for path in /Web/index.html /training/models/grandpa_solo.xml; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8099$path")
+            echo "$path -> $code"
+            test "$code" = "200" || { echo "expected 200 for $path"; exit 1; }
+          done
+          for path in /.git/config /Saved/Logs/PoSlapUnreal.log /AGENTS.md; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8099$path")
+            echo "$path -> $code"
+            test "$code" != "200" || { echo "$path must not be served"; exit 1; }
+          done
