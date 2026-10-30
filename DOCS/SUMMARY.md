@@ -39,6 +39,26 @@ file, the card/model/staging gate (`training/verify_cards.py`, CPU only) and the
 `training/verify_realism.py` needs CUDA for its env steps, so it stays a local gate. The deploy workflow
 (`.github/workflows/deploy-web.yml`) is separate and still the only thing that publishes the site.
 
+**The spectator API.** `Web/live.py` serves a read-only JSON API next to the WebSocket, so a scoreboard, a bot or a
+stream overlay can follow a live match:
+
+| Endpoint | What |
+|---|---|
+| `GET /api/match` | the state: athletes, round, turn, clock, judges' cards, KO flags, danger |
+| `GET /api/events` | the event array (`?since=<seq>` to poll, `?limit=<n>`, max 500) |
+| `GET /api/events/stream` | the same events as Server-Sent Events (`?since=`, or the `Last-Event-ID` header) |
+| `GET /api/health` | relay status: publisher connected, last sequence, uptime, clients |
+| `GET /api/schema` | the event types and the state fields, machine-readable |
+| `GET /api/` | a human-readable index of the endpoints |
+
+Every event carries a sequence number, so a client can resume; the relay keeps the last 5,000 events and clamps
+`?limit`. A token bucket per client address answers 429 when a script polls too fast. The reads are open by
+default (the relay binds to localhost unless `--host 0.0.0.0`) and answer with `Access-Control-Allow-Origin: *`,
+because the deployed spectator site is hosted elsewhere and the data is read-only; pass `--api-key <secret>` (or
+`SLAP_LIVE_KEY`) to require a key on the reads, or `--api-key` alone to keep the API keyed while the publisher
+uses its own `--key`. The publisher role never opens the API: pushing into the relay still needs the publisher
+key. `node Web/api_check.mjs` proves all of it.
+
 ## Rebuilding from a fresh clone
 
 1. **URLab** (not in git): `git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab`,
