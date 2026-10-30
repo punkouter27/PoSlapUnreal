@@ -402,7 +402,8 @@ void ASlapHUD::DrawHUD()
 	if (H.Match > 0)
 	{
 		Boxes.Reset();
-		DrawMatch(H);	// first: the momentum bar and the tape hang off its panel
+		DrawMatch(H);	// first: scoreboard panel with round pips and state machine
+		DrawMomentum(H);	// persistent win momentum bar
 		if (bShowTelemetry) DrawTelemetry(H);
 		if (bShowScience) DrawScience(H);
 		if (bShowXRay) DrawXRay(H);
@@ -410,6 +411,7 @@ void ASlapHUD::DrawHUD()
 		DrawDanger(H);
 		DrawTell(H);
 		DrawJudges(H);
+		DrawWinner(H);	// triumphant winner banner and match summary
 		if (GetWorld()->GetTimeSeconds() < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
 
@@ -1321,6 +1323,16 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		StrikeSpeed = H.Speed;
 		Struck = H.StrikeDefender;
 		StrikeK = FMath::Clamp(H.Speed / CleanSpeed, 0.25, 1.5);
+		const int32 StrikerIdx = 1 - Struck;
+		if (StrikerIdx >= 0 && StrikerIdx < 2)
+		{
+			++TotalStrikes[StrikerIdx];
+			PeakSpeed[StrikerIdx] = FMath::Max(PeakSpeed[StrikerIdx], (double)H.Speed);
+		}
+		if (Struck >= 0 && Struck < 2)
+		{
+			PeakHeadSnap[Struck] = FMath::Max(PeakHeadSnap[Struck], (double)H.HeadG);
+		}
 		// The card's strike mass: the body behind the palm. A heavy athlete's slap lands harder, so the burst, the
 		// sound and the shake all scale with it (the card's 3 kg is the reference).
 		MassK = FMath::Clamp(FMath::Sqrt(FMath::Max(H.StrikeMass[1 - Struck], 0.5) / 3.0), 0.6, 1.6);
@@ -1469,6 +1481,11 @@ void ASlapHUD::Cues(const FSlapHud& H)
 			if (M.IsValid()) M->DestroyComponent();
 		}
 		Marks.Reset();
+		TotalStrikes[0] = TotalStrikes[1] = 0;
+		PeakSpeed[0] = PeakSpeed[1] = 0.0;
+		PeakHeadSnap[0] = PeakHeadSnap[1] = 0.0;
+		DownAt = -100.0;
+		CoinTossWinner = H.Striker;
 	}
 	if (H.ScoredRound != SeenRound)
 	{
@@ -1688,7 +1705,6 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 		Lines.Add(L);
 	};
 	const FColor Tc = TeamColor[Team(H.Striker)];
-	// three short lines: who strikes and the clock; the touch (speed, part, head snap, what it was); judges and series
 	if (H.bWalkIn)
 	{
 		Add(Big, FString::Printf(TEXT("WALK-IN  %d%%"), FMath::RoundToInt(100.0 * H.WalkInProgress)), FColor::White, 1.2f);
@@ -1696,16 +1712,46 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 	}
 	else
 	{
-		Add(Big, FString::Printf(TEXT("R%d/%d   %s   %s %.1fs"), H.Round, Rounds, *H.Striker.ToUpper(), H.bStruck ? TEXT("REC") : TEXT("CLOCK"), FMath::Max(0.0, H.Clock)), Tc, 1.2f);
+		// 1. Match progression pip track (all 3 rounds / 6 turns)
+		const int32 TurnInRound = (H.Striker == CoinTossWinner || CoinTossWinner.IsEmpty()) ? 0 : 1;
+		const int32 CurrentTurn = FMath::Clamp((H.Round - 1) * 2 + TurnInRound, 0, 5);
+		FString Pips;
+		for (int32 r = 1; r <= Rounds; ++r)
+		{
+			const int32 T1 = (r - 1) * 2;
+			const int32 T2 = T1 + 1;
+			auto PipChar = [&](int32 t) -> const TCHAR*
+			{
+				if (t < CurrentTurn || (t == CurrentTurn && H.bStruck)) return TEXT("●");
+				if (t == CurrentTurn) return TEXT("◈");
+				return TEXT("○");
+			};
+			Pips += FString::Printf(TEXT("R%d [%s %s]  "), r, PipChar(T1), PipChar(T2));
+		}
+		Add(Small, Pips.TrimEnd(), Gold, 1.1f);
+
+		// 2. Active turn state & shot clock / recovery clock with dynamic urgency color
+		const FColor ClockCol = H.bStruck ? FColor(250, 160, 50) : (H.Clock < 5.0 ? FColor(255, 70, 70) : (H.Clock < 10.0 ? FColor(255, 210, 60) : Tc));
+		const FString PhaseStr = H.bStruck ? TEXT("RECOVERY") : (Tell > 0.05f ? TEXT("WIND-UP") : TEXT("SHOT CLOCK"));
+		Add(Big, FString::Printf(TEXT("R%d/%d   %s   %s %.1fs"), H.Round, Rounds, *H.Striker.ToUpper(), *PhaseStr, FMath::Max(0.0, H.Clock)), ClockCol, 1.2f);
+
+		// 3. Touch speed and referee event
 		const FString Touch = H.bStruck || H.Speed > 0 ? FString::Printf(TEXT("%.1f m/s (%s)   snap %.1f   "), H.Speed, *H.Part, H.HeadPeak) : FString();
 		if (!(Touch + H.Event).IsEmpty()) Add(Small, Touch + H.Event, Gold, 1.15f);
+
+		// 4. Quick vitality summary
+		const int32 RStm = FMath::RoundToInt(100.0 * FMath::Clamp((H.Stamina[0] - MinStamina) / (1.0 - MinStamina), 0.0, 1.0));
+		const int32 RNck = FMath::RoundToInt(100.0 * FMath::Clamp((H.Neck[0] - MinNeck) / (1.0 - MinNeck), 0.0, 1.0));
+		const int32 BStm = FMath::RoundToInt(100.0 * FMath::Clamp((H.Stamina[1] - MinStamina) / (1.0 - MinStamina), 0.0, 1.0));
+		const int32 BNck = FMath::RoundToInt(100.0 * FMath::Clamp((H.Neck[1] - MinNeck) / (1.0 - MinNeck), 0.0, 1.0));
+		Add(Small, FString::Printf(TEXT("RED STM %d%% NCK %d%%   │   BLUE STM %d%% NCK %d%%"), RStm, RNck, BStm, BNck), Grey, 0.95f);
 	}
 	Add(Small, FString::Printf(TEXT("J %d:%d  %d:%d  %d:%d     SERIES %d-%d%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
 		H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT("")), Grey, 1.1f);
 	float Total = 0.f, W = 0.f;
 	for (const FLine& L : Lines) { Total += L.H; W = FMath::Max(W, L.W); }
-	const float PanelW = FMath::Max(120.f * S, W + 16.f * S);
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), 8.f * S, Top, PanelW, Total + 6.f * S);	// legible over the truss
+	const float PanelW = FMath::Max(130.f * S, W + 16.f * S);
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.65f), 8.f * S, Top, PanelW, Total + 6.f * S);	// legible over the truss
 	float Y = Top + 3.f * S;
 	for (const FLine& L : Lines)
 	{
@@ -1716,13 +1762,9 @@ void ASlapHUD::DrawMatch(const FSlapHud& H)
 	TrackBox(TEXT("Scoreboard"), 8.f * S, Top, PanelW, Total + 6.f * S);
 }
 
-void ASlapHUD::DrawTelemetry(const FSlapHud& H)
+void ASlapHUD::DrawMomentum(const FSlapHud& H)
 {
-	const int32 Sk = Team(H.Striker);
-
-	// momentum: each brain's critic (its own expected reward over the next ~2 s) against what it usually expects in that
-	// role -- a guard expects thousands, a striker about nothing, so raw values don't compare. The bar is the logistic of
-	// the difference: who is doing better than usual right now. Not a calibrated win probability.
+	// momentum: each brain's critic (expected reward over next ~2 s) against what it usually expects
 	double Z[2];
 	for (int32 a = 0; a < 2; ++a)
 	{
@@ -1739,12 +1781,19 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 		Z[a] = (H.Value[a] - RoleMean[R]) / FMath::Sqrt(RoleVar[R]);
 	}
 	Momentum = FMath::FInterpTo(Momentum, 1.f / (1.f + FMath::Exp(Z[1] - Z[0])), GetWorld()->GetDeltaSeconds(), 2.f);
-	const float MX = 8.f * S, MY = PanelBottom + 6.f * S, MW = 524.f * S, MH = 16.f * S;	// right under the panel: no dead band over the crowd
+	const float MX = 8.f * S, MY = PanelBottom + 4.f * S, MW = 524.f * S, MH = 16.f * S;	// right under the panel
 	DrawRect(FLinearColor(TeamColor[1]), MX, MY, MW, MH);
 	DrawRect(FLinearColor(TeamColor[0]), MX, MY, MW * Momentum, MH);
 	DrawLine(MX + MW * 0.5f, MY - 2.f * S, MX + MW * 0.5f, MY + MH + 2.f * S, FLinearColor::White, 2.f * S);
 	const int32 Pct = FMath::RoundToInt(100.f * Momentum);
-	Text(FString::Printf(TEXT("RED %d%%        MOMENTUM        %d%% BLUE"), Pct, 100 - Pct), Canvas->ClipX * 0.5f, MY + 2.f * S, FColor::White, 0.9f * S, true);
+	Text(FString::Printf(TEXT("RED %d%%    ◄ WIN MOMENTUM ►    %d%% BLUE"), Pct, 100 - Pct), Canvas->ClipX * 0.5f, MY + 2.f * S, FColor::White, 0.9f * S, true);
+	PanelBottom = MY + MH + 6.f * S;
+	TrackBox(TEXT("MomentumBar"), MX, MY, MW, MH);
+}
+
+void ASlapHUD::DrawTelemetry(const FSlapHud& H)
+{
+	const int32 Sk = Team(H.Striker);
 
 	// balance: a ring under each athlete's soles, the dot is his centre of mass over the floor (green < 5 cm off, red > 10)
 	for (int32 a = 0; a < 2; ++a)
@@ -1849,21 +1898,66 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		}
 	}
 
-	// tale of the tape, at every match start: under the panel and the momentum bar, clear of the athletes' heads
-	if (Now - TapeAt < 4.0 && H.Result.IsEmpty())	// a match over in under 4 s: the result wins
+	// tale of the tape & match stakes at match start or walk in
+	if ((Now - TapeAt < 5.0 || H.bWalkIn) && H.Result.IsEmpty() && H.Match > 0)
 	{
-		const float Y = PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S;	// under the panel (and the momentum bar)
+		const float Y = PanelBottom + 6.f * S;
 		const bool bScout = Scout.Contains(H.Brain[0]) || Scout.Contains(H.Brain[1]);
 		const float Row = bScout ? 48.f : 34.f;
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.7f), 8.f * S, Y, 524.f * S, (24.f + 2.f * Row) * S);
-		Text(TEXT("TALE OF THE TAPE"), Cx, Y + 4.f * S, Grey, 0.9f * S, true);
+		const float CardH = (44.f + 2.f * Row) * S;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.85f), 8.f * S, Y, 524.f * S, CardH);
+		DrawRect(FLinearColor(Gold), 8.f * S, Y, 524.f * S, 2.f * S);
+		Text(TEXT("OFFICIAL POWER SLAP BOUT • 3 ROUNDS • 30s SHOT CLOCK"), Cx, Y + 4.f * S, Gold, 0.95f * S, true);
+		Text(TEXT("VICTORY BY KNOCKOUT OR 3-JUDGE 10-POINT MUST DECISION"), Cx, Y + 18.f * S, Grey, 0.78f * S, true);
 		for (int32 a = 0; a < 2; ++a)
 		{
-			const float Ya = Y + (22.f + Row * a) * S;
+			const float Ya = Y + (32.f + Row * a) * S;
 			Text(H.Name[a], 16.f * S, Ya, TeamColor[a], 1.2f * S);
 			Text(H.Tape[a] + TEXT("  ") + H.Brain[a], 16.f * S, Ya + 17.f * S, Grey, 0.85f * S);
 			if (const FString* L = Scout.Find(H.Brain[a])) Text(*L, 16.f * S, Ya + 31.f * S, Gold, 0.85f * S);	// training/scouting.py
 		}
+		TrackBox(TEXT("TaleOfTheTape"), 8.f * S, Y, 524.f * S, CardH);
+	}
+
+	// cinematic coin toss & first striker banner
+	if (H.Round == 1 && H.Speed == 0.0 && Now - TapeAt < 5.0 && !CoinTossWinner.IsEmpty())
+	{
+		const float Yt = PanelBottom + 6.f * S + (Now - TapeAt < 5.0 ? 120.f * S : 0.f);
+		const int32 WinnerIdx = Team(CoinTossWinner);
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.82f), 30.f * S, Yt, 480.f * S, 32.f * S);
+		DrawRect(FLinearColor(TeamColor[WinnerIdx]), 30.f * S, Yt, 480.f * S, 2.f * S);
+		Text(FString::Printf(TEXT("★ COIN TOSS: %s WINS — %s STRIKES FIRST ★"), *CoinTossWinner.ToUpper(), *CoinTossWinner.ToUpper()), Cx, Yt + 6.f * S, Gold, 1.1f * S, true);
+	}
+
+	// instant impact telemetry & referee call
+	if (Now - StrikeAt < 2.5 && H.Match > 0 && StrikeAt > 0.0)
+	{
+		const float Yi = Canvas->ClipY * 0.42f;
+		const float Wi = 460.f * S, Hi = 52.f * S;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.85f), Cx - Wi * 0.5f, Yi, Wi, Hi);
+		DrawRect(FLinearColor(StrikeSpeed >= CleanSpeed ? Gold : Grey), Cx - Wi * 0.5f, Yi, Wi, 2.f * S);
+		const FString PartName = H.Part.Replace(TEXT("_r"), TEXT("")).Replace(TEXT("_l"), TEXT(""));
+		const FString TelemetryLine = FString::Printf(TEXT("IMPACT: %.1f m/s (%s)   •   SNAP: %.1f m/s"), StrikeSpeed, *PartName.ToUpper(), H.HeadPeak);
+		Text(TelemetryLine, Cx, Yi + 6.f * S, StrikeSpeed >= CleanSpeed ? Gold : FColor::White, 1.15f * S, true);
+		const FString RefCall = H.bStagger ? TEXT("REFEREE: STAGGER DETECTED (10-8 ROUND IMPACT)") :
+			(H.Speed >= CleanSpeed ? TEXT("REFEREE: CLEAN STRIKE") :
+			(!H.Event.IsEmpty() ? H.Event : TEXT("REFEREE: LEGAL CONTACT")));
+		const FColor RefCol = H.bStagger ? FColor(255, 120, 60) : (H.Speed >= CleanSpeed ? FColor(120, 230, 140) : Grey);
+		Text(RefCall, Cx, Yi + 28.f * S, RefCol, 0.95f * S, true);
+	}
+
+	// dramatic 10-count knockdown overlay
+	if (Now - DownAt < 10.0 && DownAt > 0.0 && H.Match > 0 && H.Result.IsEmpty())
+	{
+		const int32 Count = FMath::Clamp(FMath::FloorToInt((float)(Now - DownAt)) + 1, 1, 10);
+		const float Yk = Canvas->ClipY * 0.28f;
+		const float Wk = 480.f * S, Hk = 68.f * S;
+		const float PulseAlpha = 0.5f + 0.5f * FMath::Abs(FMath::Sin(Now * 8.f));
+		DrawRect(FLinearColor(0.85f, 0.1f, 0.05f, 0.22f * PulseAlpha), 0, 0, Canvas->ClipX, Canvas->ClipY);
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.90f), Cx - Wk * 0.5f, Yk, Wk, Hk);
+		DrawRect(FLinearColor(1.f, 0.2f, 0.1f, PulseAlpha), Cx - Wk * 0.5f, Yk, Wk, 3.f * S);
+		Text(FString::Printf(TEXT("⚠ REFEREE 10-COUNT:  %d  / 10 ⚠"), Count), Cx, Yk + 8.f * S, FColor(255, 80, 60), 1.4f * S, true);
+		Text(TEXT("KNOCKDOWN! DEFENDER MUST BEAT THE COUNT"), Cx, Yk + 38.f * S, FColor::White, 1.0f * S, true);
 	}
 
 	// the judges' conference (DrawJudges) replaces the old round-card slide-in: the three scorecards converge, then the
@@ -2059,7 +2153,12 @@ void ASlapHUD::Spotlight(const FSlapHud& H)
 	if (!L || H.Match == 0) return;
 	const double Now = GetWorld()->GetTimeSeconds();
 	const bool bOnStruck = Now - StrikeAt < 1.6 || Now - KOAt < KOShot;
-	const int32 Who = bOnStruck ? Struck : Team(H.Striker);
+	int32 Who = bOnStruck ? Struck : Team(H.Striker);
+	if (!H.Result.IsEmpty())
+	{
+		if (H.Result.Contains(TEXT("RED")) || (!H.Name[0].IsEmpty() && H.Result.Contains(H.Name[0].ToUpper()))) Who = 0;
+		else if (H.Result.Contains(TEXT("BLUE")) || (!H.Name[1].IsEmpty() && H.Result.Contains(H.Name[1].ToUpper()))) Who = 1;
+	}
 	if (!Body[Who].IsValid()) return;
 	const FVector Head = Body[Who]->GetBoneLocation(BoneHead);
 	const FVector Want = bOnStruck ? Head : 0.5f * (Head + Body[Who]->GetBoneLocation(BonePelvis));
@@ -2196,6 +2295,7 @@ void ASlapHUD::Dust(const FSlapHud& H)
 	// the contact point with the knockdown (DownPos / DownSeq).
 	if (H.DownSeq == SeenDown) return;
 	SeenDown = H.DownSeq;
+	DownAt = GetWorld()->GetTimeSeconds();
 	if (!DustPuff || H.Match <= 0) return;
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DustPuff, H.DownPos, FRotator::ZeroRotator, FVector(0.5f));
 	UE_LOG(LogSlap, Log, TEXT("t=%.2f dust at %s"), GetWorld()->GetTimeSeconds(), *H.DownPos.ToCompactString());
@@ -2271,33 +2371,68 @@ void ASlapHUD::DrawJudges(const FSlapHud& H)
 {
 	// The judges' conference: the three scorecards converge one after another (0.25 s apart), then the decision.
 	const double Tc = GetWorld()->GetTimeSeconds() - CardAt;
-	if (Tc < 0.f || Tc > 4.0f || H.ScoredRound <= 0) return;
-	const float W = 250.f * S, Hh = 132.f * S, X = Canvas->ClipX - W - 8.f * S, Y = PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S;
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.82f), X, Y, W, Hh);
-	Text(TEXT("JUDGES"), X + W * 0.5f, Y + 6.f * S, Gold, 1.1f * S, true);
+	if (Tc < 0.f || Tc > 4.5f || H.ScoredRound <= 0) return;
+	const float W = 260.f * S, Hh = 138.f * S, X = Canvas->ClipX - W - 8.f * S, Y = PanelBottom + (bShowTelemetry ? 28.f : 6.f) * S;
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.88f), X, Y, W, Hh);
+	DrawRect(FLinearColor(Gold), X, Y, W, 2.f * S);
+	Text(FString::Printf(TEXT("OFFICIAL ROUND %d SCORES"), H.ScoredRound), X + W * 0.5f, Y + 6.f * S, Gold, 1.05f * S, true);
 	int32 ForRed = 0;
 	for (int32 j = 0; j < 3; ++j)
 	{
 		const float Fill = FMath::Clamp((float)(Tc - 0.25 * j) / 0.35f, 0.f, 1.f);	// the bars fill in sequence
 		const float Yj = Y + (28.f + 26.f * j) * S;
-		Text(FString::Printf(TEXT("JUDGE %d"), j + 1), X + 12.f * S, Yj, Grey, 0.95f * S);
+		Text(FString::Printf(TEXT("JUDGE %d"), j + 1), X + 10.f * S, Yj, Grey, 0.9f * S);
 		const float Bar = 120.f * S, Bh = 12.f * S;
-		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.15f), X + 60.f * S, Yj - 2.f * S, Bar, Bh);
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.15f), X + 62.f * S, Yj - 2.f * S, Bar, Bh);
 		const int32 R = H.RoundCards[j][0], B = H.RoundCards[j][1];
 		const float Red = FMath::Clamp((float)R / 10.f, 0.f, 1.f) * Fill, Blue = FMath::Clamp((float)B / 10.f, 0.f, 1.f) * Fill;
-		DrawRect(FLinearColor(TeamColor[0]), X + 60.f * S, Yj - 2.f * S, Bar * Red, Bh);
-		DrawRect(FLinearColor(TeamColor[1]), X + 60.f * S + Bar * Red, Yj - 2.f * S, Bar * Blue, Bh);
-		Text(FString::Printf(TEXT("%d - %d"), R, B), X + W - 54.f * S, Yj - 3.f * S, FColor::White, 0.95f * S);
+		DrawRect(FLinearColor(TeamColor[0]), X + 62.f * S, Yj - 2.f * S, Bar * Red, Bh);
+		DrawRect(FLinearColor(TeamColor[1]), X + 62.f * S + Bar * Red, Yj - 2.f * S, Bar * Blue, Bh);
+		Text(FString::Printf(TEXT("%d - %d"), R, B), X + W - 56.f * S, Yj - 3.f * S, FColor::White, 0.95f * S);
 		if (Fill > 0.5f) ForRed += R > B ? 1 : 0;
 	}
 	// the decision: after the last card is in
 	if (Tc > 1.3f)
 	{
-		const FString Verdict = ForRed == 3 ? TEXT("UNANIMOUS: RED WINS") : ForRed == 0 ? TEXT("UNANIMOUS: BLUE WINS") :
-			ForRed == 2 ? TEXT("SPLIT: 2 JUDGES TO RED") : ForRed == 1 ? TEXT("SPLIT: 2 JUDGES TO BLUE") : TEXT("DRAW");
-		Text(Verdict, X + W * 0.5f, Y + Hh - 20.f * S, Gold, 1.0f * S, true);
+		const FString Verdict = ForRed == 3 ? TEXT("ROUND WINNER: RED (UNANIMOUS)") : ForRed == 0 ? TEXT("ROUND WINNER: BLUE (UNANIMOUS)") :
+			ForRed == 2 ? TEXT("ROUND WINNER: RED (2-1 SPLIT)") : ForRed == 1 ? TEXT("ROUND WINNER: BLUE (2-1 SPLIT)") : TEXT("ROUND TIED (DRAW)");
+		Text(Verdict, X + W * 0.5f, Y + Hh - 22.f * S, Gold, 0.95f * S, true);
 	}
 	TrackBox(TEXT("Judges"), X, Y, W, Hh);
+}
+
+void ASlapHUD::DrawWinner(const FSlapHud& H)
+{
+	// triumphant winner marquee and definitive match conclusion
+	if (H.Result.IsEmpty() || H.Match <= 0) return;
+	const float Cx = Canvas->ClipX * 0.5f;
+	const float Yw = Top + 8.f * S;
+	const float Ww = 520.f * S, Hw = 110.f * S;
+
+	int32 WinnerIdx = -1;
+	if (H.Result.Contains(TEXT("RED")) || (!H.Name[0].IsEmpty() && H.Result.Contains(H.Name[0].ToUpper()))) WinnerIdx = 0;
+	else if (H.Result.Contains(TEXT("BLUE")) || (!H.Name[1].IsEmpty() && H.Result.Contains(H.Name[1].ToUpper()))) WinnerIdx = 1;
+
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.90f), Cx - Ww * 0.5f, Yw, Ww, Hw);
+	DrawRect(FLinearColor(Gold), Cx - Ww * 0.5f, Yw, Ww, 3.f * S);
+	DrawRect(FLinearColor(Gold), Cx - Ww * 0.5f, Yw + Hw - 3.f * S, Ww, 3.f * S);
+
+	if (WinnerIdx >= 0)
+	{
+		Text(TEXT("★ ★ ★ MATCH WINNER ★ ★ ★"), Cx, Yw + 8.f * S, Gold, 1.15f * S, true);
+		Text(H.Name[WinnerIdx].ToUpper(), Cx, Yw + 26.f * S, TeamColor[WinnerIdx], 1.5f * S, true, GEngine->GetLargeFont());
+	}
+	else
+	{
+		Text(TEXT("★ ★ ★ MATCH RESULT ★ ★ ★"), Cx, Yw + 8.f * S, Gold, 1.15f * S, true);
+		Text(TEXT("DRAW"), Cx, Yw + 26.f * S, FColor::White, 1.5f * S, true, GEngine->GetLargeFont());
+	}
+
+	Text(H.Result, Cx, Yw + 58.f * S, FColor::White, 1.05f * S, true);
+	const FString StatsLine = FString::Printf(TEXT("STRIKES: %d - %d   PEAK: %.1f - %.1f m/s   SERIES: %d - %d"),
+		TotalStrikes[0], TotalStrikes[1], PeakSpeed[0], PeakSpeed[1], H.Wins[0], H.Wins[1]);
+	Text(StatsLine, Cx, Yw + 82.f * S, Grey, 0.9f * S, true);
+	TrackBox(TEXT("WinnerBanner"), Cx - Ww * 0.5f, Yw, Ww, Hw);
 }
 
 void ASlapHUD::DrawTell(const FSlapHud& H)

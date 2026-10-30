@@ -57,6 +57,14 @@ canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .stamp { letter-spacing: .06em; }
 
 /* the banner sits in the free middle row, never over the scoreboard */
+.round-track { font: 700 clamp(10px, 2.5vw, 12px) var(--mono); color: var(--gold); letter-spacing: .06em; margin-bottom: 2px; }
+.momentum-bar { position: relative; width: 100%; height: 12px; background: rgb(93 140 240 / .4); border-radius: 4px; overflow: hidden; margin: 4px 0; border: 1px solid var(--rule); }
+.momentum-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: rgb(229 85 76 / .85); transition: width .3s ease-out; }
+.momentum-bar span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 9px var(--mono); color: #fff; text-shadow: 0 1px 2px #000; letter-spacing: .05em; }
+.tencount { grid-area: 2 / 1 / 3 / -1; justify-self: center; align-self: center; text-align: center; pointer-events: none; padding: 14px 28px; background: rgb(180 20 20 / .85); border: 2px solid #ff4444; border-radius: 10px; }
+.tencount[hidden] { display: none; }
+.tencount .tc-num { font: 800 clamp(36px, 10vw, 72px) var(--display); color: #fff; line-height: 1; }
+.tencount .tc-text { font: 700 clamp(11px, 2.8vw, 14px) var(--mono); color: #ffe08a; letter-spacing: .08em; margin-top: 4px; }
 .banner { grid-area: 2 / 1 / 3 / -1; justify-self: center; align-self: start; margin-top: 4vh; text-align: center; pointer-events: none; opacity: 0; transition: opacity .25s; padding: 10px 24px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; backdrop-filter: blur(6px); }
 .banner.on { opacity: 1; }
 .banner .big { font-family: var(--display); font-size: clamp(28px, 8vw, 60px); line-height: 1; text-transform: uppercase; }
@@ -141,9 +149,11 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 <div class="hudgrid" id="hudgrid">
   <div class="hud tl" id="tl" aria-live="polite">
     <div class="brand"><b>PO</b>SL<i>AP</i></div>
+    <div class="round-track" id="pipsTrack">R1 [○ ○]  R2 [○ ○]  R3 [○ ○]</div>
     <div class="round" id="round">Round 1 / 3</div>
     <div class="turn" id="turn">–</div>
     <div class="clock" id="clock">clock 30.0 s</div>
+    <div class="momentum-bar" id="momentumBar"><i id="momentumFill"></i><span id="momentumLabel">RED 50% · WIN MOMENTUM · 50% BLUE</span></div>
     <div class="call" id="call"></div>
     <div class="cards-line" id="cardsLine"></div>
     <div class="streak-line" id="streak"></div>
@@ -160,6 +170,7 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 
   <div class="br stamp" id="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
 
+  <div class="hud tencount" id="tencount" hidden><div class="tc-num" id="tcNum">1</div><div class="tc-text">KNOCKDOWN — BEAT THE COUNT</div></div>
   <div class="hud banner" id="banner"><div class="big" id="bannerBig"></div><div class="small" id="bannerSmall"></div></div>
 </div>
 

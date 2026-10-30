@@ -56,10 +56,12 @@ private:
 
 	void DrawMatch(const FSlapHud& H);
 	void DrawTelemetry(const FSlapHud& H);
+	void DrawMomentum(const FSlapHud& H);	// persistent win momentum bar (who is winning, always visible)
 	void DrawOverlays(const FSlapHud& H);	// slide-in cards, tale of the tape, result banner, commentary, shockwave, flash
 	void DrawJudges(const FSlapHud& H);		// the judges' conference: three score bars, then the decision
 	void DrawTell(const FSlapHud& H);		// the striker's wind-up tell (the read a spectator can learn)
 	void DrawDanger(const FSlapHud& H);		// the per-athlete danger meter (how close to a knockdown, right now)
+	void DrawWinner(const FSlapHud& H);		// triumphant winner marquee and final stats breakdown
 	void Direct(ACameraActor* Cam, const FSlapHud& H);
 	void Cues(const FSlapHud& H);			// one-shot effects when the controller's counters move on
 	void Stage(double Now);					// light flare on a strike, chase on a KO
@@ -148,7 +150,7 @@ private:
 
 	// cue state (game time)
 	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0, SeenTurn = 0, SeenDown = 0, SeenStep[2] = {};
-	double StrikeAt = -100.0, KOAt = -100.0, TapeAt = -100.0, CardAt = -100.0;
+	double StrikeAt = -100.0, KOAt = -100.0, TapeAt = -100.0, CardAt = -100.0, DownAt = -100.0;
 	FVector StrikePos = FVector::ZeroVector;
 	double StrikeSpeed = 0.0;
 	FVector StrikeCom0 = FVector::ZeroVector;	// the defender's centre of mass at the touch (the near-miss test)
@@ -158,6 +160,10 @@ private:
 	double MassK = 1.0;	// the last strike's mass over the card's 3 kg: the contact burst and the sound scale with it
 	int32 Struck = 0;
 	TArray<float> HeadG;	// the defender's head g, one sample per frame (last ~2 s)
+	int32 TotalStrikes[2] = { 0, 0 };
+	double PeakSpeed[2] = { 0.0, 0.0 };
+	double PeakHeadSnap[2] = { 0.0, 0.0 };
+	FString CoinTossWinner;
 
 	// F2: the palm-impact close-up and the 120 fps burst capture (render side only; the physics step never changes)
 	EShot ShotBeforeImpact = EShot::Wide;

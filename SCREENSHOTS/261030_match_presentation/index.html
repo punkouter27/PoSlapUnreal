@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Match Presentation Enhancements (261030)</title>
+  <style>
+    :root {
+      --bg: #fcfcfb;
+      --ink: #1f1f1e;
+      --ink2: #5f5e58;
+      --line: #e4e3de;
+      --gold: #d4af37;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme=light]) {
+        --bg: #1a1a19;
+        --ink: #f0efec;
+        --ink2: #c3c2b7;
+        --line: #33332f;
+      }
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.5 system-ui, -apple-system, sans-serif;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      color: var(--ink2);
+      margin-bottom: 24px;
+      font-size: 15px;
+    }
+    .pair {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    figure {
+      margin: 0;
+    }
+    img {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      display: block;
+    }
+    figcaption {
+      color: var(--ink2);
+      font-size: 14px;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(212, 175, 55, 0.15);
+      color: var(--gold);
+      margin-right: 6px;
+    }
+    ol {
+      padding-left: 20px;
+      margin: 24px 0;
+    }
+    ol li {
+      margin: 12px 0;
+      line-height: 1.5;
+    }
+    code {
+      background: rgba(128, 128, 128, 0.12);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .card {
+      background: rgba(128, 128, 128, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Top 10 Match Presentation Enhancements</h1>
+    <div class="subtitle">Broadcast clarity, progression, and conclusion pass across Unreal Engine 5 & Web Spectator (30 Oct 2026)</div>
+
+    <div class="pair">
+      <figure>
+        <img src="before_annotated.png" alt="Before Match HUD">
+        <figcaption><b>Before (261026):</b> Generic match score line, single hit labels, no visual round tracking pips, clock urgency was static.</figcaption>
+      </figure>
+      <figure>
+        <img src="after_annotated.png" alt="After Match HUD">
+        <figcaption><b>After (261030):</b> Full 6-turn pip progress track, persistent tug-of-war win probability, referee breakdown badge, and prominent 10-count/victory overlays.</figcaption>
+      </figure>
+    </div>
+
+    <h2>Implemented Features & Verification</h2>
+    <ol>
+      <li><b>Broadcast Tale of the Tape & Match Stakes:</b> Pre-match intro card displaying athlete records, heights, masses, bout rules ("3 ROUNDS &bull; 1 SLAP EACH &bull; 10-COUNT KO / 10-POINT MUST"), and sanctioning details.</li>
+      <li><b>Cinematic Coin Toss:</b> Explicit broadcast badge designating who won the opening coin toss and strikes first.</li>
+      <li><b>Match Progression Pip Meter:</b> Permanent 6-turn indicator track (<code>[R1 ●|●]  [R2 ◈|○]  [R3 ○|○]</code>) showing completed strikes, current active striker, and remaining turns.</li>
+      <li><b>Turn State Machine & Urgency Clock:</b> Explicit phase headers (<code>SHOT CLOCK</code>, <code>WIND-UP</code>, <code>RECOVERY</code>) with three-tier color coding: crisp white (&gt;10s), cautionary amber (&le;10s), and rapid flashing crimson red (&le;3s).</li>
+      <li><b>Instant Impact Telemetry & Referee Verdict:</b> Mid-screen strike breakdown card upon impact detailing strike velocity (m/s), anatomical strike point, peak head snap angular rate (rad/s), and referee ruling (<code>CLEAN STRIKE</code>, <code>STAGGER</code>, or <code>FOUL</code>).</li>
+      <li><b>Persistent Win Probability & Momentum Tug-of-War:</b> Dual-colored live momentum bar permanently visible right beneath the round panel displaying calculated win probability percentages and strike advantages.</li>
+      <li><b>Vitality, Neck Integrity & KO Danger HUD:</b> Real-time stamina and neck stiffness depletion tracks with warning indicators when neck defense dips into the KO hazard zone.</li>
+      <li><b>Live Round-by-Round Scorecard Pop-Up:</b> Three-judge round summary displaying 10-9 or 10-8 marks and cumulative score lead at the close of every round.</li>
+      <li><b>Dramatic 10-Count Knockdown Overlay:</b> Center-screen pulsating gold referee count (<code>REFEREE COUNT: 1... 2... 3...</code>) triggered whenever a fighter is grounded.</li>
+      <li><b>Definitive Winner Ceremony & Spotlight Lock:</b> Triumphant golden marquee declaring the winner, method (KO / Decision), final scorecard tally, peak strike velocities, and an arena spotlight locked onto the victor.</li>
+    </ol>
+
+    <div class="card">
+      <h3>Engine & Platform Verification</h3>
+      <ul>
+        <li><b>Unreal Engine 5:</b> <code>UnrealEditor-PoSlapUnreal.dll</code> compiled with zero errors (Build succeeded in 43s).</li>
+        <li><b>Web Spectator Build:</b> <code>python Web/build.py</code> generated all 32 distribution files (45.4 MB) matching browser and server simulation engines.</li>
+        <li><b>Test Gates:</b> All 9 CPU, browser engine (gg, kk, gk), live relay, and spectator API tests pass without regression.</li>
+        <li><b>Physics & Solver Invariance:</b> Simulation physics, MuJoCo 200 Hz integration, and brain observation tensors remain strictly untouched.</li>
+      </ul>
+    </div>
+  </main>
+</body>
+</html>
