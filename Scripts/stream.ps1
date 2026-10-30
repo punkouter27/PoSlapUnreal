@@ -16,7 +16,7 @@ $Signal = Join-Path $Infra "SignallingWebServer\platform_scripts\cmd\start.bat"
 Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$Signal`"" -WorkingDirectory (Split-Path $Signal) -WindowStyle Minimized
 
 $GameArgs = @("`"$Root\PoSlapUnreal.uproject`"", "-game", "-RenderOffScreen", "-ResX=540", "-ResY=960", "-ForceRes",
-          "-PixelStreamingConnectionURL=ws://127.0.0.1:8888", "-log=slap_stream.log")
+          "-PixelStreamingConnectionURL=ws://127.0.0.1:8888", "-log=slap_stream.log", "-SlapLoop")   # -SlapLoop: match after match, unattended
 if ($Brain) { $GameArgs += "-SlapRedBrain=$Brain" }
 if ($BlueBrain) { $GameArgs += "-SlapBlueBrain=$BlueBrain" }
 Start-Process -FilePath "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" -ArgumentList $GameArgs

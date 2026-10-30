@@ -155,6 +155,13 @@ public:
 	std::atomic<bool> bSlowMo = true;	// live slow motion around the touch and a falling defender
 	std::atomic<bool> bLiveFeed = false;	// second screen: keep match events for TakeEvents
 
+	/** The round trip (user 2026-10-30): a normal launch opens on the menu with both standing at the podium and no
+	 *  match (bWaitForStart) until START; after a result both hold where it ended until the menu asks for the next
+	 *  (RequestMatch). The unattended loop (bAutoNext: -SlapLoop, the stream, and every check run) starts the next match
+	 *  itself, as before. A pairing opened by START (?SlapGo) starts its match at once. Set in Bind. */
+	std::atomic<bool> bAutoNext = true;
+	std::atomic<bool> bWaitForStart = false;
+
 	/** Second screen: the match events since the last call (JSONL lines, frames left out). */
 	void TakeEvents(TArray<FString>& Out) { FScopeLock L(&HudLock); Out = MoveTemp(Outbox); Outbox.Reset(); }
 
@@ -245,6 +252,8 @@ private:
 	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos = nullptr) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
 	void StartMatch(mjModel* m, mjData* d);
 	void StartTurn(mjModel* m, mjData* d);
+	void StandIdle(mjModel* m, mjData* d);	// the menu at launch: both in the stand pose at their foot boxes, no match
+	bool bIdlePlaced = false, bStartNext = false;	// physics thread: StandIdle done; the menu asked for the next match
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);

@@ -133,6 +133,7 @@ void ASlapHUD::BeginPlay()
 	FParse::Value(FCommandLine::Get(), TEXT("SlapFxTest="), FxTestAt);
 	bMenu = FParse::Value(FCommandLine::Get(), TEXT("SlapMenu="), Tab);
 	bUiTest = FParse::Param(FCommandLine::Get(), TEXT("SlapUiTest"));
+	bRoundTripTest = FParse::Param(FCommandLine::Get(), TEXT("SlapRoundTripTest"));
 	bPairTest = FParse::Param(FCommandLine::Get(), TEXT("SlapPairTest"));
 	bLayoutTest = FParse::Param(FCommandLine::Get(), TEXT("SlapLayoutTest"));
 	FString View;	// -SlapView=telemetry+science+xray+commentary+debug+noslow: overlays on from the start (screenshots, checks; '+', not commas)
@@ -306,7 +307,7 @@ void ASlapHUD::DrawHUD()
 		{
 			if (It->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject)) continue;
 			It->GetHud(Last);
-			if (Last.Match > 0) { Controller = *It; break; }
+			if (Last.Match > 0 || It->bWaitForStart) { Controller = *It; break; }
 		}
 	}
 	if (Controller.IsValid())
@@ -322,6 +323,7 @@ void ASlapHUD::DrawHUD()
 		TravelledAt = -1.0;
 		UE_LOG(LogTemp, Warning, TEXT("SlapHUD: the pairing level did not open within 6 s: the menu is live again"));
 	}
+	RoundTrip();
 	FSlapHud& H = Last;	// -SlapFxTest's fakes below show in the menu too: only that check sees them
 	CacheAthletes();
 	const int32 FxDef = Team(H.Defender);
@@ -417,6 +419,7 @@ void ASlapHUD::DrawHUD()
 	}
 
 	if (bUiTest) UiTest(H);
+	if (bRoundTripTest) RoundTripTest(H);
 	if (bLayoutTest) LayoutAudit();
 	if (bPairTest && H.Match > 0 && GetWorld()->GetTimeSeconds() >= 3.0 && Pairings.IsValidIndex(HerePairing))
 	{
@@ -539,8 +542,10 @@ void ASlapHUD::BuildUi()
 		{
 			const int32 Slot = SlotCards.Find((a ? B : R).ToLower());
 			if (Slot != INDEX_NONE) SelectedFighter[a] = Slot;
+			HereCard[a] = (a ? B : R).ToLower();
 		}
 	}
+	LoadRatings();
 
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	TSharedPtr<SWidget> Spare;	// SAssignNew needs somewhere to put the widgets the test doesn't click
@@ -614,12 +619,14 @@ void ASlapHUD::BuildUi()
 	auto DebugVis = [Self] { return Self.IsValid() && Self->bShowDebug ? EVisibility::HitTestInvisible : EVisibility::Collapsed; };
 	auto MatchText = [Self]	// one dense line: the tape and the brains live on the corner rows and the ROSTER tab
 	{
-		if (!Self.IsValid() || Self->Last.Match == 0) return FText::FromString(TEXT("Waiting for the first match."));
+		if (!Self.IsValid()) return FText();
 		if (Self->bTravelling) return FText::FromString(TEXT("Loading the pairing..."));
+		if (Self->Last.Match == 0) return FText::FromString(TEXT("Pick two fighters and START. Elo is saved after every match."));
 		const FSlapHud& H = Self->Last;
 		FString T = FString::Printf(TEXT("M%d  R%d/%d  %s >  SERIES %d-%d"), H.Match, H.Round, Rounds, *H.Striker.ToUpper(), H.Wins[0], H.Wins[1]);
 		if (H.Draws) T += FString::Printf(TEXT(" (%d D)"), H.Draws);
 		if (!H.Result.IsEmpty()) T += TEXT("\n") + H.Result;
+		if (!H.Result.IsEmpty() && !Self->EloLine.IsEmpty()) T += TEXT("\n") + Self->EloLine;
 		return FText::FromString(T);
 	};
 	auto Fits = [Self](int32 a)	// brains made for corner a's character
@@ -775,7 +782,7 @@ void ASlapHUD::BuildUi()
 						if (bRed && bBlue) Tag = TEXT(" [1&2]");
 						else if (bRed) Tag = TEXT(" [P1]");
 						else if (bBlue) Tag = TEXT(" [P2]");
-						return FText::FromString(FString::Printf(TEXT("%d. %s%s"), i + 1, *Self->Slots[i].Key, *Tag));
+						return FText::FromString(FString::Printf(TEXT("%d. %s%s\n%s"), i + 1, *Self->Slots[i].Key, *Tag, *Self->EloOf(Self->SlotCards[i])));
 					}), 12, White)
 				]
 			];
@@ -964,8 +971,8 @@ void ASlapHUD::BuildUi()
 						{
 							if (!Self.IsValid()) return FText();
 							const FSlapHud& H = Self->Last;
-							return FText::FromString(FString::Printf(TEXT("JUDGES %d:%d  %d:%d  %d:%d     SERIES %d-%d%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
-								H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT("")));
+							return FText::FromString(FString::Printf(TEXT("JUDGES %d:%d  %d:%d  %d:%d     SERIES %d-%d%s%s%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
+								H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT(""), Self->EloLine.IsEmpty() ? TEXT("") : TEXT("\n"), *Self->EloLine));
 						}), 15, Dim)]
 						+ SVerticalBox::Slot().AutoHeight()
 						[
@@ -1049,7 +1056,13 @@ void ASlapHUD::BuildUi()
 										+ SHorizontalBox::Slot().FillWidth(2.f).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
 										[
 											SNew(SBox).MinDesiredHeight(Touch)
-											[SAssignNew(Hit[HitStart], SButton).ButtonColorAndOpacity(FLinearColor(0.75f, 0.2f, 0.15f)).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(Start)[Label(FText::FromString(TEXT("START MATCH")), 18, White)]]
+											[SAssignNew(Hit[HitStart], SButton).ButtonColorAndOpacity(FLinearColor(0.75f, 0.2f, 0.15f)).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(Start)
+					[Label(TAttribute<FText>::CreateLambda([Self]	// the same two again after a match: a rematch
+					{
+						const bool bSame = Self.IsValid() && Self->Last.Match > 0 && Self->PairingFor(Self->SelectedFighter[0], Self->SelectedFighter[1]) == Self->HerePairing
+							&& Self->SlotCards.IsValidIndex(Self->SelectedFighter[0]) && Self->SlotCards[Self->SelectedFighter[0]] == Self->HereCard[0];
+						return FText::FromString(bSame ? TEXT("REMATCH") : TEXT("START MATCH"));
+					}), 18, White)]]
 										]
 										+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 4.f, 0.f))
 										[
@@ -1222,7 +1235,100 @@ void ASlapHUD::Travel(int32 P)
 	bTravelling = true;	// this HUD dies with the level; until then a second START or a picker tap is ignored
 	TravelledAt = GetWorld()->GetTimeSeconds();
 	UE_LOG(LogTemp, Log, TEXT("SlapHUD: opening pairing %s"), *Package);
-	UGameplayStatics::OpenLevel(this, FName(*Package));	// the match here is abandoned unscored, as START does
+	UGameplayStatics::OpenLevel(this, FName(*Package), true, TEXT("SlapGo"));	// the match here is abandoned unscored; SlapGo: START was pressed, the match there starts at once
+}
+
+FString ASlapHUD::RatingsPath()
+{
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PoSlap"), TEXT("elo.json"));
+}
+
+void ASlapHUD::LoadRatings()
+{
+	Ratings.Reset();
+	FString Text;
+	TSharedPtr<FJsonObject> J;
+	if (!FFileHelper::LoadFileToString(Text, *RatingsPath()) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), J) || !J) return;
+	for (const auto& KV : J->Values)
+	{
+		const TSharedPtr<FJsonObject>* O;
+		if (!KV.Value->TryGetObject(O)) continue;
+		FRating R;
+		(*O)->TryGetNumberField(TEXT("elo"), R.Elo);
+		(*O)->TryGetNumberField(TEXT("w"), R.W);
+		(*O)->TryGetNumberField(TEXT("l"), R.L);
+		Ratings.Add(FString(KV.Key), R);	// (5.8: the JSON keys are not FString)
+	}
+}
+
+void ASlapHUD::SaveRatings() const
+{
+	TSharedRef<FJsonObject> J = MakeShared<FJsonObject>();
+	for (const auto& KV : Ratings)
+	{
+		TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("elo"), FMath::RoundToDouble(KV.Value.Elo * 10.0) / 10.0);
+		O->SetNumberField(TEXT("w"), KV.Value.W);
+		O->SetNumberField(TEXT("l"), KV.Value.L);
+		J->SetObjectField(KV.Key, O);
+	}
+	FString Text;
+	FJsonSerializer::Serialize(J, TJsonWriterFactory<>::Create(&Text));
+	if (!FFileHelper::SaveStringToFile(Text, *RatingsPath())) UE_LOG(LogTemp, Warning, TEXT("SlapHUD: could not save %s"), *RatingsPath());
+}
+
+FString ASlapHUD::EloOf(const FString& Card) const
+{
+	const FRating* R = Ratings.Find(Card);
+	return R ? FString::Printf(TEXT("Elo %.0f  %d-%d"), R->Elo, R->W, R->L) : FString(TEXT("Elo 1000"));
+}
+
+void ASlapHUD::RoundTrip()
+{
+	if (!Controller.IsValid() || bTravelling) return;
+	const FSlapHud& H = Last;
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (!bLaunchMenu && Controller->bWaitForStart && H.Match == 0)	// a normal launch: the menu first
+	{
+		bLaunchMenu = true;
+		bMenu = true;
+		Tab = 0;
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: launch menu (waiting for START)"));
+	}
+	if (SeenWins[0] < 0) { SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1]; }
+	if (H.Result.IsEmpty()) { ResultAt = -1.0; return; }
+	if (H.MatchSeq != RatedSeq)	// a new result: rate it once
+	{
+		RatedSeq = H.MatchSeq;
+		ResultAt = Now;
+		const int32 W = H.Wins[0] > SeenWins[0] ? 0 : H.Wins[1] > SeenWins[1] ? 1 : -1;	// no series point: no contest
+		SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1];
+		EloLine.Reset();
+		if (W >= 0 && !HereCard[0].IsEmpty() && !HereCard[1].IsEmpty())
+		{
+			if (HereCard[0] == HereCard[1])	// a mirror match: the character beat itself, nothing to rate
+				EloLine = FString::Printf(TEXT("%s vs %s: mirror match, Elo unchanged"), *HereCard[0].ToUpper(), *HereCard[1].ToUpper());
+			else
+			{
+				FRating& Wr = Ratings.FindOrAdd(HereCard[W]);
+				FRating& Lr = Ratings.FindOrAdd(HereCard[1 - W]);
+				const double Expect = 1.0 / (1.0 + FMath::Pow(10.0, (Lr.Elo - Wr.Elo) / 400.0));
+				const double Delta = 32.0 * (1.0 - Expect);
+				Wr.Elo += Delta; Lr.Elo -= Delta; ++Wr.W; ++Lr.L;
+				EloLine = FString::Printf(TEXT("ELO  %s %.0f (+%.0f)   %s %.0f (-%.0f)"), *HereCard[W].ToUpper(), Wr.Elo, Delta, *HereCard[1 - W].ToUpper(), Lr.Elo, Delta);
+				SaveRatings();
+			}
+			UE_LOG(LogTemp, Log, TEXT("SlapHUD: rated: %s"), *EloLine);
+		}
+	}
+	if (ResultAt >= 0.0 && !Controller->bAutoNext && Now - ResultAt >= ResultHold)	// the result has had its moment: back to the menu
+	{
+		ResultAt = -1.0;
+		bMenu = true;
+		Tab = 0;
+		ActiveCornerSelect = 0;
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: result shown %.0f s: back to the menu"), ResultHold);
+	}
 }
 
 void ASlapHUD::InstantReplay()
@@ -1440,7 +1546,24 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 			UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test click %d (target %d): menu %d tab %d telemetry %d%s - %s"), UiStep, Was.Target, bMenu, Tab, bShowTelemetry, *Extra, bOk ? TEXT("ok") : TEXT("WRONG"));
 		}
 	}
-	auto Click = [&](int32 Target)
+	auto Click = [this](int32 Target) { ClickHit(Target); };
+	if (UiStep < UE_ARRAY_COUNT(Steps) && Now >= 3.0 + 1.5 * UiStep)
+	{
+		if (Steps[UiStep].Target == HitStart)
+		{
+			UiSeq = H.MatchSeq;
+			UiBrain = Pick[0] != INDEX_NONE ? Brains[Pick[0]].AssetName.ToString() : H.Brain[0];
+		}
+		Click(Steps[UiStep].Target);
+		++UiStep;
+		UiAt = Now;
+		bUiChecked = false;
+	}
+	UiTestEnd(H, Click, UE_ARRAY_COUNT(Steps));
+}
+
+void ASlapHUD::ClickHit(int32 Target)
+{
 	{
 		const TSharedPtr<SWidget> W = Hit[Target];
 		FSlateApplication& App = FSlateApplication::Get();
@@ -1460,36 +1583,81 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 			App.RoutePointerDoubleClickEvent(Path, Ev({ EKeys::LeftMouseButton }, EKeys::LeftMouseButton));
 			App.RoutePointerUpEvent(Path, Ev({}, EKeys::LeftMouseButton));
 		}
-	};
-	if (UiStep < UE_ARRAY_COUNT(Steps) && Now >= 3.0 + 1.5 * UiStep)
-	{
-		if (Steps[UiStep].Target == HitStart)
-		{
-			UiSeq = H.MatchSeq;
-			UiBrain = Pick[0] != INDEX_NONE ? Brains[Pick[0]].AssetName.ToString() : H.Brain[0];
-		}
-		Click(Steps[UiStep].Target);
-		++UiStep;
-		UiAt = Now;
-		bUiChecked = false;
 	}
+}
+
+void ASlapHUD::RoundTripTest(const FSlapHud& H)
+{
+	// -SlapRoundTripTest (a normal launch otherwise: the menu first, back to it after the result): START at the launch
+	// menu, a match to its result, the menu back by itself with the Elo saved, REMATCH (the same START button), and the
+	// next match running. Logs PASS or FAIL and quits; 300 s at most.
+	const double Now = GetWorld()->GetTimeSeconds();
+	auto Done = [&](bool bOk, const FString& Why)
+	{
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: round trip test %s: %s"), bOk ? TEXT("PASS") : TEXT("FAIL"), *Why);
+		RtStep = 99;
+		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+	};
+	if (RtStep == 99) return;
+	if (Now > 300.0) { Done(false, FString::Printf(TEXT("stuck at step %d after 300 s"), RtStep)); return; }
+	switch (RtStep)
+	{
+	case 0:	// the launch menu, no match
+		if (Now < 3.0) return;
+		if (!bMenu || H.Match != 0) { Done(false, FString::Printf(TEXT("launch: menu %d, match %d (want the menu, no match)"), bMenu, H.Match)); return; }
+		RtElo = EloOf(HereCard[0]) + TEXT(" / ") + EloOf(HereCard[1]);
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: round trip test: launch menu ok (%s vs %s, %s); START"), *HereCard[0], *HereCard[1], *RtElo);
+		ClickHit(HitStart);
+		RtStep = 1; RtAt = Now;
+		return;
+	case 1:	// the match runs, the menu closed
+		if (H.Match > 0 && !bMenu) { RtStep = 2; RtAt = Now; UE_LOG(LogTemp, Log, TEXT("SlapHUD: round trip test: match %d running"), H.Match); }
+		else if (Now - RtAt > 15.0) Done(false, TEXT("START did not start a match"));
+		return;
+	case 2:	// the result
+		if (!H.Result.IsEmpty()) { RtStep = 3; RtAt = Now; RtSeq = H.MatchSeq; UE_LOG(LogTemp, Log, TEXT("SlapHUD: round trip test: result \"%s\" (%s)"), *H.Result, *EloLine); }
+		return;
+	case 3:	// back to the menu by itself, the Elo saved
+		if (!bMenu) { if (Now - RtAt > ResultHold + 5.0) Done(false, TEXT("the menu did not come back after the result")); return; }
+		{
+			const FString Elo = EloOf(HereCard[0]) + TEXT(" / ") + EloOf(HereCard[1]);
+			const bool bMirror = HereCard[0] == HereCard[1];
+			const bool bSaved = IFileManager::Get().FileExists(*RatingsPath()) || bMirror;
+			if (!bMirror && (Elo == RtElo || !bSaved)) { Done(false, FString::Printf(TEXT("Elo not updated or not saved: %s -> %s, file %d"), *RtElo, *Elo, bSaved)); return; }
+			UE_LOG(LogTemp, Log, TEXT("SlapHUD: round trip test: menu back %.1f s after the result, Elo %s -> %s (%s); REMATCH"), Now - RtAt, *RtElo, *Elo, *RatingsPath());
+		}
+		ClickHit(HitStart);
+		RtStep = 4; RtAt = Now;
+		return;
+	case 4:	// the rematch is running
+		if (H.MatchSeq > RtSeq && H.Result.IsEmpty() && !bMenu) Done(true, FString::Printf(TEXT("launch menu -> START -> result -> menu (%s) -> REMATCH -> match %d"), *EloLine, H.Match));
+		else if (Now - RtAt > 15.0) Done(false, TEXT("REMATCH did not start the next match"));
+		return;
+	default:
+		return;
+	}
+}
+
+void ASlapHUD::UiTestEnd(const FSlapHud& H, TFunctionRef<void(int32)> Click, int32 NumSteps)
+{
+	const double Now = GetWorld()->GetTimeSeconds();
 	const bool bEnded = UiMatch0 > 0 && H.Wins[0] + H.Wins[1] + H.Draws >= UiMatch0;
-	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && bEnded && !H.Result.IsEmpty() && !bRematched && Now >= UiAt + 0.5)	// the result card is up: REMATCH
+	if (UiStep == NumSteps && bUiChecked && bEnded && !H.Result.IsEmpty() && !bRematched && Now >= UiAt + 0.5)	// the result card is up: REMATCH
 	{
 		Click(HitRematch);
 		UiAt = Now;
 	}
-	if (UiStep == UE_ARRAY_COUNT(Steps) && bUiChecked && !bUiDone && bEnded && bRematched && H.Match > 0 && H.Result.IsEmpty())	// a match ended, REMATCH, the next began
+	if (UiStep == NumSteps && bUiChecked && !bUiDone && bEnded && bRematched && H.Match > 0 && H.Result.IsEmpty())	// a match ended, REMATCH, the next began
 	{
 		bUiDone = true;
 		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test %s: %d of %d clicks wrong; a match ended (series %d-%d, %d drawn), REMATCH, and match %d began"), UiFails ? TEXT("FAIL") : TEXT("PASS"),
-			UiFails, (int32)UE_ARRAY_COUNT(Steps), H.Wins[0], H.Wins[1], H.Draws, H.Match);
+			UiFails, (int32)NumSteps, H.Wins[0], H.Wins[1], H.Draws, H.Match);
 		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);	// short: training shares this machine
 	}
 	else if (!bUiDone && Now > 120.0)
 	{
 		bUiDone = true;
-		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test FAIL: %d of %d clicks wrong, within 120 s: match ended %d, REMATCH tapped %d"), UiFails, (int32)UE_ARRAY_COUNT(Steps), bEnded, bRematched);
+		UE_LOG(LogTemp, Log, TEXT("SlapHUD: UI test FAIL: %d of %d clicks wrong, within 120 s: match ended %d, REMATCH tapped %d"), UiFails, (int32)NumSteps, bEnded, bRematched);
 		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
 	}
 }

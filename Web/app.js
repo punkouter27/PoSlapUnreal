@@ -265,6 +265,10 @@ function onEvent(e) {
       break;
     case "result":
       if (e.how !== "KO") stopTenCount();   // a KO's count runs out to 10 (turn_end)
+      if (!LIVE && (e.winner === "red" || e.winner === "blue")) {
+        const w = e.winner === "red" ? 0 : 1;
+        lastResult = { text: `${e.winner.toUpperCase()} ${game.match.sides[w].card.display.toUpperCase()} wins by ${e.how}`, elo: rate(w) };
+      }
       renderPips(3, "", true, true);
       S.cards = e.cards || S.cards;
       renderCards();
@@ -533,6 +537,23 @@ const playable = slot => !!slot.id && Object.values(MATCHUPS).some(m => m.corner
 let selFighters = [0, 1];   // set from the loaded pairing once it is known (renderMatchups)
 let activeCornerPick = 0;
 
+// ---- the ratings: Elo per character (K 32, from 1000), saved in this browser as each match ends ---------------------
+// (Unreal keeps its own in Saved/PoSlap/elo.json: the same rule, a different device)
+const ELO_KEY = "poslap.elo";
+const ratings = (() => { try { return JSON.parse(localStorage.getItem(ELO_KEY)) || {}; } catch { return {}; } })();
+const rating = id => ratings[id] ??= { elo: 1000, w: 0, l: 0 };
+let lastResult = null;   // { text, elo } for the menu, after a match
+function rate(winnerCorner) {
+  const ids = game.matchup.corners.map(c => c.char), w = winnerCorner, l = 1 - w;
+  if (ids[0] === ids[1]) return `${ids[0].toUpperCase()} vs ${ids[1].toUpperCase()}: mirror match, Elo unchanged`;
+  const W = rating(ids[w]), L = rating(ids[l]);
+  const delta = 32 * (1 - 1 / (1 + 10 ** ((L.elo - W.elo) / 400)));
+  W.elo += delta; L.elo -= delta; W.w++; L.l++;
+  localStorage.setItem(ELO_KEY, JSON.stringify(ratings));
+  return `Elo  ${ids[w].toUpperCase()} ${Math.round(W.elo)} (+${Math.round(delta)}) · ${ids[l].toUpperCase()} ${Math.round(L.elo)} (−${Math.round(delta)})`;
+}
+const eloTag = id => { const r = ratings[id]; return r ? `Elo ${Math.round(r.elo)} · ${r.w}-${r.l}` : "Elo 1000"; };
+
 function updateRoster16UI() {
   const rCard = ROSTER_SLOTS[selFighters[0]];
   const bCard = ROSTER_SLOTS[selFighters[1]];
@@ -540,6 +561,10 @@ function updateRoster16UI() {
   if ($("lblBlue")) $("lblBlue").textContent = bCard.display || "OPEN";
   if ($("btnPickRed")) $("btnPickRed").classList.toggle("active", activeCornerPick === 0);
   if ($("btnPickBlue")) $("btnPickBlue").classList.toggle("active", activeCornerPick === 1);
+  const same = ROSTER_SLOTS[selFighters[0]].id === game?.matchup.corners[0].char && ROSTER_SLOTS[selFighters[1]].id === game?.matchup.corners[1].char;
+  $("practice").textContent = everStarted && same ? "REMATCH" : "START MATCH";
+  const res = $("menuResult");
+  if (res) { res.hidden = !lastResult; res.textContent = ""; if (lastResult) res.append(el("b", "", lastResult.text), el("span", "", lastResult.elo)); }
   if ($("slotPrompt")) $("slotPrompt").textContent = activeCornerPick === 0 
     ? "Tap an available slot for RED (P1)" 
     : "Tap an available slot for BLUE (P2)";
@@ -568,6 +593,7 @@ function updateRoster16UI() {
       else if (isRed) tag = " [P1]";
       else if (isBlue) tag = " [P2]";
       b.textContent = `${i + 1}. ${slot.display}${tag}`;
+      b.append(el("small", "", eloTag(slot.id)));
       b.onclick = () => {
         selFighters[activeCornerPick] = i;
         activeCornerPick = 1 - activeCornerPick;
@@ -802,6 +828,7 @@ try {
   $("loadmsg").textContent = "Loading the arena and both brains…";
   game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides); buildPushers(game.m, game.match.sides);
+  game.match.autoNext = false;   // the round trip: after the result's hold, back to the menu (sim.js phase "over")
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
   buildDeters(); renderStreak(); renderMatchups(); renderBadges(); renderCards(); measureBottom();
@@ -836,7 +863,9 @@ function loop(now) {
   } else if (M.phase === "hold") {
     $("clock").textContent = `next turn in ${Math.max(0, M.holdLeft * h).toFixed(1)} s`;
   } else if (M.phase === "after") {
-    $("clock").textContent = `final · next match in ${Math.max(0, M.holdLeft * h).toFixed(0)} s`;
+    $("clock").textContent = `final · menu in ${Math.max(0, M.holdLeft * h).toFixed(0)} s`;
+  } else if (M.phase === "over" && started && !LIVE) {
+    showMenu();   // the result has had its moment: the menu, with the same two picked (REMATCH) or new ones
   }
   frames++;
   if (now - fpsT > 500) {

@@ -142,6 +142,18 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	if (FParse::Value(FCommandLine::Get(), TEXT("SlapEyeContact="), EyeFlag)) bEyeContact = EyeFlag != TEXT("0");
 	FString WalkFlag;	// pre-match walk-in on by default; -SlapWalkIn=0 off
 	if (FParse::Value(FCommandLine::Get(), TEXT("SlapWalkIn="), WalkFlag)) bWalkIn = WalkFlag != TEXT("0");
+	{	// the round trip (SlapController.h): menu first and back to it, unless a check or the stream runs unattended
+		const TCHAR* Cmd = FCommandLine::Get();
+		FString V;
+		const bool bCheck = FParse::Param(Cmd, TEXT("SlapUiTest")) || FParse::Param(Cmd, TEXT("SlapPairTest")) || FParse::Param(Cmd, TEXT("SlapLayoutTest"))
+			|| FParse::Param(Cmd, TEXT("SlapShotResult")) || FParse::Value(Cmd, TEXT("SlapShot="), V) || FParse::Value(Cmd, TEXT("SlapFxTest="), V)
+			|| FParse::Value(Cmd, TEXT("SlapSeed="), V) || FParse::Value(Cmd, TEXT("SlapFirst="), V) || FParse::Value(Cmd, TEXT("SlapMode="), V) || !RecordFile.IsEmpty();
+		const bool bGo = GetWorld() && GetWorld()->URL.HasOption(TEXT("SlapGo"));
+		bAutoNext = bCheck || FParse::Param(Cmd, TEXT("SlapLoop"));
+		bWaitForStart = !bAutoNext && !bGo;
+		bIdlePlaced = bStartNext = false;
+		UE_LOG(LogSlap, Log, TEXT("round trip: %s"), bAutoNext ? TEXT("unattended loop") : bWaitForStart ? TEXT("menu first, back to it after each result") : TEXT("START picked this pairing: match now, then the menu"));
+	}
 
 	// URLab attaches our MJCF as a child spec, whose <option> is dropped (root spec defaults: 0.002 s, Euler),
 	// and its own override is single-precision. Set the training options exactly, from the fingerprint.
@@ -696,6 +708,8 @@ void USlapController::ApplyPending()
 		Pending[a].Reset();
 	}
 	if (MatchNo > 0 && Round <= Rounds) Emit(TEXT("{\"type\": \"abandoned\"}"));	// the menu stopped it: no result, no series point
+	bWaitForStart = false;
+	bStartNext = true;	// the menu asked: the next match starts even when the loop is off
 	bInTurn = false;
 	HoldLeft = 0;
 	WalkInLeft = 0;
@@ -1058,6 +1072,22 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	});
 }
 
+void USlapController::StandIdle(mjModel* m, mjData* d)
+{
+	mj_resetData(m, d);	// as StartTurn's reset: the stand pose at the foot boxes, fresh brains, full strength
+	for (FAthlete& A : Athletes)
+	{
+		for (int32 j = 0; j < A.Act.Num(); ++j) d->qpos[A.Qadr[j]] = A.Stand[j];
+		A.Goal = A.Stand;
+		A.PrevAction.Init(0.f, A.Act.Num());
+		A.bFresh = true;
+		SetForce(m, A, 1.0);
+	}
+	SettleMuscles(m, d);
+	mj_forward(m, d);
+	mj_forward(m, d);
+}
+
 void USlapController::StartTurn(mjModel* m, mjData* d)
 {
 	Turn = FTurn();
@@ -1327,7 +1357,7 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	TurnInRound = 0;
 	if (++Round <= Rounds) { HoldLeft = HoldSteps(TurnHold); return; }
 	int32 Winner = -1;
-	const FString How = Referee.Decision(Winner);	// the decision (SlapReferee.h): the wording and the winner
+	const FString How = Referee.Decision(Winner, First);	// the decision (SlapReferee.h): the wording and the winner
 	const bool Draw = Winner < 0;
 	Emit(FString::Printf(TEXT("{\"type\": \"result\", \"how\": %s, \"winner\": %s, \"round\": %d, \"cards\": %s}"), *Str(How), Draw ? TEXT("null") : *Str(Athletes[Winner].Name), Rounds, *CardsJson(Referee.Cards)));
 	const FString Res = Draw ? FString(TEXT("Draw")) : FString::Printf(TEXT("%s wins by %s"), *Athletes[Winner].Name.ToUpper(), *How);
@@ -1547,7 +1577,12 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	else if (Athletes.Num() == 2)	// the match (training/match.py)
 	{
 		if (bPendingMatch.exchange(false)) ApplyPending();	// the menu: new brains, a fresh match
-		if (WalkInLeft > 0)
+		if (bWaitForStart && MatchNo == 0)	// a normal launch: the menu first; both stand at the podium until START
+		{
+			if (!bIdlePlaced) { StandIdle(m, d); bIdlePlaced = true; }
+			if (StepCount % ControlEvery == 0) Decide(m, d);
+		}
+		else if (WalkInLeft > 0)
 		{
 			StepWalkIn(m, d);
 			if (HudLive()) --WalkInLeft;
@@ -1560,7 +1595,13 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 				if (!bInTurn)
 				{
 					if (MatchNo > 0 && HoldLeft > 0) break;	// a turn or match just ended: let the crowd see it (StartTurn resets after)
-					if (MatchNo == 0 || Round > Rounds) { StartMatch(m, d); if (WalkInLeft > 0) break; }
+					if (MatchNo == 0 || Round > Rounds)
+					{
+						if (MatchNo > 0 && !bAutoNext && !bStartNext) break;	// the result stands until the menu asks for the next match
+						bStartNext = false;
+						StartMatch(m, d);
+						if (WalkInLeft > 0) break;
+					}
 					else StartTurn(m, d);
 				}
 				Faint(m);

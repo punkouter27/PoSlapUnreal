@@ -146,6 +146,30 @@ private:
 	int32 Preset = 0;	// 0 none, 1 TEL, 2 TEL+SCI, 3 XRAY: what a swipe steps through
 	void CyclePreset(int32 Dir);
 	bool bRematched = false;	// -SlapUiTest: REMATCH was tapped on the result card
+
+	// the round trip and the ratings (user 2026-10-30: "a full round trip for 1v1 and a clear winner", "elo is saved as
+	// games are played"): the menu at launch, the result for ResultHold s, then the menu again with the same two picked;
+	// each result moves the two characters' Elo (K 32, from 1000), saved to Saved/PoSlap/elo.json at once
+	struct FRating { double Elo = 1000.0; int32 W = 0, L = 0; };
+	TMap<FString, FRating> Ratings;	// by character card ("grandpa", "kim")
+	FString HereCard[2];			// the characters this level plays (red, blue)
+	int32 RatedSeq = 0, SeenWins[2] = { -1, -1 };	// the match last rated (FSlapHud::MatchSeq); the series seen then
+	double ResultAt = -1.0;			// when the result showed (game time); -1 = none pending
+	bool bLaunchMenu = false;		// the launch menu was opened (once)
+	FString EloLine;				// the last result's rating change, for the menu and the result card
+	static constexpr double ResultHold = 6.0;
+	static FString RatingsPath();
+	void LoadRatings();
+	void SaveRatings() const;
+	void RoundTrip();				// DrawHUD: launch menu, rating the result, back to the menu
+	FString EloOf(const FString& Card) const;
+	void ClickHit(int32 Target);	// a synthetic click at a bound target (the tests): hit-tested in the game window
+	bool bRoundTripTest = false;	// -SlapRoundTripTest: menu -> START -> result -> menu (Elo saved) -> REMATCH -> next match; PASS/FAIL
+	int32 RtStep = 0, RtSeq = 0;
+	double RtAt = 0.0;
+	FString RtElo;
+	void RoundTripTest(const FSlapHud& H);
+	void UiTestEnd(const FSlapHud& H, TFunctionRef<void(int32)> Click, int32 NumSteps);	// -SlapUiTest's tail: REMATCH on the result card, PASS/FAIL
 	bool bTravelling = false;	// a pairing's level is opening: START, replay and the pickers stay inert until it has
 	double TravelledAt = -1.0;	// when the level was asked for: if it never opens, the menu comes back (a failed load would brick it)
 	void InstantReplay();	// the MATCH tab's replay button or a double tap: the last 2.5 s at 1/2 (or 1/4) speed, or back to live

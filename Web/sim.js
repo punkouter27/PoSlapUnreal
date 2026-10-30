@@ -154,6 +154,7 @@ export class Match {
     const gid = n => { const a = m.geom(n); const i = a.id; a.delete(); return i; };
     this.floor = gid("floor"); this.podium = gid("podium"); this.surface = new Set([this.floor, this.podium]);
     this.dt = m.opt.timestep; this.series = [0, 0]; this.matchNo = 0;
+    this.autoNext = true;   // after the result hold: a new match (the unattended loop); the page sets false (back to the menu)
     this.newMatch();
   }
 
@@ -381,7 +382,7 @@ export class Match {
       }
     }
     this.applyCtrl(); this.physicsStep();
-    if (--this.holdLeft <= 0) { if (this.phase === "hold") this.startTurn(); else this.newMatch(); }
+    if (--this.holdLeft <= 0) { if (this.phase === "hold") this.startTurn(); else if (this.autoNext) this.newMatch(); else this.phase = "over"; }
   }
 
   scoreRound() {   // match.py play(): three judges, 10-point must, the defender scores for absorbing
@@ -407,7 +408,18 @@ export class Match {
     const votes = this.cards.map(c => c[0] > c[1] ? 0 : c[1] > c[0] ? 1 : null), wins = [0, 1].map(s => votes.filter(v => v === s).length);
     const best = wins[0] === wins[1] ? null : wins[0] > wins[1] ? 0 : 1;
     const how = best === null || wins[best] < 2 ? "draw" : wins[best] === 3 ? "unanimous decision" : wins[1 - best] === 1 ? "split decision" : "majority decision";
-    this.endMatch(how, how === "draw" ? null : best);
+    if (how === "draw") this.endMatch(...this.tiebreak());
+    else this.endMatch(how, best);
+  }
+
+  // the judges drew, but a match always has a winner (match.py tiebreak): the higher total over the three cards; level,
+  // the harder slap landed in the match; neither landed one, the athlete who struck second
+  tiebreak() {
+    const tot = [0, 1].map(i => this.cards.reduce((a, c) => a + c[i], 0));
+    if (tot[0] !== tot[1]) return ["decision on total points", tot[1] > tot[0] ? 1 : 0];
+    const hard = [0, 1].map(i => Math.max(0, ...this.recs.filter(([s, r]) => s === i && r.touch !== null).map(([, r]) => r.speed)));
+    if (hard[0] !== hard[1]) return ["decision on the harder slap", hard[1] > hard[0] ? 1 : 0];
+    return ["decision: struck second", 1 - this.first];
   }
 
   endMatch(how, winner) {
@@ -415,6 +427,6 @@ export class Match {
     if (winner !== null) this.series[winner]++;
     this.result = { how, winner: winner === null ? null : this.sides[winner].name, cards: this.cards };
     this.emit({ type: "result", ...this.result });
-    this.phase = "after"; this.holdLeft = Math.round(5 / this.dt);   // 5 s on the result, then a new match
+    this.phase = "after"; this.holdLeft = Math.round(6 / this.dt);   // 6 s on the result, then the menu (or, autoNext, a new match)
   }
 }

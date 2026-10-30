@@ -37,11 +37,14 @@ namespace Slap
 		int32 Cards[3][2] = {};
 		/** The turns of the round being scored. */
 		TArray<FSlapTurn> RoundTurns;
+		/** The hardest slap each athlete has landed this match (m/s): the decision's second tiebreak. */
+		double Hardest[2] = {};
 
 		/** A fresh match: no cards, no turns. */
 		void Reset()
 		{
 			FMemory::Memzero(Cards, sizeof(Cards));
+			FMemory::Memzero(Hardest, sizeof(Hardest));
 			RoundTurns.Reset();
 		}
 
@@ -53,9 +56,10 @@ namespace Slap
 		void Score(int32 (&Out)[3][2]);
 
 		/**
-		 * The match decision: the wording ("unanimous decision", "split decision", "majority decision", "draw")
-		 * and the winner (the corner's index, or -1 for a draw).
+		 * The match decision: the wording and the winner (the corner's index). A judges' draw is broken as
+		 * training/match.py's tiebreak does it (the higher total over the three cards; level, the harder slap landed;
+		 * neither landed one, the athlete who struck second: First is the coin toss's winner), so there is always one.
 		 */
-		FString Decision(int32& Winner) const;
+		FString Decision(int32& Winner, int32 First) const;
 	};
 }

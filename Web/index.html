@@ -128,6 +128,10 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 .menuCard button { min-height: 44px; padding: 0 14px; }
 .menuCard button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
 .menuCard .matchups { justify-content: center; }
+.lastResult { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 6px; text-align: center; }
+.lastResult b { font-size: clamp(13px, 3.4vw, 16px); color: var(--gold); }
+.lastResult span { font: 500 clamp(10px, 2.6vw, 12px) var(--mono); color: var(--ink-2); }
+.roster16 button small { display: block; font: 500 9px var(--mono); color: var(--ink-2); margin-top: 2px; }
 .menuCard .foot { color: var(--ink-2); font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
 
 .menuCorners { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 2px 0; }
@@ -214,6 +218,7 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
   <div class="menuCard">
     <div class="brand"><b>PO</b>SL<i>AP</i></div>
     <div class="sub">Choose 2 Fighters from 16 Slots · Start Match</div>
+    <div class="lastResult" id="menuResult" hidden></div>
     <div class="menuCorners">
       <button class="cornerPick red active" id="btnPickRed"><span>RED (P1)</span><b id="lblRed">GRANDPA</b></button>
       <span class="vs">VS</span>

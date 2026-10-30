@@ -413,10 +413,23 @@ class Match:
         elif max(wins) == 2:
             how, winner = ("split decision" if min(wins) == 1 else "majority decision"), names[wins.index(2)]
         else:
-            how, winner = "draw", None
+            how, winner = tiebreak(cards, turns, names, self.first)
         res = dict(type="result", how=how, winner=winner, round=ROUNDS, cards=cards)
         self.emit(**res)
         return res, turns
+
+
+def tiebreak(cards, turns, names, first):
+    """The judges drew, but a match always has a winner (user 2026-10-30: "a clear winner"): the higher total over the
+    three cards; level, the harder slap landed in the match; neither landed one, the athlete who struck second (the
+    coin toss gave the other the first swing). Web/sim.js and SlapReferee.cpp break the tie the same way."""
+    tot = [sum(c[0] for c in cards), sum(c[1] for c in cards)]
+    if tot[0] != tot[1]:
+        return "decision on total points", names[int(tot[1] > tot[0])]
+    hard = [max([r["speed"] for r in turns if r["striker"] == n and r["touch"] is not None], default=0.0) for n in names]
+    if hard[0] != hard[1]:
+        return "decision on the harder slap", names[int(hard[1] > hard[0])]
+    return "decision: struck second", names[1 - first]
 
 
 def log_path(first):
