@@ -29,6 +29,16 @@ venv are refused) and takes `--host 0.0.0.0` for phones on the network. The brow
 `ws:`/`wss:` URL on localhost or `*.webpubsub.azure.com` only) and never parses wire text as HTML; the deployed
 bundle ships a CSP (`Web/build.py`).
 
+`Web/serve.py`'s refusal is checked on the **resolved** path, not the request path: `SimpleHTTPRequestHandler`
+drops `..` segments instead of resolving them, so `/Web/../AGENTS.md` would otherwise walk out of the allowed
+directories, and the handler stops at the guard instead of writing a 404 and then serving the file anyway.
+
+**CI.** `.github/workflows/verify.yml` runs on every push to `master`: the browser engine one turn each way for
+every pairing (`node Web/check.mjs gg|kk|gk`), the relay check, the spectator API check, a parse of every python
+file, the card/model/staging gate (`training/verify_cards.py`, CPU only) and the `serve.py` path guard.
+`training/verify_realism.py` needs CUDA for its env steps, so it stays a local gate. The deploy workflow
+(`.github/workflows/deploy-web.yml`) is separate and still the only thing that publishes the site.
+
 ## Rebuilding from a fresh clone
 
 1. **URLab** (not in git): `git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab`,
