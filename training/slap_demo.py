@@ -19,7 +19,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from brain_cpu import Athlete, stand
+from brain_cpu import Athlete, muscle_step, muscle_vmax, stand
 
 HERE = Path(__file__).parent
 if "--char" in sys.argv:   # before the pool starts: workers re-import this module and read it from the environment
@@ -74,6 +74,7 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
     stand(m, d, fp)
     A = Athlete(m, fp, "")
     J = {n: i for i, n in enumerate(A.order)}
+    vmax = muscle_vmax(m, [A])   # Hill's force-velocity cap, as in every engine since realism round 2
     if seed:
         d.qpos[A.qa] += rng.uniform(-0.05, 0.05, len(A.qa))
     d.mocap_pos[0] = d.qpos[:3] + OPP_HEAD + (rng.uniform(-jitter, jitter, 3) if seed else 0)
@@ -104,7 +105,7 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
             if record:
                 ref_goal.append(goal.copy()); ref_q.append(d.qpos[A.qa].copy())
         d.ctrl[A.act] = goal
-        mujoco.mj_step(m, d)
+        muscle_step(m, d, vmax)
         k += 1
         p = d.geom_xpos[hand].copy()
         v = float(np.linalg.norm(p - prev)) / 0.005
