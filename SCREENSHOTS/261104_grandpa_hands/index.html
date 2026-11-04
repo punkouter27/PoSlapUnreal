@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8"><title>261104 Grandpa open hands</title>
+<style>body{font:14px system-ui;background:#111;color:#ddd;max-width:1500px;margin:auto;padding:20px}img{max-width:100%;border:1px solid #333}
+table{border-collapse:collapse;margin:8px 0}td,th{border:1px solid #444;padding:3px 8px}code{color:#fc6}h2{border-bottom:1px solid #444}.n{color:#aaa}pre{background:#1b1b1b;padding:8px;overflow:auto}</style>
+<h1>Grandpa's drawn hands: open palms on the MuJoCo hand boxes (2026-11-04)</h1>
+<p>Approved after <code>DOCS/20261103/collision_review.md</code>: the scan's right hand was curled and rolled ~30 deg off its box, the left a fist.
+Made headlessly by <code>Scripts/blender_open_hands.py</code> (source kept: <code>Content/Art/Raw/Grandpa_rigged_scanhands.blend</code>);
+stills and angles by <code>Scripts/render_open_hands.py</code> with poses from <code>Scripts/open_hands_poses.py</code> (CPU MuJoCo). Green wireframes =
+the hand boxes of <code>training/models/grandpa_solo.xml</code> (8.4 x 18.4 x 3 cm), carried by the hand bones. Workbench, Blender 5.2.</p>
+<h2>Angles: drawn hand vs collision box</h2>
+<p>The hand's vertices (hand-bone weight &ge; 0.5) on the skinned mesh, in the box's frame; principal axes. Palm normal = smallest axis vs the box's thin axis,
+finger axis = largest axis vs the box's long axis (degrees, target &lt; 5). Outside = p90 of the vertices' distance outside the box (as <code>Scripts/collision_mesh_clip.py</code>).</p>
+<table><tr><th>pose</th><th>hand</th><th>palm normal before</th><th>after</th><th>finger axis before</th><th>after</th><th>outside p90 mm before</th><th>after</th><th>% inside before</th><th>after</th></tr><tr><td>bind</td><td>hand_l</td><td>85.3</td><td><b>2.2</b></td><td>55.6</td><td><b>4.2</b></td><td>41.0</td><td>3.2</td><td>25.4</td><td>78.8</td></tr><tr><td>bind</td><td>hand_r</td><td>30.1</td><td><b>2.7</b></td><td>12.8</td><td><b>2.8</b></td><td>46.4</td><td>3.6</td><td>21.4</td><td>80.3</td></tr><tr><td>stand</td><td>hand_l</td><td>85.3</td><td><b>2.2</b></td><td>55.6</td><td><b>4.2</b></td><td>41.0</td><td>3.2</td><td>25.4</td><td>78.8</td></tr><tr><td>stand</td><td>hand_r</td><td>30.1</td><td><b>2.7</b></td><td>12.8</td><td><b>2.8</b></td><td>46.4</td><td>3.6</td><td>21.4</td><td>80.3</td></tr><tr><td>slap</td><td>hand_l</td><td>81.8</td><td><b>2.1</b></td><td>49.7</td><td><b>4.5</b></td><td>41.4</td><td>3.2</td><td>26.6</td><td>77.9</td></tr><tr><td>slap</td><td>hand_r</td><td>30.2</td><td><b>2.6</b></td><td>12.9</td><td><b>2.8</b></td><td>46.4</td><td>3.6</td><td>22.0</td><td>80.8</td></tr></table>
+<h3>T-pose (bind = MuJoCo qpos0), left hand: top / front / along the fingers</h3><img src='tpose_left.jpg'><p class=n>before: palm normal 85.3 deg, finger axis 55.6 deg, outside box p90 41.0 mm<br>after: palm normal 2.2 deg, finger axis 4.2 deg, outside box p90 3.2 mm</p><h3>T-pose (bind), right hand: top / front / along the fingers</h3><img src='tpose_right.jpg'><p class=n>before: palm normal 30.1 deg, finger axis 12.8 deg, outside box p90 46.4 mm<br>after: palm normal 2.7 deg, finger axis 2.8 deg, outside box p90 3.6 mm<br>before: palm normal 85.3 deg, finger axis 55.6 deg, outside box p90 41.0 mm<br>after: palm normal 2.2 deg, finger axis 4.2 deg, outside box p90 3.2 mm</p><h3>Rest (the stand pose), both hands from the front, and the body</h3><img src='rest.jpg'><p class=n>before: palm normal 30.1 deg, finger axis 12.8 deg, outside box p90 46.4 mm<br>after: palm normal 2.7 deg, finger axis 2.8 deg, outside box p90 3.6 mm<br>before: palm normal 85.3 deg, finger axis 55.6 deg, outside box p90 41.0 mm<br>after: palm normal 2.2 deg, finger axis 4.2 deg, outside box p90 3.2 mm</p><h3>Slap contact (grandpa_final mirror match, seed 0, t 4.69 s, red hand_r on blue's head, 22 mm into the sphere): square onto the palm / edge-on / three-quarter / body</h3><img src='slap.jpg'><p class=n>before: palm normal 30.2 deg, finger axis 12.9 deg, outside box p90 46.4 mm<br>after: palm normal 2.6 deg, finger axis 2.8 deg, outside box p90 3.6 mm</p>
+<h2>What changed</h2>
+<ul><li>Per hand: cut at the scan's own wrist (narrowest arm section within 8 cm before / 4 cm past the wrist joint); everything past it replaced by a
+signed-distance open hand in the box's frame (wrist stub from the cut's own outline, palm with thenar/hypothenar pads, four 3-phalanx fingers with 3-5 deg flex
+and a slight fan, the thumb adducted along the index), surface nets 1 mm, voxel remesh, decimated to ~1,600 faces, zipped to the cut.</li>
+<li>Weights: hand bone = smoothstep over +-3 cm about the wrist joint, eased from the cut's own weights; the rest to the forearm bone. Only hand_x / forearm_x.</li>
+<li>UVs: 229 patches of ~2.5 cm, angle-based unwraps scaled to the scan hand's texel density (median 1.0, p10 0.86, p90 1.074 of it;
+anisotropy median 1.01, p90 1.15), each placed whole on the scan's own hand-skin texels (colour-filtered, 3 px off the edges). Same texture files,
+same material; no face spans an atlas seam.</li>
+<li>Unchanged: armature (bone names, rest matrices, joint frames, limb lengths), every scan vertex outside the two hands (positions, weights, UVs, custom normals), CheekDent_L/R
+(rebuilt: identical, max diff 0.0 m) and _CHEEKMASK (max diff 0.0).</li></ul>
+<table><tr><th>hand</th><th>cut u (mm from wrist joint)</th><th>cut perimeter cm</th><th>scan verts removed</th><th>new verts</th><th>new faces</th></tr><tr><td>hand_l</td><td>-69.9</td><td>20.8</td><td>462</td><td>804</td><td>1628</td></tr><tr><td>hand_r</td><td>30.1</td><td>14.4</td><td>493</td><td>755</td><td>1531</td></tr></table>
+<p>Mesh: 9984 &rarr; 10686 vertices, 21289 faces, non-manifold edges 0, boundary edges 0.</p>
+<h2>Checks</h2><pre>FBX re-import, old (HEAD) vs new, Blender 5.2 (Scripts-side tool cmp_fbx):
+  Grandpa_rigged.fbx  bones same names True (17), bone max diff 0.0, vertex groups same, shape keys Basis/CheekDent_L/CheekDent_R (max disp 18.0 mm both), verts 9984 -> 10686
+  Grandpa_LOD1.fbx    bones 17, bone max diff 0.0, groups same, CheekDent_L/R 18.0 mm, verts 4984 -> 5339
+  Grandpa_LOD2.fbx    bones 17, bone max diff 0.0, groups same, CheekDent_L/R 18.0 mm, verts 2484 -> 2665
+three.js r-GLTFLoader + meshopt decoder (Node):
+  Web/assets/grandpa.glb               PASS: SkinnedMesh, 17 bones, morphs CheekDent_L/CheekDent_R, attrs _cheekmask, morph position+normal
+  Content/Art/Exports/Grandpa_rigged.glb PASS: same; skeleton vs old: bone world + inverse-bind matrices max diff 0.0
+  web GLB vs old web GLB: bone world matrices max diff 0.0 (the bind matrix differs only by meshopt's quantization scale, 0.854 -> 0.865: the hands widened the bounds)
+python Scripts/check_naming.py: 130 assets, 0 errors, 0 warnings (PASS)
+</pre>
+<h2>File sizes (bytes)</h2><table><tr><th>file</th><th>before</th><th>after</th></tr><tr><td>Web/assets/grandpa.glb</td><td>605752</td><td>623384</td></tr><tr><td>Content/Art/Exports/Grandpa_rigged.fbx</td><td>1050812</td><td>1140684</td></tr><tr><td>Content/Art/Exports/Grandpa_rigged.glb</td><td>38621876</td><td>38725572</td></tr><tr><td>Content/Art/Exports/Grandpa_LOD1.fbx</td><td>572108</td><td>616300</td></tr><tr><td>Content/Art/Exports/Grandpa_LOD2.fbx</td><td>327244</td><td>349420</td></tr><tr><td>Content/Art/Raw/Grandpa_rigged.blend</td><td>1113740</td><td>1170572</td></tr><tr><td>Content/Art/Raw/Grandpa_rigged_scanhands.blend (new: the scan's hands)</td><td>-</td><td>1113740</td></tr></table>
+<!--BATCH-->
