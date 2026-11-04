@@ -267,6 +267,10 @@ class Match:
         mujoco.mj_forward(m, d)
         feet0 = {id(x): np.array([d.geom_xpos[f][:2] for f in x.feet]) for x in self.sides}
         hand_prev = d.geom_xpos[S.hand].copy()
+        # physics 2+: every geom where the last physics step left it (envs/arena.py gprev). Kept after each step, not
+        # copied before it: on a brain step mj_kinematics has already moved geom_xpos to this step's pose, and a copy
+        # taken then made the touching part's velocity 0 (no kick) on strikes that landed right after a decision
+        glast = d.geom_xpos.copy()
         head_prev = d.geom_xpos[D.head].copy()
         rec = dict(round=rnd, striker=S.name, touch=None, part=None, palm=False, speed=0.0, head_peak=0.0, stagger=False,
                    fouls=[], ko=False, end=None)
@@ -354,8 +358,10 @@ class Match:
             d.xfrc_applied[D.head_body] = kick if on else 0.0
             for b, w in react:   # physics 3: the reaction on the striker's arm (force at each body's COM)
                 d.xfrc_applied[b, :3] = -w * kick[:3] if on else 0.0
-            gprev = d.geom_xpos.copy() if self.physics >= 2 and touch_k is None else None
+            gprev = glast if self.physics >= 2 and touch_k is None else None
             muscle_step(m, d, self.vmax)
+            if self.physics >= 2:
+                glast = d.geom_xpos.copy()
             k += 1
             if not np.isfinite(d.qpos).all() or np.abs(d.qvel).max() > 1e3:
                 self.blowup = True

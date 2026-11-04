@@ -61,6 +61,11 @@ class Athlete {
     this.pelvis = id("body", "pelvis");
     this.head = id("geom", "head"); this.hand = id("geom", "hand_r"); this.headBody = m.geom_bodyid[this.head];
     this.feet = [id("geom", "foot_l"), id("geom", "foot_r")]; this.hands = [id("geom", "hand_l"), this.hand];
+    // physics 3 (build_body.face_parts): the face is the cranium sphere and the jaw capsules, and a touch counts only
+    // inside the face_zone site (match.py in_face_zone); v1/v2 models have neither, so the face is the sphere alone
+    const opt = (kind, n) => { try { return id(kind, n); } catch { return -1; } };
+    this.face = new Set([this.head, opt("geom", "jaw_l"), opt("geom", "jaw_r")].filter(i => i >= 0));
+    this.faceZone = opt("site", "face_zone");
     this.geoms = new Set();
     for (let g = 0; g < m.ngeom; g++) if (m.body_rootid[m.geom_bodyid[g]] === this.pelvis) this.geoms.add(g);
     this.box = [m.qpos0[this.rq], m.qpos0[this.rq + 1]];   // foot-box centre = start pelvis x, y
@@ -213,7 +218,7 @@ export class Match {
     this.handPrev = v3(d.geom_xpos, S.hand); this.headPrev = v3(d.geom_xpos, D.head);
     this.rec = { round: this.round, striker: S.name, touch: null, part: null, palm: false, speed: 0, head_peak: 0, stagger: false, fouls: [], ko: false, end: null };
     this.touchK = null; this.com0 = null; this.seen = []; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
-    this.fe = { peak: 0, at: 0, swing: false, tagged: false, n: 0 }; this.speedNow = 0;
+    this.fe = { peak: 0, at: 0, swing: false, tagged: false, n: 0 }; this.speedNow = 0; this.react = []; this.glast = d.geom_xpos.slice();
     this.faints = [];
     this.sides.forEach((x, i) => {
       const k0 = faintStep(x.card, this.seed, this.round, this.s, i, this.dt);
@@ -286,9 +291,15 @@ export class Match {
     }
     this.applyCtrl();
     for (const x of this.sides) d.xfrc_applied.fill(0, 6 * x.headBody, 6 * x.headBody + 6);
-    if (this.touchK !== null && this.k - this.touchK < KICK_STEPS) d.xfrc_applied.set(this.kick, 6 * D.headBody);
-    const gprev = this.physics >= 2 && this.touchK === null ? d.geom_xpos.slice() : null;
+    const kickOn = this.touchK !== null && this.k - this.touchK < KICK_STEPS;
+    if (kickOn) d.xfrc_applied.set(this.kick, 6 * D.headBody);
+    for (const [b, w] of this.react)   // physics 3: the reaction on the striker's arm (force at each body's COM)
+      for (let i = 0; i < 3; i++) d.xfrc_applied[6 * b + i] = kickOn ? -w * this.kick[i] : 0;
+    // physics 2+: every geom where the last physics step left it (match.py glast): not copied here, where a brain
+    // step's mj_kinematics has already moved geom_xpos and the touching part's velocity would read 0
+    const gprev = this.physics >= 2 && this.touchK === null ? this.glast : null;
     this.physicsStep();
+    if (this.physics >= 2) this.glast = d.geom_xpos.slice();
     this.k++;
     if (!d.qpos.every(Number.isFinite)) { rec.end = "blow-up"; this.emit({ type: "blowup" }); this.phase = "over"; return; }
     const hand = v3(d.geom_xpos, S.hand), speed = dist(hand, this.handPrev) / dt;
@@ -297,6 +308,23 @@ export class Match {
     if (this.touchK !== null) rec.head_peak = Math.max(rec.head_peak, dist(head, this.headPrev) / dt);
     this.headPrev = head;
     if (this.touchK === null) this.checkTouch(S, D, speed, vel, gprev);
+  }
+
+  inFaceZone(site, p) {   // match.py in_face_zone: p inside the face_zone box, in the site's frame (local = R^T r)
+    const { m, d } = this, R = d.site_xmat, h = m.site_size;
+    const r = [p[0] - d.site_xpos[3 * site], p[1] - d.site_xpos[3 * site + 1], p[2] - d.site_xpos[3 * site + 2]];
+    for (let k = 0; k < 3; k++)
+      if (Math.abs(R[9 * site + k] * r[0] + R[9 * site + 3 + k] * r[1] + R[9 * site + 6 + k] * r[2]) > h[3 * site + k]) return false;
+    return true;
+  }
+
+  reactionChain(geom) {   // match.py reaction_chain: the touching body and its arm parents, shares by mass
+    const { m } = this, out = [];
+    const name = b => { const a = m.body(b), n = a.name; a.delete(); return n.replace(/^.*?(red|blue)_/, ""); };
+    for (let b = m.geom_bodyid[geom]; b > 0 && /^(hand|forearm|upperarm)/.test(name(b)); b = m.body_parentid[b]) out.push(b);
+    if (!out.length) out.push(m.geom_bodyid[geom]);
+    const tot = out.reduce((a, b) => a + m.body_mass[b], 0);
+    return out.map(b => [b, m.body_mass[b] / tot]);
   }
 
   feintRead(speed, t, S) {   // match.py feint_read
@@ -313,8 +341,9 @@ export class Match {
     const { m, d, dt } = this, cs = d.contact, n = d.ncon;
     for (let i = 0; i < n; i++) {
       const c = cs.get(i), g0 = c.geom1, g1 = c.geom2;
-      if ((g0 === D.head || g1 === D.head) && S.geoms.has(g0 === D.head ? g1 : g0)) {
-        const other = g0 === D.head ? g1 : g0, sign = g0 === other ? 1 : -1, F = c.frame, b = 9 * S.hand, X = d.geom_xmat;
+      const other = D.face.has(g0) ? g1 : D.face.has(g1) ? g0 : -1;
+      if (other >= 0 && S.geoms.has(other) && (this.physics < 3 || this.inFaceZone(D.faceZone, c.pos))) {
+        const sign = g0 === other ? 1 : -1, F = c.frame, b = 9 * S.hand, X = d.geom_xmat;
         const palm = other === S.hand && -sign * (F[0] * X[b + 2] + F[1] * X[b + 5] + F[2] * X[b + 8]) > 0.5;
         const pos = [c.pos[0], c.pos[1], c.pos[2]];
         c.delete();
@@ -334,6 +363,7 @@ export class Match {
         const k = S.card.strike_mass / (KICK_STEPS * dt), f = vel.map(v => v * k), C = v3(d.xipos, D.headBody);
         const r = [pos[0] - C[0], pos[1] - C[1], pos[2] - C[2]];
         this.kick = [f[0], f[1], f[2], r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+        if (this.physics >= 3) this.react = this.reactionChain(other);
         break;
       }
       c.delete();
