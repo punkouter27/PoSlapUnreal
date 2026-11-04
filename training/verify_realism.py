@@ -111,6 +111,67 @@ def main():
         print(f"  [PASS] {card} v2: {m.npair} explicit pairs ({len(filtered_pairs())} welded + 2 palm-target, margin "
               f"{STRIKE_MARGIN * 1000:.0f} mm), rigid condim-4 floor, asymmetric torques; v1 model unchanged (sha {v1['sha256'][:12]})")
 
+    print("\n=== [2c/6] Physics 3 (models/v3: the face, stiff limbs, sole friction; DOCS/20261104/physics3.md) ===")
+    import numpy as np
+    from build_body import FOOT_PRIORITY, STIFF_SOLIMP
+    v2_sha = {c: json.loads((models_dir(2) / f"{c}_fingerprint.json").read_text())["sha256"] for c in ("grandpa", "kim")}
+    for card in ("grandpa", "kim"):
+        res = subprocess.run([sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / f"{card}.json"), "--physics", "3"],
+                             capture_output=True, text=True, check=True)
+        assert "swing & stride arcs" in res.stdout and "OK" in res.stdout, res.stdout   # A10 zero overlap, A11 balance
+        fp = json.loads((models_dir(3) / f"{card}_fingerprint.json").read_text())
+        assert fp.get("physics") == 3, f"{card}: the v3 fingerprint does not say physics 3"
+        c = json.loads((HERE / "characters" / f"{card}.json").read_text())
+        m = mujoco.MjModel.from_xml_path(str(models_dir(3) / f"{card}_solo.xml"))
+        d = mujoco.MjData(m)
+        mujoco.mj_kinematics(m, d)
+        head = m.body("head").id
+        assert {m.geom(g).name for g in range(m.ngeom) if m.geom_bodyid[g] == head} == {"head", "jaw_l", "jaw_r"}
+        assert abs(m.body_mass[head] - c["mass_kg"] * MASS["head"] / 100) < 1e-2, f"{card}: the head's mass moved with the jaw"
+        s = m.site("face_zone").id   # the face zone holds the whole jaw and the sphere's front half
+        R, h = d.site_xmat[s].reshape(3, 3), m.site_size[s]
+        inside = lambda p: bool((np.abs(R.T @ (p - d.site_xpos[s])) <= h + 1e-6).all())
+        for j in ("jaw_l", "jaw_r"):
+            g = m.geom(j).id
+            ax = d.geom_xmat[g].reshape(3, 3)[:, 2] * m.geom_size[g][1]
+            for e in (-1, 1):
+                for u in np.vstack([np.eye(3), -np.eye(3)]):   # the capsule's end caps, out along every axis
+                    assert inside(d.geom_xpos[g] + e * ax + m.geom_size[g][0] * u), f"{card}: {j} pokes out of the face zone"
+        hc, hr = d.geom_xpos[m.geom("head").id], m.geom_size[m.geom("head").id][0]
+        for u in ((1, 0, 0), (0, 1, 0), (0, -1, 0), (0.7, 0.7, 0)):
+            assert inside(hc + hr * np.array(u) / np.linalg.norm(u)), f"{card}: the cheek {u} is outside the face zone"
+        assert not inside(hc + hr * np.array([-1.0, 0, 0])) and not inside(hc + hr * np.array([0, 0, 1.0])), \
+            f"{card}: the back / crown of the head counts as the face"
+        for g in range(m.ngeom):   # every athlete geom stiff; the soles win their floor contacts with their own friction
+            if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id:
+                assert abs(m.geom_solref[g, 0] - STIFF_SOLREF[0]) < 1e-6 and abs(m.geom_solimp[g, 0] - STIFF_SOLIMP[0]) < 1e-6, m.geom(g).name
+        for f in ("foot_l", "foot_r"):
+            g = m.geom(f).id
+            assert m.geom_priority[g] == FOOT_PRIORITY > m.geom_priority[m.geom("floor").id] and m.geom_condim[g] == 4
+        # K11: the per-foot friction randomisation reaches the sole's floor contact (it was the floor's value, always)
+        st = fp["stand_pose_rad"]
+        for j, q in st.items():
+            d.qpos[m.joint(j).qposadr[0]] = q
+        m.geom_friction[m.geom("foot_l").id, 0], m.geom_friction[m.geom("floor").id, 0] = 0.61, 1.17
+        for i in range(m.nu):   # settle onto the soles (muscles holding the stance)
+            d.ctrl[i] = d.act[i] = d.qpos[m.jnt_qposadr[m.actuator_trnid[i, 0]]]
+        for _ in range(40):
+            mujoco.mj_step(m, d)
+        mu = {m.geom(int(x.geom[1] if x.geom[0] == m.geom("floor").id else x.geom[0])).name: float(x.friction[0]) for x in d.contact[:d.ncon]
+              if m.geom("floor").id in (x.geom[0], x.geom[1])}
+        assert abs(mu.get("foot_l", 0) - 0.61) < 1e-4 and abs(mu.get("foot_r", 0) - 0.9) < 1e-4, f"{card}: sole friction {mu}"
+        a = mujoco.MjModel.from_xml_path(str(models_dir(3) / f"{card}_vs_{card}_arena.xml"))
+        pairs = {tuple(sorted((a.geom(int(a.pair_geom1[i])).name, a.geom(int(a.pair_geom2[i])).name))): float(a.pair_margin[i]) for i in range(a.npair)}
+        for sd, op in (("red_", "blue_"), ("blue_", "red_")):
+            for hnd in ("hand_l", "hand_r"):
+                for part in ("head", "jaw_l", "jaw_r", "neck"):
+                    k = tuple(sorted((sd + hnd, op + part)))
+                    assert abs(pairs.get(k, -1) - STRIKE_MARGIN) < 1e-6, f"{card}: no stiff early pair {k}"
+        assert json.loads((models_dir(2) / f"{card}_fingerprint.json").read_text())["sha256"] == v2_sha[card], f"{card}: v2 changed"
+        print(f"  [PASS] {card} v3: jaw capsules on the head ({m.body_mass[head]:.2f} kg kept), face zone = cheeks + jaw (not the "
+              f"back or crown), {a.npair} arena pairs incl. hand-jaw/neck, every athlete geom stiff, sole friction per foot "
+              f"(floor 1.17, left sole 0.61 -> contact {mu['foot_l']:.2f}); v2 unchanged")
+
     print("\n=== [3/6] Verifying the S2 Walking & Proprioception Env on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
     from envs.locomotion import LocomotionEnv
 

@@ -77,10 +77,26 @@ LENGTH_RATIO = {"thigh": (0.20, 0.28), "shin": (0.17, 0.27), "upperarm": (0.13, 
 #     the literature (TORQUE_V2); the stiffness stays from the stronger direction;
 #   * engines read the version from the fingerprint ("physics": 2) and take the strike impulse from the velocity of
 #     the part that touched (v1: hand_r's, whatever touched).
+# PHYSICS 3 (2026-11-04, DOCS/20261104/physics3.md; DOCS/20261103/collision_review.md's proposals), physics 2 plus:
+#   * the FACE: two jaw capsules on the head body (chin to each jaw angle) under the cranium sphere, and the cranium
+#     sphere centred on the drawn head (v1/v2 put it at the bone midpoint + the mesh's absolute centre: Kim's sat
+#     9.8 cm behind her face, Matt's 4 cm ahead); the referee counts a touch on the face geoms whose contact point
+#     lies inside the head's `face_zone` site (cheek and jaw, Blueprint 2.1) - every engine runs the same box test;
+#   * stiff, early pairs for each hand against the other's neck and jaw (the slap landing low), as for the head;
+#   * every athlete geom stiff (solref/solimp as the head): limb-on-limb bumps sank 2-3 cm with the default softness;
+#   * the per-foot friction randomisation made real: the sole boxes carry priority 2 with the floor's friction,
+#     condim and stiffness, so a sole's contact takes the SOLE's (randomised) friction; with the floor's priority the
+#     floor's value won every floor contact (tasks K11).
 PHYSICS = 1
 STIFF_SOLREF = (0.01, 1.0)            # the stiffest timeconst MuJoCo allows at a 5 ms step (refsafe: 2 x timestep)
 STIFF_SOLIMP = (0.99, 0.999, 0.001)   # impedance ~1 from the first mm: the contact does not give like skin
 STRIKE_MARGIN = 0.015                 # m: the palm-head pair engages 15 mm out (the worst sink falls by as much)
+# physics 3: the jaw, in units of the cranium sphere's radius r from its centre (head frame: +X forward, +Y left)
+JAW_CHIN, JAW_ANGLE, JAW_R = (0.62, 0.0, -1.15), (-0.05, 0.55, -0.75), 0.28   # chin point, jaw angle (y mirrored), radius
+FACE_PAD = 0.03          # m: the face zone reaches this far past the skin shapes (a margin contact's point sits up to
+                         # 7.5 mm out; a slap's contact point is never deeper than the shapes)
+FACE_TOP, FACE_BACK = 0.40, 0.45   # the zone's top (brow / cheekbone) and back (just behind the ear line), x r
+FOOT_PRIORITY = 2        # physics 3: above the floor's and podium's 1
 TORQUE_V2 = {   # trained adult (Nm): (toward the joint's negative end, toward its positive end); + = flex/forward/up/outward
     "knee": (220, 130),          # extension (quadriceps) vs flexion (hamstrings)
     "hip_flex": (220, 150),      # extension (glutes, hamstrings) vs flexion (iliopsoas)
@@ -129,7 +145,10 @@ def pair_xml(g1, g2, margin=None):
 
 def athlete_contacts(pre):
     """Physics 2: the explicit self-collision pairs of one athlete (each body here has one geom, named as the body)."""
-    return [pair_xml(pre + a, pre + b) for a, b in filtered_pairs()] if PHYSICS >= 2 else []
+    if PHYSICS < 2:
+        return []
+    geoms = lambda b: [b, "jaw_l", "jaw_r"] if b == "head" and PHYSICS >= 3 else [b]   # the head body's geoms
+    return [pair_xml(pre + ga, pre + gb) for a, b in filtered_pairs() for ga in geoms(a) for gb in geoms(b)]
 
 
 def strike_contacts(striker, head):
@@ -141,7 +160,40 @@ def strike_contacts(striker, head):
     for h in ("hand_l", "hand_r"):
         out.append(f'<exclude body1="{striker}{h}" body2="{head[0]}"/>')
         out.append(pair_xml(striker + h, head[1], STRIKE_MARGIN))
+        if PHYSICS >= 3:   # the jaw (on the head body: the exclude above covers it) and the neck under it
+            for j in ("jaw_l", "jaw_r"):
+                out.append(pair_xml(striker + h, f"{head[1]}_{j}" if head[1] == "target" else head[1].replace("head", j),
+                                    STRIKE_MARGIN))
+            if head[1] != "target":
+                neck = head[0].replace("head", "neck")
+                out.append(f'<exclude body1="{striker}{h}" body2="{neck}"/>')
+                out.append(pair_xml(striker + h, neck, STRIKE_MARGIN))
     return out
+
+
+def face_parts(pre=""):
+    """The geoms of one head that count as the face (physics 3: the cranium sphere and both jaw capsules)."""
+    return [pre + "head"] + ([pre + "jaw_l", pre + "jaw_r"] if PHYSICS >= 3 else [])
+
+
+def jaw_geoms(c, r):
+    """Physics 3: the two jaw capsules, chin -> each jaw angle, from the cranium sphere (centre c, radius r)."""
+    chin = np.asarray(c, float) + r * np.array(JAW_CHIN)
+    out = []
+    for s, sg in (("l", 1), ("r", -1)):
+        ang = np.asarray(c, float) + r * np.array([JAW_ANGLE[0], sg * JAW_ANGLE[1], JAW_ANGLE[2]])
+        out.append(("capsule", "jaw_" + s, chin, ang, JAW_R * r))
+    return out
+
+
+def face_zone(c, r):
+    """(centre, half-size) of the head's face_zone box in the head frame. Physics 3: cheeks and jaw, fitted to the
+    sphere and the jaw capsules plus FACE_PAD; v1/v2: the old marker box (drawn only, never tested)."""
+    if PHYSICS < 3:
+        return np.asarray(c, float) + [0.04, 0, -0.02], np.array([0.06, 0.09, 0.06])
+    lo = np.array([-FACE_BACK * r, -(r + FACE_PAD), (JAW_CHIN[2] - JAW_R) * r - FACE_PAD])
+    hi = np.array([r + FACE_PAD, r + FACE_PAD, FACE_TOP * r])
+    return np.asarray(c, float) + (lo + hi) / 2, (hi - lo) / 2
 
 
 def b2m(p):
@@ -266,8 +318,16 @@ def athlete_geometry(sk, card):
     add("neck", ("capsule", "neck", np.zeros(3), t - h, 0.027 * card["height_m"]))
     h, t = J["head"]
     hy = st["head"]["y"]
-    c = (h + t) / 2 + [-(hy[0] + hy[1]) / 2, 0, 0] - h
-    add("head", ("sphere", "head", c, None, 0.92 * st["head"]["r_med"]))
+    if PHYSICS >= 3:   # the drawn head's centre: its mesh's (absolute) fore-aft middle, at the bone's mid height
+        c = np.array([-(hy[0] + hy[1]) / 2, 0.0, (h[2] + t[2]) / 2]) - h
+    else:              # (v1/v2: the bone midpoint + the mesh's absolute centre: off by the bone's own fore-aft offset)
+        c = (h + t) / 2 + [-(hy[0] + hy[1]) / 2, 0, 0] - h
+    r = 0.92 * st["head"]["r_med"]
+    add("head", ("sphere", "head", c, None, r), *(jaw_geoms(c, r) if PHYSICS >= 3 else []))
+    if PHYSICS >= 3:   # the head's mass split by volume (cranium, jaw): the body keeps its card mass
+        vol = [4 / 3 * math.pi * g[4] ** 3 if g[0] == "sphere" else
+               math.pi * g[4] ** 2 * (4 / 3 * g[4] + np.linalg.norm(np.asarray(g[3]) - g[2])) for g in geo["head"]["geoms"]]
+        geo["head"]["mass_frac"] = [v / sum(vol) for v in vol]
     for s, sg in (("l", 1), ("r", -1)):
         h, t = J["upperarm_" + s]
         add("upperarm_" + s, ("capsule", "upperarm_" + s, np.zeros(3), t - h,
@@ -348,13 +408,17 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
             # force-velocity: not here - every engine caps forcerange by Hill's law each step (brain_cpu.hill)
             acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kv)}" '
                         f'ctrlrange="{rng}" forcerange="{fmt([-t_neg * st, t_pos * st])}" timeconst="{fmt(MUSCLE_TC)}"/>')
-        stiff = f' solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"' if PHYSICS >= 2 and seg(n) in ("head", "hand") else ""
-        for gg in g["geoms"]:   # physics 2: palm and head do not give like skin in any contact (their pair is set apart)
-            out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"{stiff}/>'))
+        # physics 2: palm and head do not give like skin in any contact (their pair is set apart); physics 3: no part does
+        stiff = (f' solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"'
+                 if (PHYSICS >= 2 and seg(n) in ("head", "hand")) or PHYSICS >= 3 else "")
+        if PHYSICS >= 3 and seg(n) == "foot":   # the sole wins its floor/podium contacts: its own (randomised) friction
+            stiff += f' priority="{FOOT_PRIORITY}" condim="4" friction="{fmt([0.9, 0.02, 0.01])}"'
+        frac = g.get("mass_frac", [1 / len(g["geoms"])] * len(g["geoms"]))
+        for gg, fr in zip(g["geoms"], frac):
+            out.append(f"{ind}  " + geom_xml(gg, g["mass"] * fr, pre, scale).replace("/>", f' rgba="{rgba}"{stiff}/>'))
         if n == "head":
-            c = g["geoms"][0][2]
-            out.append(f'{ind}  <site name="{pre}face_zone" type="box" pos="{fmt(c + [0.04, 0, -0.02])}" '
-                       f'size="{fmt([0.06, 0.09, 0.06])}" rgba="1 1 0 0.2"/>')
+            fc, fh = face_zone(g["geoms"][0][2], g["geoms"][0][4] * scale.get("head", 1.0))
+            out.append(f'{ind}  <site name="{pre}face_zone" type="box" pos="{fmt(fc)}" size="{fmt(fh)}" rgba="1 1 0 0.2"/>')
         for c in kids[n]:
             out += body(c, depth + 1)
         out.append(f"{ind}</body>")
@@ -578,8 +642,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("card")
     ap.add_argument("--blue", help="card for the blue athlete (default: same as red)")
-    ap.add_argument("--physics", type=int, default=1, choices=(1, 2),
-                    help="1: the shipped physics (models/); 2: the realism batch for the retrain (models/v2/)")
+    ap.add_argument("--physics", type=int, default=1, choices=(1, 2, 3),
+                    help="1: the shipped physics (models/); 2: the realism batch (models/v2/); 3: + face, stiff limbs, sole friction (models/v3/)")
     a = ap.parse_args()
     global PHYSICS
     PHYSICS = a.physics
@@ -599,7 +663,15 @@ def main():
         root = geo["pelvis"]["origin"] + [0, 0, 0.001]
         # physics 2: the target sphere is named (its strike pair) and as stiff as a head
         tgeom = f' name="target" solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"' if PHYSICS >= 2 else ""
-        target = f'    <body name="target" mocap="true" pos="5 0 1.6"><geom{tgeom} type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>\n'
+        if PHYSICS >= 3:   # the L2 target is a face too: turned to look at the striker (-X), its jaw and face zone as a head's
+            sf = f' solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}" rgba="0.9 0.2 0.2 0.5"/>'
+            fc, fh = face_zone(np.zeros(3), 0.09)
+            target = ('    <body name="target" mocap="true" pos="5 0 1.6" quat="0 0 0 1">'
+                      f'<geom name="target" type="sphere" size="0.09"{sf}'
+                      + "".join(geom_xml(g, 0.1, "target_", {}).replace("/>", sf) for g in jaw_geoms(np.zeros(3), 0.09))
+                      + f'<site name="target_face_zone" type="box" pos="{fmt(fc)}" size="{fmt(fh)}"/></body>\n')
+        else:
+            target = f'    <body name="target" mocap="true" pos="5 0 1.6"><geom{tgeom} type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>\n'
         solo_pairs = strike_contacts("", ("target", "target"))
         pod_h = round(0.59 * card["height_m"], 3)   # the arena's podium where the arena has it (L2's free hand found it)
         target += (f'    <geom name="podium" type="box" pos="{fmt([root[0] + GAP / 2, root[1], pod_h / 2])}" '
