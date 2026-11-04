@@ -160,14 +160,33 @@ def strike_contacts(striker, head):
     for h in ("hand_l", "hand_r"):
         out.append(f'<exclude body1="{striker}{h}" body2="{head[0]}"/>')
         out.append(pair_xml(striker + h, head[1], STRIKE_MARGIN))
-        if PHYSICS >= 3:   # the jaw (on the head body: the exclude above covers it) and the neck under it
+        if PHYSICS >= 3:   # the target's jaw (on its body: the exclude above covers it); an arena uses limb_contacts
             for j in ("jaw_l", "jaw_r"):
-                out.append(pair_xml(striker + h, f"{head[1]}_{j}" if head[1] == "target" else head[1].replace("head", j),
-                                    STRIKE_MARGIN))
-            if head[1] != "target":
-                neck = head[0].replace("head", "neck")
-                out.append(f'<exclude body1="{striker}{h}" body2="{neck}"/>')
-                out.append(pair_xml(striker + h, neck, STRIKE_MARGIN))
+                out.append(pair_xml(striker + h, f"{head[1]}_{j}", STRIKE_MARGIN))
+    return out
+
+
+# physics 3: the striker's fast parts and what they land on, each as a stiff early pair (the hands at 6-10 m/s cover
+# 30-50 mm a step: physics 2 let a hand sink 29 mm into the neck and 20-29 mm into the chest, a forearm 28 mm into a jaw)
+LIMB_TARGETS = {"hand_l": ("head", "neck", "chest", "belly", "upperarm_l", "upperarm_r", "forearm_l", "forearm_r"),
+                "forearm_l": ("head", "neck")}
+
+
+def limb_contacts(pres):
+    """Physics 3, the arena: every pair of LIMB_TARGETS between the two athletes (both ways, each pair once), the
+    bodies' dynamic contact excluded. The head body's geoms are the cranium sphere and both jaw capsules."""
+    out, seen = [], set()
+    geoms = lambda b: ["head", "jaw_l", "jaw_r"] if b == "head" else [b]
+    for s, o in (pres, pres[::-1]):
+        for limb0, targets in LIMB_TARGETS.items():
+            for limb in (limb0, limb0[:-1] + "r"):
+                for b in targets:
+                    key = frozenset((s + limb, o + b))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(f'<exclude body1="{s}{limb}" body2="{o}{b}"/>')
+                    out += [pair_xml(s + limb, o + g, STRIKE_MARGIN) for g in geoms(b)]
     return out
 
 
@@ -726,6 +745,7 @@ def main():
     red = athlete_xml(rg, rc, "red_", [-gap / 2, 0, rr[2]], (1, 0, 0, 0), rs, "0.85 0.3 0.3 1", ri)
     blue = athlete_xml(bg, bc, "blue_", [gap / 2, 0, br[2]], (0, 0, 0, 1), bs, "0.3 0.4 0.85 1", bi)
     arena = scene_xml(f"{rc['name']}_vs_{bc['name']}", [red, blue], world,
+                      limb_contacts(("red_", "blue_")) if PHYSICS >= 3 else
                       strike_contacts("red_", ("blue_head", "blue_head")) + strike_contacts("blue_", ("red_head", "red_head")))
     name = f"{rc['name']}_vs_{bc['name']}_arena.xml"
     (out / name).write_text(arena)

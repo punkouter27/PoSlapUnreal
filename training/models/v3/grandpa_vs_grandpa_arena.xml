@@ -210,24 +210,96 @@
     <pair geom1="red_hand_l" geom2="blue_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="red_hand_l" body2="blue_neck"/>
     <pair geom1="red_hand_l" geom2="blue_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_chest"/>
+    <pair geom1="red_hand_l" geom2="blue_chest" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_belly"/>
+    <pair geom1="red_hand_l" geom2="blue_belly" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_upperarm_l"/>
+    <pair geom1="red_hand_l" geom2="blue_upperarm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_upperarm_r"/>
+    <pair geom1="red_hand_l" geom2="blue_upperarm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_forearm_l"/>
+    <pair geom1="red_hand_l" geom2="blue_forearm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_l" body2="blue_forearm_r"/>
+    <pair geom1="red_hand_l" geom2="blue_forearm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="red_hand_r" body2="blue_head"/>
     <pair geom1="red_hand_r" geom2="blue_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="red_hand_r" geom2="blue_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="red_hand_r" geom2="blue_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="red_hand_r" body2="blue_neck"/>
     <pair geom1="red_hand_r" geom2="blue_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_chest"/>
+    <pair geom1="red_hand_r" geom2="blue_chest" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_belly"/>
+    <pair geom1="red_hand_r" geom2="blue_belly" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_upperarm_l"/>
+    <pair geom1="red_hand_r" geom2="blue_upperarm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_upperarm_r"/>
+    <pair geom1="red_hand_r" geom2="blue_upperarm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_forearm_l"/>
+    <pair geom1="red_hand_r" geom2="blue_forearm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_hand_r" body2="blue_forearm_r"/>
+    <pair geom1="red_hand_r" geom2="blue_forearm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_forearm_l" body2="blue_head"/>
+    <pair geom1="red_forearm_l" geom2="blue_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="red_forearm_l" geom2="blue_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="red_forearm_l" geom2="blue_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_forearm_l" body2="blue_neck"/>
+    <pair geom1="red_forearm_l" geom2="blue_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_forearm_r" body2="blue_head"/>
+    <pair geom1="red_forearm_r" geom2="blue_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="red_forearm_r" geom2="blue_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="red_forearm_r" geom2="blue_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="red_forearm_r" body2="blue_neck"/>
+    <pair geom1="red_forearm_r" geom2="blue_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="blue_hand_l" body2="red_head"/>
     <pair geom1="blue_hand_l" geom2="red_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="blue_hand_l" geom2="red_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="blue_hand_l" geom2="red_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="blue_hand_l" body2="red_neck"/>
     <pair geom1="blue_hand_l" geom2="red_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_chest"/>
+    <pair geom1="blue_hand_l" geom2="red_chest" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_belly"/>
+    <pair geom1="blue_hand_l" geom2="red_belly" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_upperarm_l"/>
+    <pair geom1="blue_hand_l" geom2="red_upperarm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_upperarm_r"/>
+    <pair geom1="blue_hand_l" geom2="red_upperarm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_forearm_l"/>
+    <pair geom1="blue_hand_l" geom2="red_forearm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_l" body2="red_forearm_r"/>
+    <pair geom1="blue_hand_l" geom2="red_forearm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="blue_hand_r" body2="red_head"/>
     <pair geom1="blue_hand_r" geom2="red_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="blue_hand_r" geom2="red_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <pair geom1="blue_hand_r" geom2="red_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
     <exclude body1="blue_hand_r" body2="red_neck"/>
     <pair geom1="blue_hand_r" geom2="red_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_chest"/>
+    <pair geom1="blue_hand_r" geom2="red_chest" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_belly"/>
+    <pair geom1="blue_hand_r" geom2="red_belly" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_upperarm_l"/>
+    <pair geom1="blue_hand_r" geom2="red_upperarm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_upperarm_r"/>
+    <pair geom1="blue_hand_r" geom2="red_upperarm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_forearm_l"/>
+    <pair geom1="blue_hand_r" geom2="red_forearm_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_hand_r" body2="red_forearm_r"/>
+    <pair geom1="blue_hand_r" geom2="red_forearm_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_forearm_l" body2="red_head"/>
+    <pair geom1="blue_forearm_l" geom2="red_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="blue_forearm_l" geom2="red_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="blue_forearm_l" geom2="red_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_forearm_l" body2="red_neck"/>
+    <pair geom1="blue_forearm_l" geom2="red_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_forearm_r" body2="red_head"/>
+    <pair geom1="blue_forearm_r" geom2="red_head" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="blue_forearm_r" geom2="red_jaw_l" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <pair geom1="blue_forearm_r" geom2="red_jaw_r" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
+    <exclude body1="blue_forearm_r" body2="red_neck"/>
+    <pair geom1="blue_forearm_r" geom2="red_neck" condim="3" solref="0.009999999776482582 1.0" solimp="0.9900000095367432 0.9990000128746033 0.0010000000474974513" margin="0.014999999664723873"/>
   </contact>
   <actuator>
     <position name="red_waist_twist" joint="red_waist_twist" kp="128.57142639160156" kv="18.151317596435547" ctrlrange="-0.593411922454834 0.593411922454834" forcerange="-45.0 45.0" timeconst="0.03500000014901161"/>
