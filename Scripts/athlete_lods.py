@@ -7,11 +7,20 @@ original. Unreal's engine-reduced LODs (Scripts/broadcast_fx.py's add_lods) are 
 are the authored ones, imported as LOD 1 and LOD 2 (broadcast_fx.py's import_lods), for the wide and crane shots on a
 phone. Any subdivision is switched off on the copies (a LOD is the base mesh), the decimation collapses the faces and
 keeps the border, so the hands and the face stay whole.
+Cheek morphs (2026-11-03): the decimation cannot be applied over shape keys, so each copy drops them, is decimated, and
+gets CheekDent_L / CheekDent_R (+ _CHEEKMASK) rebuilt by Scripts/blender_cheek_morphs.py's add_cheek_morphs (the dent is a
+function of the mesh, so every LOD dents the same spot by the same 1.8 cm). Exported with use_mesh_modifiers off (the
+blend shapes survive; the only modifier left is the armature) and path_mode STRIP (texture file names only, no copies next to the FBX: build_scene.py takes the
+textures from <Name>_tex/; the old COPY mode wrote Grandpa's textures into Kim_LOD*.fbm because Kim's packed images
+keep Grandpa_tex file paths).
 """
 import sys
 from pathlib import Path
 
 import bpy
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from blender_cheek_morphs import add_cheek_morphs  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 ARGV = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -44,6 +53,8 @@ for index, ratio in LODS:
     bpy.ops.object.duplicate()			# the copy keeps the rig and the vertex groups
     copy = bpy.context.view_layer.objects.active
     copy.name = f"{NAME}_LOD{index}"
+    if copy.data.shape_keys:
+        copy.shape_key_clear()			# a modifier cannot be applied over shape keys; rebuilt below
     # a LOD is the base mesh: any subdivision is off on the copy
     for mod in copy.modifiers:
         if mod.type == "SUBSURF":
@@ -54,6 +65,7 @@ for index, ratio in LODS:
     dec.ratio = ratio
     bpy.ops.object.modifier_move_to_index(modifier=dec.name, index=0)
     bpy.ops.object.modifier_apply(modifier=dec.name)
+    morphs = add_cheek_morphs(copy)[0] if "head" in copy.vertex_groups else None
     path = OUT / f"{copy.name}.fbx"
     bpy.ops.object.select_all(action="DESELECT")
     copy.select_set(True)
@@ -61,7 +73,8 @@ for index, ratio in LODS:
         arm.select_set(True)			# the rig travels with the LOD
     bpy.context.view_layer.objects.active = copy
     bpy.ops.export_scene.fbx(filepath=str(path), use_selection=True, apply_unit_scale=True,
-                             global_scale=1.0, apply_scale_options="FBX_SCALE_NONE", use_mesh_modifiers=True,
-                             add_leaf_bones=False, bake_anim=False, path_mode="COPY")
-    print(f"[athlete_lods] LOD{index}: {len(copy.data.polygons)} faces ({len(src.data.polygons)} before) -> {path}")
+                             global_scale=1.0, apply_scale_options="FBX_SCALE_NONE", use_mesh_modifiers=False,
+                             add_leaf_bones=False, bake_anim=False, path_mode="STRIP")
+    print(f"[athlete_lods] LOD{index}: {len(copy.data.polygons)} faces ({len(src.data.polygons)} before) -> {path}"
+          f" cheek dents: {morphs and {k: morphs[k]['verts'] for k in ('CheekDent_L', 'CheekDent_R')}}")
 print("[athlete_lods] done")
