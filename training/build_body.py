@@ -16,6 +16,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+import constants
+
 HERE = Path(__file__).parent
 MUJOCO_PIN = "3.10.0"  # URLab's MuJoCo; trainer and Unreal must step identical physics
 
@@ -59,6 +61,87 @@ SEG_SPEED = {"upperarm": 20.0, "forearm": 25.0, "hand": 25.0}   # rad/s: a strik
                                                                 # (throwing peaks: trunk ~15, elbow ~40)
 LENGTH_RATIO = {"thigh": (0.20, 0.28), "shin": (0.17, 0.27), "upperarm": (0.13, 0.20), "forearm": (0.09, 0.17)}   # Kim's
 # auto-rigged scan sits low on shin (0.182) and forearm (0.096): ranges are a sanity check for scale/axes, not anatomy
+
+# ---------------------------------------------------------------- physics versions
+# PHYSICS 1: the shipped physics (every brain in models/brains trained on it; Unreal and the browser run it).
+# PHYSICS 2 (2026-11-03, tasks J8 + I16): the collision and muscle realism batch, written to models/v2/ so the shipped
+# models stay byte-identical until a retrained brain graduates on v2 (DOCS/20261103/training_realism.md):
+#   * the palm-head contact: an explicit pair, stiff (solref at the 2 x timestep floor, solimp 0.99) and with a 15 mm
+#     margin - at 200 Hz a 9 m/s palm travels 45 mm a step, so a discrete contact can only be caught early, not late
+#     (the default softness let it sink 40-71 mm for ~50 ms, J8);
+#   * the welded pairs MuJoCo's parent filter skips (a body without joints is welded to its parent, so belly-upper arm,
+#     chest-head, pelvis-chest, belly-neck/head never collided) get explicit pairs; the fit check sees them too;
+#   * floor and podium rigid (the same stiff solref/solimp: a stomp sank 25 mm) with torsional friction on every
+#     contact with them (condim 4: the soles resist a twist on the spot);
+#   * asymmetric torque limits where human strength is (knee, hip, ankle, elbow, trunk) and the rotators trimmed to
+#     the literature (TORQUE_V2); the stiffness stays from the stronger direction;
+#   * engines read the version from the fingerprint ("physics": 2) and take the strike impulse from the velocity of
+#     the part that touched (v1: hand_r's, whatever touched).
+PHYSICS = 1
+STIFF_SOLREF = (0.01, 1.0)            # the stiffest timeconst MuJoCo allows at a 5 ms step (refsafe: 2 x timestep)
+STIFF_SOLIMP = (0.99, 0.999, 0.001)   # impedance ~1 from the first mm: the contact does not give like skin
+STRIKE_MARGIN = 0.015                 # m: the palm-head pair engages 15 mm out (the worst sink falls by as much)
+TORQUE_V2 = {   # trained adult (Nm): (toward the joint's negative end, toward its positive end); + = flex/forward/up/outward
+    "knee": (220, 130),          # extension (quadriceps) vs flexion (hamstrings)
+    "hip_flex": (220, 150),      # extension (glutes, hamstrings) vs flexion (iliopsoas)
+    "ankle_flex": (180, 50),     # plantarflexion (calf) vs dorsiflexion (tibialis)
+    "elbow": (55, 70),           # extension (triceps) vs flexion (biceps, brachialis)
+    "waist_flex": (200, 150),    # back extensors vs abdominals
+    "waist_twist": (90, 90),     # trunk axial rotation 60-90 Nm (v1 120)
+    "hip_rot": (60, 60),         # hip rotators 40-60 Nm (v1 100)
+    "ankle_roll": (40, 40),      # inversion / eversion 30-40 Nm (v1 60)
+}
+
+
+def models_dir(physics=None):
+    """Where a physics version's models live: models/ (v1, shipped) or models/v<n>/ (constants.models_dir)."""
+    return constants.models_dir(PHYSICS if physics is None else physics)
+
+
+def weld_root(n):
+    """MuJoCo welds a body without joints to its parent (pelvis is the free root): chest -> belly, head -> neck."""
+    while PARENT[n] and seg(n) not in JOINTS:
+        n = PARENT[n]
+    return n
+
+
+def filtered_pairs():
+    """Body pairs of one athlete that MuJoCo's parent filter skips but that are NOT a direct parent and child: welded
+    bodies take their weld root's parent, so belly-upper arm, chest-head, pelvis-chest (and belly-neck/head) never
+    collided (J8). Physics 2 gives each an explicit <pair>."""
+    out = []
+    names = list(PARENT)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            if PARENT[a] == b or PARENT[b] == a:
+                continue
+            wa, wb = weld_root(a), weld_root(b)
+            pa, pb = PARENT[wa] and weld_root(PARENT[wa]), PARENT[wb] and weld_root(PARENT[wb])
+            if wa == wb or wa == pb or wb == pa:
+                out.append((a, b))
+    return out
+
+
+def pair_xml(g1, g2, margin=None):
+    m = f' margin="{fmt(margin)}"' if margin else ""
+    return (f'<pair geom1="{g1}" geom2="{g2}" condim="3" solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"{m}/>')
+
+
+def athlete_contacts(pre):
+    """Physics 2: the explicit self-collision pairs of one athlete (each body here has one geom, named as the body)."""
+    return [pair_xml(pre + a, pre + b) for a, b in filtered_pairs()] if PHYSICS >= 2 else []
+
+
+def strike_contacts(striker, head):
+    """Physics 2: each hand against a head (the opponent's, or the solo scene's target), as a stiff early pair; the
+    dynamic contact between the two bodies is excluded so it is not counted twice."""
+    if PHYSICS < 2:
+        return []
+    out = []
+    for h in ("hand_l", "hand_r"):
+        out.append(f'<exclude body1="{striker}{h}" body2="{head[0]}"/>')
+        out.append(pair_xml(striker + h, head[1], STRIKE_MARGIN))
+    return out
 
 
 def b2m(p):
@@ -255,6 +338,8 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
             arm = f' armature="{fmt(ARM_ARMATURE)}"' if seg(n) in ("upperarm", "forearm", "hand") else ""
             out.append(f'{ind}  <joint name="{j}" axis="{fmt(axis)}" range="{rng}"{arm}/>')
             st = S * card.get("toughness", 1.0) if seg(n) == "neck" else S   # toughness: neck bracing (KO resistance)
+            t_neg, t_pos = TORQUE_V2.get(jn, (tq, tq)) if PHYSICS >= 2 else (tq, tq)
+            tq = max(t_neg, t_pos)   # the stiffness from the stronger direction; the forcerange clips the weaker one
             kp = tq * st * KP_PER_NM
             kv = kp * KV_RATIO
             if inertia:   # minus the joint's own damping (0.5, <default>)
@@ -262,9 +347,10 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
                 kv = aim if seg(n) in FREE else max(kv, aim)
             # force-velocity: not here - every engine caps forcerange by Hill's law each step (brain_cpu.hill)
             acts.append(f'<position name="{j}" joint="{j}" kp="{fmt(kp)}" kv="{fmt(kv)}" '
-                        f'ctrlrange="{rng}" forcerange="{fmt([-tq * st, tq * st])}" timeconst="{fmt(MUSCLE_TC)}"/>')
-        for gg in g["geoms"]:
-            out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"/>'))
+                        f'ctrlrange="{rng}" forcerange="{fmt([-t_neg * st, t_pos * st])}" timeconst="{fmt(MUSCLE_TC)}"/>')
+        stiff = f' solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"' if PHYSICS >= 2 and seg(n) in ("head", "hand") else ""
+        for gg in g["geoms"]:   # physics 2: palm and head do not give like skin in any contact (their pair is set apart)
+            out.append(f"{ind}  " + geom_xml(gg, g["mass"] / len(g["geoms"]), pre, scale).replace("/>", f' rgba="{rgba}"{stiff}/>'))
         if n == "head":
             c = g["geoms"][0][2]
             out.append(f'{ind}  <site name="{pre}face_zone" type="box" pos="{fmt(c + [0.04, 0, -0.02])}" '
@@ -274,7 +360,7 @@ def athlete_xml(geo, card, pre, pos, quat, scale, rgba, inertia=None):
         out.append(f"{ind}</body>")
         return out
 
-    return "\n".join(body("pelvis", 2)), acts
+    return "\n".join(body("pelvis", 2)), acts, athlete_contacts(pre)
 
 
 HEADER = f"""<mujoco model="{{model}}">
@@ -291,10 +377,26 @@ HEADER = f"""<mujoco model="{{model}}">
 """
 
 
-def scene_xml(model, parts, extra_world=""):
+def header(model):
+    """Physics 2: the floor rigid, with torsional friction (condim 4) - the floor has priority, so its condim and
+    softness are every floor contact's (the soles' included)."""
+    h = HEADER.format(model=model)
+    if PHYSICS >= 2:
+        h = h.replace('priority="1"', f'priority="1" condim="4" solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"')
+    return h
+
+
+def ground():
+    """What a world obstacle (podium, step) adds in physics 2: as rigid as the floor, with its priority and condim."""
+    return f' priority="1" condim="4" solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"' if PHYSICS >= 2 else ""
+
+
+def scene_xml(model, parts, extra_world="", contacts=()):
     bodies = "\n".join(p[0] for p in parts)
     acts = "\n    ".join(a for p in parts for a in p[1])
-    return (HEADER.format(model=model) + extra_world + bodies + "\n  </worldbody>\n  <actuator>\n    " + acts
+    pairs = [c for p in parts for c in (p[2] if len(p) > 2 else [])] + list(contacts)
+    con = ("\n  <contact>\n    " + "\n    ".join(pairs) + "\n  </contact>") if pairs else ""
+    return (header(model) + extra_world + bodies + "\n  </worldbody>" + con + "\n  <actuator>\n    " + acts
             + "\n  </actuator>\n</mujoco>\n")
 
 
@@ -380,7 +482,7 @@ def fit(geo, card):
             print(f"A10 self-collision: clean in reference, stand (arms {stand} deg), swing & stride arcs; "
                   f"shrunk {shrunk or 'nothing'}")
             return scale, stand
-        for pair in bad:
+        for pair in sorted(bad):   # sorted: the fingerprint's geom_scale order no longer depends on the hash seed
             for g in pair:
                 scale[g] = scale.get(g, 1.0) * 0.95
         print(f"    overlap at {where}: {sorted(bad)} -> shrink 5 %")
@@ -476,11 +578,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("card")
     ap.add_argument("--blue", help="card for the blue athlete (default: same as red)")
+    ap.add_argument("--physics", type=int, default=1, choices=(1, 2),
+                    help="1: the shipped physics (models/); 2: the realism batch for the retrain (models/v2/)")
     a = ap.parse_args()
+    global PHYSICS
+    PHYSICS = a.physics
     if mujoco.__version__ != MUJOCO_PIN:
         sys.exit(f"A12 FAIL: MuJoCo {mujoco.__version__}, pinned {MUJOCO_PIN} (URLab)")
-    out = HERE / "models"
-    out.mkdir(exist_ok=True)
+    out = models_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    if PHYSICS >= 2:
+        print(f"physics {PHYSICS}: writing {out} (the shipped models in models/ are untouched)")
     built = {}
     for path in dict.fromkeys([a.card, a.blue or a.card]):
         card = json.loads(Path(path).read_text())
@@ -489,29 +597,32 @@ def main():
         geo = athlete_geometry(sk, card)
         scale, stand = fit(geo, card)
         root = geo["pelvis"]["origin"] + [0, 0, 0.001]
-        target = '    <body name="target" mocap="true" pos="5 0 1.6"><geom type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>\n'
+        # physics 2: the target sphere is named (its strike pair) and as stiff as a head
+        tgeom = f' name="target" solref="{fmt(STIFF_SOLREF)}" solimp="{fmt(STIFF_SOLIMP)}"' if PHYSICS >= 2 else ""
+        target = f'    <body name="target" mocap="true" pos="5 0 1.6"><geom{tgeom} type="sphere" size="0.09" rgba="0.9 0.2 0.2 0.5"/></body>\n'
+        solo_pairs = strike_contacts("", ("target", "target"))
         pod_h = round(0.59 * card["height_m"], 3)   # the arena's podium where the arena has it (L2's free hand found it)
         target += (f'    <geom name="podium" type="box" pos="{fmt([root[0] + GAP / 2, root[1], pod_h / 2])}" '
-                   f'size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n')
-        solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
+                   f'size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"{ground()}/>\n')
+        solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target, solo_pairs)
         if card.get("style", {}).get("stance_deg"):   # style stance: lower the root until the soles stand on the floor
             root = root - [0, 0, sole_gap(solo, stand, card) - 0.001]
-            solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target)
+            solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1")], target, solo_pairs)
             print(f"style stance: root lowered to {root[2]:.3f} m, soles {sole_gap(solo, stand, card) * 1000:.1f} mm")
         shoulder_cone(solo, stand, card)
         inertia = joint_inertia(solo, stand, card)   # second pass: damping from each joint's own load
-        solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target)
+        solo = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target, solo_pairs)
         (out / f"{card['name']}_solo.xml").write_text(solo)
         # the locomotion obstacle scene (S3/S4, training/envs/locomotion.py): the same athlete on the same floor,
         # plus a LOW STEP to climb and the podium to walk around. The env moves and resizes both per world; the
         # solo and arena models are untouched, so the shipped brains and the Unreal import stay valid.
         step = (f'    <geom name="step" type="box" pos="3 0 0.08" size="{fmt([0.25, 0.60, 0.08])}" '
-                f'rgba="0.35 0.30 0.25 1"/>\n')
-        loco = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target + step)
+                f'rgba="0.35 0.30 0.25 1"{ground()}/>\n')
+        loco = scene_xml(card["name"], [athlete_xml(geo, card, "", root, (1, 0, 0, 0), scale, "0.8 0.6 0.5 1", inertia)], target + step, solo_pairs)
         (out / f"{card['name']}_loco.xml").write_text(loco)
         m, off, up = balance_and_drop(solo, stand, card)
         joints = [m.joint(m.actuator_trnid[i, 0]).name for i in range(m.nu)]
-        fp = {"mujoco": mujoco.__version__, "model": f"{card['name']}_solo.xml",
+        fp = {"mujoco": mujoco.__version__, "model": f"{card['name']}_solo.xml", **({"physics": PHYSICS} if PHYSICS >= 2 else {}),
               "sha256": hashlib.sha256(solo.encode()).hexdigest(),
               "option": {"timestep": m.opt.timestep, "integrator": int(m.opt.integrator), "solver": int(m.opt.solver),
                          "iterations": m.opt.iterations, "gravity": m.opt.gravity.tolist()},
@@ -522,6 +633,7 @@ def main():
               "joint_order": joints,
               "ctrl_range_rad": m.actuator_ctrlrange.tolist(),
               "torque_limit_nm": m.actuator_forcerange[:, 1].tolist(),
+              **({"torque_limit_neg_nm": (-m.actuator_forcerange[:, 0]).tolist()} if PHYSICS >= 2 else {}),
               "max_joint_speed_rad_s": [SEG_SPEED.get(JOINT_SEG[seg(j) if j.endswith(("_l", "_r")) else j], ADULT_JOINT_SPEED)
                                         * card["speed"] for j in joints],   # per joint, in joint order
               "stand_pose_deg": stand_pose(stand, card), "stand_pose_rad": {k: math.radians(v) for k, v in stand_pose(stand, card).items()},
@@ -536,12 +648,13 @@ def main():
     (rc, rg, rs, rr, ri), (bc, bg, bs, br, bi) = built[a.card], built[a.blue or a.card]
     gap = GAP
     pod_h = round(0.59 * min(rc["height_m"], bc["height_m"]), 3)  # below the belly bulge
-    world = (f'    <geom name="podium" type="box" pos="0 0 {fmt(pod_h / 2)}" size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"/>\n'
+    world = (f'    <geom name="podium" type="box" pos="0 0 {fmt(pod_h / 2)}" size="{fmt([0.10, 0.30, pod_h / 2])}" rgba="0.15 0.15 0.18 1"{ground()}/>\n'
              f'    <site name="footbox_red" type="box" pos="{fmt([-gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.8 0.1 0.1 0.4"/>\n'
              f'    <site name="footbox_blue" type="box" pos="{fmt([gap / 2, 0, 0.001])}" size="{fmt([0.20, 0.25, 0.001])}" rgba="0.1 0.2 0.8 0.4"/>\n')
     red = athlete_xml(rg, rc, "red_", [-gap / 2, 0, rr[2]], (1, 0, 0, 0), rs, "0.85 0.3 0.3 1", ri)
     blue = athlete_xml(bg, bc, "blue_", [gap / 2, 0, br[2]], (0, 0, 0, 1), bs, "0.3 0.4 0.85 1", bi)
-    arena = scene_xml(f"{rc['name']}_vs_{bc['name']}", [red, blue], world)
+    arena = scene_xml(f"{rc['name']}_vs_{bc['name']}", [red, blue], world,
+                      strike_contacts("red_", ("blue_head", "blue_head")) + strike_contacts("blue_", ("red_head", "red_head")))
     name = f"{rc['name']}_vs_{bc['name']}_arena.xml"
     (out / name).write_text(arena)
     m = mujoco.MjModel.from_xml_string(arena)
@@ -556,7 +669,10 @@ def main():
     print(f"arena: {name}, podium top {pod_h} m, gap {gap} m, contacts at stance besides floor: {sorted(touching) or 'none'}")
     if touching:
         sys.exit("ARENA FAIL: athletes touch each other or the podium at stance")
-    stage_data(a.card, a.blue or a.card)
+    if PHYSICS == 1:   # Content/Data is what a packaged build plays: only the shipped physics goes there
+        stage_data(a.card, a.blue or a.card)
+    else:
+        print(f"physics {PHYSICS}: not staged into Content/Data (the packaged build plays physics 1)")
 
 
 def stage_data(*cards):

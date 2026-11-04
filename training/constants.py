@@ -53,6 +53,33 @@ GAZE_MAX_STEP = 0.08            # rad per decision the bias may walk: the delibe
 WATCH_MAX_STEP = 0.25           # rad per decision while PLANTED: re-acquiring a snapping head inside a short window
 GAZE_ON = os.environ.get("SLAP_EYE_CONTACT", "1") != "0"   # SLAP_EYE_CONTACT=0 disables (debug / A-B checks)
 
+# ---------------------------------------------------------------- the feint read (match events)
+# The rule Unreal's HUD classifies a swing with (SlapHUD.cpp, F10): the striker's palm peaked above FEINT_MIN_PEAK
+# and, FEINT_AFTER_S after the peak and without a touch, is below FEINT_PULLBACK x the peak. A swing that comes
+# back up to FEINT_REARM x the peak FEINT_REARM_S after it re-arms the read (a second swing).
+FEINT_MIN_PEAK = 2.5            # m/s
+FEINT_AFTER_S = 0.12            # s after the peak
+FEINT_PULLBACK = 0.55           # share of the peak
+FEINT_REARM, FEINT_REARM_S = 0.95, 0.2
+
+# ---------------------------------------------------------------- physics versions (build_body.py PHYSICS)
+# 1: the shipped models (training/models/), the physics every brain in models/brains trained on and every engine
+#    plays. 2: the realism batch (training/models/v2/, DOCS/20261103/training_realism.md) for the retrain; its
+#    fingerprints carry "physics": 2. SLAP_PHYSICS picks the version the envs, match.py and train.py load
+#    (read at call time, so a CLI flag that sets it before the env is built is enough).
+
+
+def physics():
+    return int(os.environ.get("SLAP_PHYSICS", "1"))
+
+
+def models_dir(version=None):
+    """The models of a physics version: training/models (1) or training/models/v<n>. Brains stay in models/brains."""
+    from pathlib import Path
+    v = physics() if version is None else int(version)
+    base = Path(__file__).resolve().parent / "models"
+    return base if v == 1 else base / f"v{v}"
+
 # The mirrors, as (file, needle) so a checker can prove the three engines still agree.
 MIRRORS = {
     "OBS": ("Source/PoSlapUnreal/SlapController.cpp", "NumObs = 148", "Web/sim.js", "export const OBS = 136"),

@@ -57,7 +57,7 @@ def joint_names(m):  # one name per qpos slot, so traces from differently-ordere
 def record(xml):
     m = mujoco.MjModel.from_xml_path(xml)
     d = mujoco.MjData(m)
-    fp = json.loads((HERE / "models" / "grandpa_fingerprint.json").read_text())
+    fp = json.loads((Path(xml).resolve().parent / "grandpa_fingerprint.json").read_text())   # models/ or models/v2/
     stand(m, d, fp)
     rng = np.random.default_rng(0)
     names = [m.actuator(i).name for i in range(m.nu)]
@@ -70,9 +70,10 @@ def record(xml):
     # model drift 85 mm apart after a fall, with the same maths on both sides).
     ctrl = np.clip(base + AMP * np.sin(2 * math.pi * f * t + ph), lo, hi)  # smooth, deterministic
     q = run(m, d, fp, names, ctrl)
-    out = HERE / "replays" / f"{Path(xml).stem}_5s.json"
+    ver = Path(xml).resolve().parent.name
+    out = HERE / "replays" / f"{'' if ver == 'models' else ver + '_'}{Path(xml).stem}_5s.json"   # v2_<model>_5s.json
     out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps({"model": Path(xml).name, "mujoco": mujoco.__version__, "timestep": m.opt.timestep,
+    out.write_text(json.dumps({"model": Path(xml).resolve().relative_to((HERE / "models").resolve()).as_posix(), "mujoco": mujoco.__version__, "timestep": m.opt.timestep,
                                "control_every": CONTROL_EVERY, "actuators": names, "ctrl": ctrl.tolist(),
                                "names": joint_names(m), "qpos": q.tolist()}))
     pel = [q[:, joint_names(m).index(f"{p}_root[2]")].min() for p in ("red", "blue") if f"{p}_root[2]" in joint_names(m)]
@@ -102,8 +103,8 @@ def body_error(xml, ref_names, ref_q, names, q):
 
 def compare(ref_path, ue_path, mjb):
     ref = json.loads(Path(ref_path).read_text())
-    xml = str(HERE / "models" / ref["model"])
-    fp = json.loads((HERE / "models" / "grandpa_fingerprint.json").read_text())
+    xml = str(HERE / "models" / ref["model"])   # "v2/..." for a physics-2 recording
+    fp = json.loads((Path(xml).parent / "grandpa_fingerprint.json").read_text())
     ok = True
     if mjb:
         m = mujoco.MjModel.from_binary_path(mjb)
