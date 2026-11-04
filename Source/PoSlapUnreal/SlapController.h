@@ -35,11 +35,15 @@ struct FSlapHud
 	int32 RoundCards[3][2] = {};		// the last scored round's points per judge (the slide-in card)
 	int32 ScoredRound = 0;				// which round RoundCards holds (0 = none yet this match)
 	FString Result;						// last match's result
+	int32 Winner = -1;					// last match's winner (0 red, 1 blue), -1 = none yet / a draw / no contest
+	int32 Downs[2] = {};				// knockdowns each athlete took this match (the name badges)
+	int32 KOd = -1;						// who was knocked out this match, -1 = nobody
 	bool bWalkIn = false;				// pre-match ring walk-in sequence active before Round 1 Turn 1
 	double WalkInProgress = 1.0;		// 0.0 (aisle start) -> 1.0 (planted at podium footboxes)
 
 	// live telemetry (50 Hz)
 	double HandSpeed = 0.0, HandDist = 0.0;	// striker's palm speed (m/s), palm to the defender's head (m)
+	double ShoulderSpeed = 0.0;				// striker's shoulder swing speed (rad/s): the wind-up's first link (the HUD's AI read)
 	double HeadG = 0.0;						// defender's head acceleration over the last 20 ms (g)
 	FVector Com[2], Feet[2];				// centre of mass, midpoint of the soles (Unreal cm)
 	double Stamina[2] = { 1.0, 1.0 }, Neck[2] = { 1.0, 1.0 };
@@ -217,6 +221,7 @@ private:
 	static constexpr double WatchMaxStep = 0.25;// rad per decision while PLANTED (re-acquiring a snapping head)
 	bool bEyeContact = true;					// -SlapEyeContact=0 disables (debug / A-B checks)
 	void ApplyGaze(const mjModel* m, mjData* d);
+	void SeedGaze(const mjData* d);	// each turn's start: the world gaze biases on the eye line
 
 	// ---- match (training/match.py, step for step: same rules, same order, same JSONL events)
 	using FTurn = Slap::FSlapTurn;	// one turn's record (SlapReferee.h)
@@ -225,6 +230,7 @@ private:
 	int32 First = 0, Round = 0, TurnInRound = 0, MatchNo = 0, LastWinner = -1;
 	uint32 Seed = 0;	// the match's dice (fainting), logged in match_start; -SlapSeed= fixes the first match's (checks)
 	void SetForce(mjModel* m, const FAthlete& A, double Gain) const;	// every motor at Gain x its own force, the neck's damage on top
+	void ApplyFatigue(const mjModel* m, FAthlete& S, FAthlete& D) const;	// the turn's end: stamina, the defender's memory and neck (match.py finish)
 	void Faint(mjModel* m);	// a faint starting or ending this step (before the referee looks, as match.py)
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
 	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
@@ -253,6 +259,7 @@ private:
 	void StartMatch(mjModel* m, mjData* d);
 	void StartTurn(mjModel* m, mjData* d);
 	void StandIdle(mjModel* m, mjData* d);	// the menu at launch: both in the stand pose at their foot boxes, no match
+	void ResetToStand(mjModel* m, mjData* d);	// brain_cpu.stand(): reset, the stand pose, fresh brains, full strength, forward twice
 	bool bIdlePlaced = false, bStartNext = false;	// physics thread: StandIdle done; the menu asked for the next match
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
@@ -261,6 +268,7 @@ private:
 	void Emit(FStringView Json);
 	void Decide(const mjModel* m, mjData* d);
 	void Telemetry(const mjModel* m, const mjData* d, double HandSpeed);
+	void PublishFootsteps(const mjData* d);	// display only: a footstep on each sole's rising floor contact
 
 	// brains the menu picked, handed to the physics thread (RequestMatch -> StepPolicy)
 	struct FNet { TSharedPtr<UE::NNE::IModelInstanceCPU> Net; int32 NumIn = 0, NumOut = 1; FString Label; };	// NumOut 0: one output, actions then value (Android)
@@ -315,6 +323,8 @@ private:
 	std::atomic<int64> StepCount = 0;	// physics thread writes; the HUD's step counter reads it (GetHud)
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
+	int32 Physics = 1;			// the fingerprint's physics version: 2 takes the strike impulse from the part that touched (match.py)
+	TArray<mjtNum> GeomPrev;	// physics 2: every geom's position as the last step began (match.py gprev)
 	bool Infer(FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into A.Action, its critic into Value
 	bool RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out);
 
