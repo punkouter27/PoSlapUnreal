@@ -10,7 +10,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
 import { loadMatch, MATCHUPS, matchupKey } from "./loader.js";
-import { loadArena, loadAthlete } from "./art.js";
+import { loadArena, loadAthlete, clipPush } from "./art.js";
 import { Look, TIERS } from "./fx.js";
 import { Sound } from "./audio.js";
 import { SwingTagger, Read, Snap, Director, SNAP_S } from "./broadcast.js";
@@ -300,7 +300,7 @@ function onEvent(e) {
       clearTimeout(resultTimer);
       MOM.red = MOM.blue = 0; momentum();
       renderCards(); renderBadges2();
-      sound.bell();
+      sound.chime(); sound.bell();
       for (const w of wear) Object.assign(w, { local: null, at: -99, speed: 0 });
       break;
     case "turn_start":
@@ -326,7 +326,8 @@ function onEvent(e) {
       $("call").textContent = `${e.speed.toFixed(1)} m/s · ${String(e.part || "").replace("_r", "")}${palm ? " · palm" : ""}`;
       banner(e.speed >= CLEAN ? (palm ? "Clean Palm Strike" : "Clean Hit") : (palm ? "Palm Strike" : "Hit"),
         `${e.speed.toFixed(1)} m/s${palm ? "" : " · not the palm"}`, 1.4, palm ? "var(--gold)" : "");
-      sound.strike(e.speed, e.pos ? e.pos[0] : 0);
+      sound.strike(e.speed, e.pos ? e.pos[0] : 0, e.striker);
+      if (window.__poslapLook?.pauseOnStrike) paused = true;   // the report's contact frame (display only)
       if (e.pos) struck(e.striker, e.pos, e.speed);   // (Unreal's strike line has no contact point)
       break;
     }
@@ -777,8 +778,11 @@ follow.position.set(0, -2.4, 4.4); follow.target.position.set(0, 0, 1.2);
 const rimDef = new THREE.PointLight(0xffffff, 0, 3.5, 1.6);
 scene.add(follow, follow.target, rimDef);
 const look = new Look(renderer, scene, camera, key);   // the post chain, the beam, the spray (fx.js)
+look.focusAt = controls.target;   // the depth of field holds the director's subject sharp
 look.setTier(QS.get("gfx") || localStorage.getItem("poslap.gfx") || "auto");
 look.shakeOn = localStorage.getItem("poslap.shake") !== "off";
+// the fps ladder and the report's shots (Web/fps_ladder.mjs) switch tiers and effects in place: display only
+window.__poslapLook = { look, clip: true, set(tier, fx = {}) { look.override = fx; look.setTier(tier); }, cam(m) { director.mode = m; }, pause(p) { paused = p; } };
 const sound = new Sound();
 addEventListener("pointerdown", () => sound.unlock(), { once: true });   // browsers start audio on a gesture
 addEventListener("keydown", () => sound.unlock(), { once: true });
@@ -825,16 +829,25 @@ function footBoxes(d, sides) {
   }
 }
 // the drawn hand stays outside the face it hits: at 200 Hz a 10 m/s palm moves 5 cm a step and MuJoCo's soft contact
-// lets it sink 4-7 cm into the head sphere; the bone is moved out along the contact normal (drawing only)
-const pushers = [];
+// lets it sink 1-7 cm into the head sphere, and the sphere does not cover the drawn jaw. With both meshes loaded the
+// hand is pushed out of the drawn face (art.js clipPush: the mesh's own vertices and normals); before that, out of the
+// head sphere along the centre line (drawing only)
+const pushers = [], neckBody = [];
 function buildPushers(m, sides) {
   sides.forEach((s, i) => {
+    try { const b = m.body(`${s.name}_neck`); neckBody[i] = b.id; b.delete(); } catch { neckBody[i] = -1; }
     const o = sides[1 - i], r = m.geom_size[3 * o.head];
     const thick = g => Math.min(m.geom_size[3 * g], m.geom_size[3 * g + 1], m.geom_size[3 * g + 2]);
     const hands = { hand_l: s.hands[0], hand_r: s.hands[1] };
     pushers[i] = (name, p, d) => {
       const g = hands[name];
       if (g === undefined) return;
+      const A = art.athletes[i]?.clip, B = art.athletes[1 - i]?.clip;
+      if (A && B && window.__poslapLook?.clip !== false) {
+        clipPush(A[name], B.head, d, m.geom_bodyid[g], o.headBody, p);
+        if (neckBody[1 - i] >= 0) clipPush(A[name], B.neck, d, m.geom_bodyid[g], neckBody[1 - i], p);   // the jaw skinned to the neck
+        return;
+      }
       const P = d.geom_xpos, dx = P[3 * g] - P[3 * o.head], dy = P[3 * g + 1] - P[3 * o.head + 1], dz = P[3 * g + 2] - P[3 * o.head + 2];
       const dist = Math.hypot(dx, dy, dz), need = r + thick(g) + 0.004 - dist;
       if (need > 0 && dist > 1e-6) p.set(p.x + dx / dist * need, p.y + dy / dist * need, p.z + dz / dist * need);
@@ -893,7 +906,7 @@ function feetTick(d, dt) {
     const x = d.geom_xpos[3 * g], y = d.geom_xpos[3 * g + 1], v = Math.hypot(x - f.x, y - f.y) / dt;
     f.quiet -= dt;
     if (touching.has(g)) {
-      if (!f.down && f.off > 0.1) sound.step(x, Math.min(0.6, 0.2 + 0.25 * f.off));
+      if (!f.down && f.off > 0.1) sound.step(x, Math.min(0.6, 0.2 + 0.25 * f.off), Math.hypot(x, y));
       else if (f.down && v > 0.6 && v < 5 && f.quiet <= 0) { f.quiet = 0.3; sound.skid(x, v); }
       f.down = true; f.off = 0;
     } else { f.down = false; f.off += dt; }
@@ -909,8 +922,12 @@ function dust(athlete, part) {   // the knockdown: dust where the body met the f
     look.knockdown([P[3 * g], P[3 * g + 1], Math.min(P[3 * g + 2], 1.0)], 1);
   } catch { /* an unknown part name (a live feed from another build): no dust */ }
 }
+const handXYZ = [];
 function draw(d) {
   art.athletes.forEach((a, i) => a.update(d, pushers[i]));
+  handXYZ.length = 0;   // the palms' paths for the motion blur (fx.js, display only)
+  for (const s of game.match.sides) for (const g of s.hands) handXYZ.push(d.geom_xpos[3 * g], d.geom_xpos[3 * g + 1], d.geom_xpos[3 * g + 2]);
+  look.track(handXYZ);
   if (art.athletes.length) skinTick(d);
   const P = d.geom_xpos, X = d.geom_xmat;
   for (const [mesh, g] of shapes) {
@@ -977,6 +994,7 @@ try {
   game.match.autoNext = false;   // the round trip: after the result's hold, back to the menu (sim.js phase "over")
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
+  sound.setVoices(Object.fromEntries(game.match.sides.map(s => [s.name, s.card.name])));   // grunts and breaths per athlete
   buildDangerMeters(); buildPlates(); renderStreak(); initMenu(); renderTabBadges(); renderCards(); measureBottom();
   if (LIVE) { $("watchlive").hidden = false; $("practice").hidden = true; connectLive(); }
   else if (QS.has("go")) startPractice();   // START picked this pairing on the last page
@@ -1045,7 +1063,7 @@ function loop(now) {
   if (sparkOn || (detail && snap.recording)) drawSpark();
   draw(game.d); directTick(game.d, dt); controls.update();
   feetTick(game.d, paused ? 0 : dt);
-  sound.tick(Math.max(S.danger.red || 0, S.danger.blue || 0), Math.min(S.fatigue.red.stamina, S.fatigue.blue.stamina));
+  sound.tick(Math.max(S.danger.red || 0, S.danger.blue || 0), S.fatigue.red.stamina, S.fatigue.blue.stamina);
   look.render(dt * (paused ? 0 : 1), fpsNow);
   requestAnimationFrame(loop);
 }

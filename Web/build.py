@@ -14,7 +14,7 @@ LIBS = ["@mujoco/mujoco/mujoco.js", "@mujoco/mujoco/mujoco.wasm",
         "three/build/three.module.js", "three/examples/jsm/controls/OrbitControls.js",
         "three/examples/jsm/loaders/GLTFLoader.js", "three/examples/jsm/utils/BufferGeometryUtils.js",
         "three/examples/jsm/libs/meshopt_decoder.module.js"]     + [f"three/examples/jsm/{f}" for f in (   # fx.js: the post chain and its imports
-        "environments/RoomEnvironment.js", "math/SimplexNoise.js", "postprocessing/EffectComposer.js",
+        "environments/RoomEnvironment.js", "math/SimplexNoise.js", "objects/Reflector.js", "postprocessing/EffectComposer.js",
         "postprocessing/GTAOPass.js", "postprocessing/MaskPass.js", "postprocessing/OutputPass.js", "postprocessing/Pass.js",
         "postprocessing/RenderPass.js", "postprocessing/SMAAPass.js", "postprocessing/ShaderPass.js",
         "postprocessing/UnrealBloomPass.js", "shaders/CopyShader.js", "shaders/GTAOShader.js",
@@ -29,7 +29,7 @@ data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerpri
     + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
-for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "assets/arena.glb")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
+for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
         + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars] \
         + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS] \
         + [(ROOT / f, DIST / f) for f in data]:
