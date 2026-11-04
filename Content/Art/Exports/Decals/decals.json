@@ -1,0 +1,62 @@
+{
+ "T_Decal_SoleSkid_01": {
+  "size_px": [
+   512,
+   512
+  ],
+  "roughness": 0.85,
+  "use": "safety mat / stage deck: a sole skid (ASlapHUD's sole marks)",
+  "size_cm": [
+   30,
+   8
+  ]
+ },
+ "T_Decal_SoleSkid_02": {
+  "size_px": [
+   512,
+   512
+  ],
+  "roughness": 0.85,
+  "use": "safety mat / stage deck: a sole skid (ASlapHUD's sole marks)",
+  "size_cm": [
+   40,
+   10
+  ]
+ },
+ "T_Decal_PalmSmudge_01": {
+  "size_px": [
+   512,
+   512
+  ],
+  "roughness": 0.12,
+  "use": "podium top: the defender's braced palm (BLUEPRINT 9)",
+  "size_cm": [
+   20,
+   20
+  ]
+ },
+ "T_Decal_PodiumChip_01": {
+  "size_px": [
+   1024,
+   256
+  ],
+  "roughness": 0.7,
+  "use": "podium top edges, the striker's side: chipped lacquer",
+  "size_cm": [
+   60,
+   15
+  ]
+ },
+ "T_Decal_FloorScratch_01": {
+  "size_px": [
+   1024,
+   1024
+  ],
+  "roughness": 0.75,
+  "use": "stage deck round the foot boxes: traffic scratches and dust",
+  "size_cm": [
+   50,
+   50
+  ]
+ }
+}

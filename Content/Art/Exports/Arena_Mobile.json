@@ -1,0 +1,558 @@
+{
+ "palette": {
+  "M_ArenaFloor": {
+   "cell": [
+    0,
+    0
+   ],
+   "uv": [
+    0.0625,
+    0.9375
+   ],
+   "base": [
+    0.015,
+    0.015,
+    0.02
+   ],
+   "rough": 0.7,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Banner": {
+   "cell": [
+    1,
+    0
+   ],
+   "uv": [
+    0.1875,
+    0.9375
+   ],
+   "base": [
+    0.6,
+    0.05,
+    0.04
+   ],
+   "rough": 0.6,
+   "metal": 0.0,
+   "emit": [
+    0.9,
+    0.075,
+    0.06
+   ]
+  },
+  "M_BannerText": {
+   "cell": [
+    2,
+    0
+   ],
+   "uv": [
+    0.3125,
+    0.9375
+   ],
+   "base": [
+    0.95,
+    0.95,
+    0.95
+   ],
+   "rough": 0.4,
+   "metal": 0.0,
+   "emit": [
+    3.0,
+    3.0,
+    3.0
+   ]
+  },
+  "M_Chair": {
+   "cell": [
+    3,
+    0
+   ],
+   "uv": [
+    0.4375,
+    0.9375
+   ],
+   "base": [
+    0.03,
+    0.03,
+    0.035
+   ],
+   "rough": 0.5,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Device": {
+   "cell": [
+    4,
+    0
+   ],
+   "uv": [
+    0.5625,
+    0.9375
+   ],
+   "base": [
+    0.02,
+    0.02,
+    0.022
+   ],
+   "rough": 0.4,
+   "metal": 0.5,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Exit": {
+   "cell": [
+    5,
+    0
+   ],
+   "uv": [
+    0.6875,
+    0.9375
+   ],
+   "base": [
+    0.05,
+    0.6,
+    0.15
+   ],
+   "rough": 0.4,
+   "metal": 0.0,
+   "emit": [
+    0.8,
+    8.0,
+    2.4
+   ]
+  },
+  "M_Gold": {
+   "cell": [
+    6,
+    0
+   ],
+   "uv": [
+    0.8125,
+    0.9375
+   ],
+   "base": [
+    0.8,
+    0.6,
+    0.2
+   ],
+   "rough": 0.3,
+   "metal": 1.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_LEDFrame": {
+   "cell": [
+    7,
+    0
+   ],
+   "uv": [
+    0.9375,
+    0.9375
+   ],
+   "base": [
+    0.01,
+    0.01,
+    0.01
+   ],
+   "rough": 0.5,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_LightCan": {
+   "cell": [
+    0,
+    1
+   ],
+   "uv": [
+    0.0625,
+    0.8125
+   ],
+   "base": [
+    0.02,
+    0.02,
+    0.02
+   ],
+   "rough": 0.4,
+   "metal": 0.6,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_LightLens": {
+   "cell": [
+    1,
+    1
+   ],
+   "uv": [
+    0.1875,
+    0.8125
+   ],
+   "base": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rough": 0.2,
+   "metal": 0.0,
+   "emit": [
+    40.0,
+    36.8,
+    32.0
+   ]
+  },
+  "M_MatEdge": {
+   "cell": [
+    2,
+    1
+   ],
+   "uv": [
+    0.3125,
+    0.8125
+   ],
+   "base": [
+    0.9,
+    0.9,
+    0.9
+   ],
+   "rough": 0.5,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_PhoneLight": {
+   "cell": [
+    3,
+    1
+   ],
+   "uv": [
+    0.4375,
+    0.8125
+   ],
+   "base": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "rough": 0.3,
+   "metal": 0.0,
+   "emit": [
+    25.0,
+    23.75,
+    21.25
+   ]
+  },
+  "M_Roof": {
+   "cell": [
+    4,
+    1
+   ],
+   "uv": [
+    0.5625,
+    0.8125
+   ],
+   "base": [
+    0.008,
+    0.008,
+    0.01
+   ],
+   "rough": 0.9,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Screen": {
+   "cell": [
+    5,
+    1
+   ],
+   "uv": [
+    0.6875,
+    0.8125
+   ],
+   "base": [
+    0.05,
+    0.08,
+    0.1
+   ],
+   "rough": 0.2,
+   "metal": 0.0,
+   "emit": [
+    1.35,
+    1.8,
+    2.4
+   ]
+  },
+  "M_SeatLip": {
+   "cell": [
+    6,
+    1
+   ],
+   "uv": [
+    0.8125,
+    0.8125
+   ],
+   "base": [
+    0.25,
+    0.05,
+    0.05
+   ],
+   "rough": 0.5,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Seats": {
+   "cell": [
+    7,
+    1
+   ],
+   "uv": [
+    0.9375,
+    0.8125
+   ],
+   "base": [
+    0.05,
+    0.05,
+    0.06
+   ],
+   "rough": 0.7,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Stairs": {
+   "cell": [
+    0,
+    2
+   ],
+   "uv": [
+    0.0625,
+    0.6875
+   ],
+   "base": [
+    0.11,
+    0.11,
+    0.12
+   ],
+   "rough": 0.8,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Table": {
+   "cell": [
+    1,
+    2
+   ],
+   "uv": [
+    0.1875,
+    0.6875
+   ],
+   "base": [
+    0.005,
+    0.005,
+    0.007
+   ],
+   "rough": 0.9,
+   "metal": 0.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "M_Truss": {
+   "cell": [
+    2,
+    2
+   ],
+   "uv": [
+    0.3125,
+    0.6875
+   ],
+   "base": [
+    0.35,
+    0.35,
+    0.37
+   ],
+   "rough": 0.35,
+   "metal": 1.0,
+   "emit": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  }
+ },
+ "meshes": {
+  "AisleStairs": {
+   "slots": 2,
+   "slots_mobile": 1,
+   "faces": 1008
+  },
+  "ApronBand": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 96
+  },
+  "ApronText0": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 1582
+  },
+  "ApronText1": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 1582
+  },
+  "ApronText2": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 1582
+  },
+  "ApronText3": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 1582
+  },
+  "ArenaFloor": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 284
+  },
+  "CameraJibs": {
+   "slots": 2,
+   "slots_mobile": 1,
+   "faces": 112
+  },
+  "Catwalk": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 624
+  },
+  "Crowd": {
+   "slots": 2,
+   "slots_mobile": 2,
+   "faces": 100114,
+   "faces_mobile": 34070
+  },
+  "FootBox_blue": {
+   "slots": 1,
+   "faces": 4
+  },
+  "FootBox_red": {
+   "slots": 1,
+   "faces": 4
+  },
+  "JudgesTable": {
+   "slots": 5,
+   "slots_mobile": 1,
+   "faces": 156
+  },
+  "LEDFrame": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 96
+  },
+  "LEDRing": {
+   "slots": 1,
+   "faces": 96
+  },
+  "MatEdge": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 576
+  },
+  "Podium": {
+   "slots": 1,
+   "faces": 6
+  },
+  "PodiumTrim": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 6
+  },
+  "PressTables": {
+   "slots": 3,
+   "slots_mobile": 1,
+   "faces": 60
+  },
+  "Roof": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 284
+  },
+  "SafetyMat": {
+   "slots": 1,
+   "faces": 768
+  },
+  "SeatingBowl": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 2944
+  },
+  "SeatLips": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 5120
+  },
+  "SpotCans": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 512
+  },
+  "SpotLenses": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 160
+  },
+  "StageDeck": {
+   "slots": 1,
+   "faces": 284
+  },
+  "Truss": {
+   "slots": 1,
+   "slots_mobile": 1,
+   "faces": 416
+  }
+ },
+ "crowd_ratio": 0.3,
+ "slots_total": 36,
+ "slots_total_mobile": 28,
+ "glb_MB": 7.81
+}
