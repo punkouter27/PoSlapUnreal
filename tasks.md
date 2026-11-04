@@ -243,3 +243,5 @@ training, assets); reports in `DOCS/20261103/` and `SCREENSHOTS/261103_{web_pass
 - [ ] L12 Kim/Matt open hands, AO/cavity wired into GLBs and Unreal materials, `Scripts/check_rigs.py` CI gate (assets stream; see its commits)
 - [ ] L13 Matt's hand box (`matt_solo.xml` 13.6 x 5.6 x 2 cm on 1.905 m) is ~26 % shorter than the card rule (10.8 % of height = 20.6 cm): fix in build_body before drawing his open palms
 - Note: `Scripts/blender_open_hands.py` is generalised to all athletes but unrun and uncommitted (assets stream stopped at the user's 15-min wrap-up)
+- [ ] L14 Android APK blocked: UE 5.8.4 was installed without its Android component (Epic Launcher -> UE 5.8 -> Options -> Android). Then package, install on the Pixel (adb authorized), play through, close F8
+- [ ] L15 Unreal not done: MetaSounds impact/friction synthesis, droplet refraction/dispersion; `Scripts/bake_maps.py` (AO/cavity on Unreal materials) written but unrun/uncommitted. Unreal fps under load: HIGH 66, epic 104, +Lumen GI 38, +Lumen reflections 37 (720x1280); desktop default stays HIGH
