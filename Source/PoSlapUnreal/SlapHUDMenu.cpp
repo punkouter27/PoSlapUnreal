@@ -10,8 +10,10 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "NNEModelData.h"
 #include "Serialization/JsonReader.h"
@@ -130,7 +132,9 @@ void ASlapHUD::FindBrainsAndLevels()
 	// The phone arena (Scripts/arena_mobile_level.py: Arena_Mobile.glb, one palette atlas, a lighter crowd) is the same
 	// level under "<level>_Mobile": a phone lists only those, a desktop only the full ones. A phone build without them
 	// keeps the full arena.
-	const bool bPhone = PLATFORM_ANDROID || PLATFORM_IOS;
+	// 2026-11-04 phone test: the Arena_Mobile twins drew wrong on the Pixel (dark props at the camera, card crowd), so a
+	// phone plays the full arena too; -SlapMobileArena opts back into the twins while they are fixed.
+	const bool bPhone = (PLATFORM_ANDROID || PLATFORM_IOS) && FParse::Param(FCommandLine::Get(), TEXT("SlapMobileArena"));
 	const bool bAnyMobile = Pairings.ContainsByPredicate([](const FAssetData& A) { return IsMobileLevel(A.AssetName.ToString()); });
 	Pairings.RemoveAll([&](const FAssetData& A) { return IsMobileLevel(A.AssetName.ToString()) != (bPhone && bAnyMobile); });
 	Pairings.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });

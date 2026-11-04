@@ -117,6 +117,7 @@ void ASlapHUD::BeginPlay()
 		Zone.Split(TEXT("+"), &T, &B);
 		FakeSafe = FMargin(0.f, 2.f * FCString::Atof(*T), 0.f, 2.f * FCString::Atof(*B));	// ratios of the half height; DrawHUD keeps it applied
 	}
+	if ((PLATFORM_ANDROID || PLATFORM_IOS) && GEngine) GEngine->bEnableOnScreenDebugMessages = false;	// URLab's ZMQ stubs print red bind errors over a phone's arena
 	BuildUi();
 	LoadAssets();
 	CommentaryStamp = IFileManager::Get().GetTimeStamp(*(FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt")));	// only lines from now on

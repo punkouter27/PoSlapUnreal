@@ -43,11 +43,33 @@ Breath_kim -&gt; S_Breath_kim, Grunt_grandpa -&gt; S_Grunt_grandpa, Grunt_kim -&
 2.4 s) is a convolution-reverb submix that every spatialised one-shot sends to on desktop. Desktop also gets HRTF through Resonance Audio.
 Not done: MetaSounds impact synthesis and shear-driven friction voices.</p>
 
-<h2>Android</h2>
-<p class="note"><b>Blocked; no phone shots.</b> The phone arena is built (L_Arena*_Mobile from Arena_Mobile.glb, Android starts on L_Arena_Mobile,
-the phone menu lists only the _Mobile pairings). But BuildCookRun fails before it cooks: the engine was updated to 5.8.4 on 2026-11-03 17:04
-without the Android component (Engine\Build\Android is missing, and Engine\Platforms\Android holds only Plugins). UBT says: "Missing files required
-to build Android targets. Enable Android as an optional download component in the Epic Games Launcher." The Pixel (48241FDAP0011R) is
-authorized over adb. F8 (the real safe area) stays open.</p>
+<h2>Android: Pixel 9 Pro (48241FDAP0011R), Development, ASTC</h2>
+<p class="note">APK 245.4 MB (Saved/AndroidArchive/PoSlapUnreal-arm64.apk), installed over adb. The phone held an older build signed with
+another debug key (INSTALL_FAILED_UPDATE_INCOMPATIBLE), so that build was uninstalled first, which reset its local Elo and settings.
+On the phone: brain probe grandpa_L4 sum 700.896110 (desktop 700.896112). The menu, then START, a full 3-round match (KO in round 3),
+the result, and back to the menu, twice, all by adb taps. <b>Phone fps: 60-69 (10 s averages from the HUD's log line), GPU 10-16 ms,
+worst frame 22-39 ms.</b>
+Two build fixes on the way: (1) the Android MuJoCo library was gone from third_party/install (the 11-03 rebuild was Windows only).
+It was rebuilt with NDK r27 / CMake 3.22 and staged to lib/Android/arm64-v8a/libmujoco.so. MuJoCo's CMake also adds -fuse-ld=gold,
+which r27 no longer ships, so it was linked without it (scratch build tree; the plugin is untouched). (2) UBT's cached Android makefile
+predated that library, so it was deleted to make URLab.Build.cs list the library again.</p>
+<p class="note"><b>First phone build looked wrong, with the phone arena (L_Arena_Mobile, Arena_Mobile.glb):</b> a washed-out flat grey stage, dark
+cuboids at the camera, and the crowd as dark cards. The full desktop arena on the same phone renders correctly (lit stage, crowd, podium),
+so all three came from the phone-arena twin: its imported props and materials, not the engine or lighting. Fix: the phone plays the full
+arena again (Config/Android/AndroidEngine.ini removed; the _Mobile pairings are opt-in with -SlapMobileArena until the twin is fixed),
+still at 60-69 fps. The red URLab "ZMQ bind failed" lines (the Android stubs) are hidden on phones.
+<b>The black bars are by design.</b> The HUD camera keeps 9:16, and this screen is 9:20 (960 x 2142 logical), so it letterboxes: ~300 px
+at the top (the HUD's top row sits at y 177, below the 153 px punch-hole cutout) and ~140 px at the bottom (the build stamp and telemetry
+line sit in it, above the gesture handle). <b>F8 verdict: the insets are right.</b> Nothing interactive is under the cutout or the gesture bar.
+<b>The athlete lying on the floor</b> in the user's 13:13 shot (menu idle, step 5226, phone arena) was not seen on the full arena, where both
+stand through the menu (after_menu.png, after_menu_return.png). Cause not confirmed; it was not reproduced after the fix.</p>
+<div class="pair">
+<figure><img src="../261104_phone/before_menu.png"><figcaption>before: menu on L_Arena_Mobile</figcaption></figure>
+<figure><img src="../261104_phone/before_match.png"><figcaption>before: match on L_Arena_Mobile</figcaption></figure>
+<figure><img src="../261104_phone/after_menu.png"><figcaption>after: menu, full arena</figcaption></figure>
+<figure><img src="../261104_phone/after_match_strike.png"><figcaption>after: live strike, 62 fps</figcaption></figure>
+<figure><img src="../261104_phone/after_match_final_ko.png"><figcaption>after: round 3, the KO strike</figcaption></figure>
+<figure><img src="../261104_phone/after_menu_return.png"><figcaption>after: back in the menu</figcaption></figure>
+</div>
 <div class="pair"><figure><img src="match_full.png"><figcaption>full match result (L_Arena, seed 7), the log used for match.py compare</figcaption></figure></div>
 </body></html>
