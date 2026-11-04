@@ -48,6 +48,7 @@ for k, v in (("import_mesh", True), ("import_as_skeletal", True), ("import_mater
              ("import_textures", True), ("create_physics_asset", False),   # no Chaos ragdoll
              ("mesh_type_to_import", unreal.FBXImportType.FBXIT_SKELETAL_MESH)):
     fbx.set_editor_property(k, v)
+fbx.skeletal_mesh_import_data.set_editor_property("import_morph_targets", True)   # CheekDent_L / _R (the assets stream's cheek dent)
 MEL = unreal.MaterialEditingLibrary
 import sys
 sys.path.insert(0, os.path.join(PROJ, "Scripts"))
@@ -74,8 +75,16 @@ def athlete(card):
         if key == "mr":
             t.set_editor_property("srgb", False)
             t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
+        t.set_editor_property("lod_group", unreal.TextureGroup.TEXTUREGROUP_CHARACTER)   # Android caps the group at 2048 (DefaultDeviceProfiles.ini)
         ASSETS.save_loaded_asset(t)
         tex[key] = t
+    mask = None   # the cheek mask (linear, UV0): the whole cheek reddens with damage (broadcast_fx.add_wear's CheekFlush)
+    if os.path.isfile(os.path.join(PROJ, f"Content/Art/Exports/{Name}_tex/T_{Name}_CheekMask.png")):
+        mask = import_file(f"Content/Art/Exports/{Name}_tex/T_{Name}_CheekMask.png", f"{folder}/Textures", name=f"T_{Name}_CheekMask")[0]
+        mask.set_editor_property("srgb", False)
+        mask.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
+        mask.set_editor_property("lod_group", unreal.TextureGroup.TEXTUREGROUP_CHARACTER)
+        ASSETS.save_loaded_asset(mask)
     if ASSETS.does_asset_exist(skin_path):
         ASSETS.delete_asset(skin_path)
     skin = tools.create_asset(f"M_{Name}", folder, unreal.Material, unreal.MaterialFactoryNew())
@@ -92,7 +101,7 @@ def athlete(card):
             MEL.connect_material_property(smp, "B", unreal.MaterialProperty.MP_METALLIC)  # glTF: G roughness, B metallic
         MEL.connect_material_property(smp, out, prop)
     broadcast_fx.add_ripple(skin)   # the cheek ripple on a strike (display only)
-    broadcast_fx.add_wear(skin)     # flush + fatigue on the skin colour (display only)
+    broadcast_fx.add_wear(skin, mask)   # flush, cheek mask + fatigue on the skin colour (display only)
     MEL.recompile_material(skin)
     ASSETS.save_loaded_asset(skin)
     mats = mesh.get_editor_property("materials")

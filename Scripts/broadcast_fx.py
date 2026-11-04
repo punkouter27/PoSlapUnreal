@@ -90,13 +90,16 @@ WEAR = ("float f = A * saturate(1 - distance(P, F) / 9);\n"
         "float fing = (1 - smoothstep(0.35, 0.6, fy)) * step(abs(y), 4.0) * step(1.5, x) * (1 - smoothstep(8.0, 9.5, x));\n"
         "float h = K * max(palm, fing) * saturate(1 - abs(z) / 3);\n"
         "float3 c = lerp(C, dot(C, float3(0.3, 0.59, 0.11)) * float3(0.7, 0.72, 0.75), T * 0.35);\n"
-        "return lerp(c, c * float3(1.5, 0.5, 0.5), saturate(max(f, 0.85 * h)));")
-WEAR_IN = ("C", "P", "F", "A", "T", "U", "V", "K")
+        "float3 w = lerp(c, c * float3(1.5, 0.5, 0.5), saturate(max(f, 0.85 * h)));\n"
+        "return lerp(w, w * float3(1.45, 0.45, 0.45), saturate(M * Q));")              # the whole cheek (mask) reddens with damage
+WEAR_IN = ("C", "P", "F", "A", "T", "U", "V", "K", "M", "Q")
 
 
-def add_wear(skin):
+def add_wear(skin, mask=None):
     """Base colour -> red flush within 9 cm of FlushPoint (Flush 0-1), a palm print there (Print 0-1), greyer, darker skin
-    (Tired 0-1). An older wear node is rebuilt with its inputs kept; an up-to-date one is left alone."""
+    (Tired 0-1), and the whole cheek reddening by the assets stream's cheek mask (T_<Name>_CheekMask, red channel, UV0) x
+    CheekFlush 0-1 (ASlapHUD: neck damage + bruise). No mask: a constant 0 (the term is off). An older wear node is rebuilt
+    with its inputs kept; an up-to-date one is left alone."""
     prop = unreal.MaterialProperty.MP_BASE_COLOR
     src = MEL.get_material_property_input_node(skin, prop)
     old = {}
@@ -123,6 +126,19 @@ def add_wear(skin):
             p = MEL.create_material_expression(skin, kind, -400, -800 + 100 * i)
             p.set_editor_property("parameter_name", name)
             old[n] = (p, "")
+    if "M" not in old or mask is not None:
+        if mask is not None:
+            smp = MEL.create_material_expression(skin, unreal.MaterialExpressionTextureSample, -700, -1500)
+            smp.set_editor_property("texture", mask)
+            smp.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
+            old["M"] = (smp, "R")
+        else:
+            zero = MEL.create_material_expression(skin, unreal.MaterialExpressionConstant, -400, -1500)
+            old["M"] = (zero, "")
+    if "Q" not in old:
+        q = MEL.create_material_expression(skin, unreal.MaterialExpressionScalarParameter, -400, -1400)
+        q.set_editor_property("parameter_name", "CheekFlush")
+        old["Q"] = (q, "")
     for n in WEAR_IN:
         MEL.connect_material_expressions(old[n][0], old[n][1], code, n)
     MEL.connect_material_property(code, "", prop)
@@ -153,6 +169,48 @@ def add_scuff():
     MEL.recompile_material(m)
     ASSETS.save_loaded_asset(m)
     log("M_Scuff (deferred decal)")
+
+
+DECALS = ("T_Decal_SoleSkid_01", "T_Decal_SoleSkid_02", "T_Decal_PalmSmudge_01", "T_Decal_PodiumChip_01", "T_Decal_FloorScratch_01")
+
+
+def add_decals():
+    """/Game/FX/Decals: the assets stream's decal textures (Content/Art/Exports/Decals, straight alpha) and M_DecalTex, a
+    deferred decal (Decal texture, Opacity and Roughness parameters). ASlapHUD lays them with a dynamic instance per mark on
+    desktop; a phone (no DBuffer) skips decals."""
+    tools = unreal.AssetToolsHelpers.get_asset_tools()
+    for name in DECALS:
+        src = os.path.join(PROJ, "Content/Art/Exports/Decals", f"{name}.png")
+        if not os.path.isfile(src) or ASSETS.does_asset_exist(f"/Game/FX/Decals/{name}"):
+            continue
+        t = unreal.AssetImportTask()
+        t.filename, t.destination_path, t.destination_name = src, "/Game/FX/Decals", name
+        t.automated, t.replace_existing, t.save = True, True, True
+        tools.import_asset_tasks([t])
+        log(f"{name} imported")
+    if ASSETS.does_asset_exist("/Game/FX/M_DecalTex") or not ASSETS.does_asset_exist(f"/Game/FX/Decals/{DECALS[0]}"):
+        return
+    m = tools.create_asset("M_DecalTex", "/Game/FX", unreal.Material, unreal.MaterialFactoryNew())
+    m.set_editor_property("material_domain", unreal.MaterialDomain.MD_DEFERRED_DECAL)
+    m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    tex = MEL.create_material_expression(m, unreal.MaterialExpressionTextureSampleParameter2D, -600, 0)
+    tex.set_editor_property("parameter_name", "Decal")
+    tex.set_editor_property("texture", ASSETS.load_asset(f"/Game/FX/Decals/{DECALS[0]}"))
+    op = MEL.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -600, 250)
+    op.set_editor_property("parameter_name", "Opacity")
+    op.set_editor_property("default_value", 1.0)
+    rough = MEL.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -300, 350)
+    rough.set_editor_property("parameter_name", "Roughness")
+    rough.set_editor_property("default_value", 0.8)
+    mul = MEL.create_material_expression(m, unreal.MaterialExpressionMultiply, -300, 200)
+    MEL.connect_material_expressions(tex, "A", mul, "A")
+    MEL.connect_material_expressions(op, "", mul, "B")
+    MEL.connect_material_property(tex, "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(mul, "", unreal.MaterialProperty.MP_OPACITY)
+    MEL.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.recompile_material(m)
+    ASSETS.save_loaded_asset(m)
+    log("M_DecalTex (deferred decal, textured)")
 
 
 def add_reverb():
@@ -324,6 +382,7 @@ def main():
             if add_lods(mesh):
                 ASSETS.save_loaded_asset(mesh)
     add_scuff()
+    add_decals()
     add_reverb()
     add_crowd()
 
