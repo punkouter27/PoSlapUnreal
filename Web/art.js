@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { skin, envLight, crowdMaterial } from "./fx.js";
+import { skin, envLight, crowdMaterial, surface } from "./fx.js";
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const load = url => new Promise((ok, fail) => loader.load(url, ok, undefined, fail));
@@ -24,6 +24,9 @@ export async function loadArena(scene) {
   root.add(gltf.scene); scene.add(root);
   gltf.scene.traverse(o => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = /podium|pod/i.test(o.name); } });
   envLight(gltf.scene, 0.06);
+  // the stage's surfaces (fx.js surface): procedural micro-relief and the wear decals the contacts lay down (max tier)
+  const SURF = { M_SafetyMat: 0, M_StageFloor: 1, M_Podium: 2 };
+  gltf.scene.traverse(o => { if (o.isMesh && o.material?.name in SURF) o.material = surface(o.material, SURF[o.material.name]); });
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse(o => {   // the crowd: one id and a feet-to-head height per spectator (fx.js crowdMaterial)
     if (!o.isMesh || !/crowd/i.test(o.material?.name || "")) return;

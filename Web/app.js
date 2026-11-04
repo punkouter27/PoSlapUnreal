@@ -13,6 +13,7 @@ import { loadMatch, MATCHUPS, matchupKey } from "./loader.js";
 import { loadArena, loadAthlete, clipPush } from "./art.js";
 import { Look, TIERS } from "./fx.js";
 import { Sound } from "./audio.js";
+import { ContactProbe } from "./contacts.js";
 import { SwingTagger, Read, Snap, Director, SNAP_S } from "./broadcast.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
@@ -326,7 +327,11 @@ function onEvent(e) {
       $("call").textContent = `${e.speed.toFixed(1)} m/s · ${String(e.part || "").replace("_r", "")}${palm ? " · palm" : ""}`;
       banner(e.speed >= CLEAN ? (palm ? "Clean Palm Strike" : "Clean Hit") : (palm ? "Palm Strike" : "Hit"),
         `${e.speed.toFixed(1)} m/s${palm ? "" : " · not the palm"}`, 1.4, palm ? "var(--gold)" : "");
-      sound.strike(e.speed, e.pos ? e.pos[0] : 0, e.striker);
+      {   // the synth engine voices the strike from its energy and where on the face it landed (display only)
+        const sx = game.match.sides, A = sx.find(x => x.name === e.striker), D = sx.find(x => x.name !== e.striker);
+        const hz = D ? game.d.geom_xpos[3 * D.head + 2] : 0;
+        sound.strike(e.speed, e.pos ? e.pos[0] : 0, e.striker, { pos: e.pos, mass: A?.card.strike_mass, palm, jaw: !!e.pos && e.pos[2] < hz - 0.03 });
+      }
       if (window.__poslapLook?.pauseOnStrike) paused = true;   // the report's contact frame (display only)
       if (e.pos) struck(e.striker, e.pos, e.speed);   // (Unreal's strike line has no contact point)
       break;
@@ -591,7 +596,8 @@ const TABS = {
       btn("Physics", "phys", art.physics)),
     el("h3", "", "Picture and sound"),
     row(...["auto", ...TIERS.slice().reverse()].map(t => btn(t === "auto" ? `Auto (${look.tier})` : t[0].toUpperCase() + t.slice(1), "gfx", look.auto ? t === "auto" : t === look.tier, t)),
-      btn("Shake", "shake", look.shakeOn), btn(sound.muted ? "Sound off" : "Sound on", "sound", !sound.muted)),
+      btn("Shake", "shake", look.shakeOn), btn(sound.muted ? "Sound off" : "Sound on", "sound", !sound.muted),
+      btn(sound.synth ? "Audio: synth" : "Audio: samples", "audio", sound.synth)),
     el("div", "note", `${LIVE ? `Live: ${LIVE}. API on the same host: /api/match, /api/events.` : "Local match: the same rules as training/match.py."} Build ${BUILD} · OBS 136 · 200 Hz.`),
   ],
 };
@@ -631,6 +637,7 @@ $("panel").addEventListener("click", e => {
   else if (act === "phys") { art.physics = !art.physics; showArt(); }
   else if (act === "reset") { showMenu(); return; }
   else if (act === "sound") { sound.unlock(); sound.setMuted(!sound.muted); }
+  else if (act === "audio") sound.setMode(sound.synth ? "samples" : "synth");
   else if (act === "shake") { look.shakeOn = !look.shakeOn; localStorage.setItem("poslap.shake", look.shakeOn ? "on" : "off"); }
   else if (act === "gfx") { look.setTier(val); localStorage.setItem("poslap.gfx", val); }
   renderSheet();
@@ -784,6 +791,7 @@ look.shakeOn = localStorage.getItem("poslap.shake") !== "off";
 // the fps ladder and the report's shots (Web/fps_ladder.mjs) switch tiers and effects in place: display only
 window.__poslapLook = { look, clip: true, set(tier, fx = {}) { look.override = fx; look.setTier(tier); }, cam(m) { director.mode = m; }, pause(p) { paused = p; } };
 const sound = new Sound();
+window.__poslapSound = sound;   // the report renders a match's cues offline (SCREENSHOTS/261104_web_max/audio_render.mjs)
 addEventListener("pointerdown", () => sound.unlock(), { once: true });   // browsers start audio on a gesture
 addEventListener("keydown", () => sound.unlock(), { once: true });
 for (const [x, c] of [[-2.4, 0xff8a5c], [2.4, 0x7aa0ff]]) { const r = new THREE.PointLight(c, 6, 6); r.position.set(x, 1.6, 2.6); scene.add(r); }   // rims behind the athletes, across from the camera
@@ -980,6 +988,7 @@ const get = async (p, kind) => { const r = await fetch("../" + p); if (!r.ok) th
 const MATCHUP = MATCHUPS[QS.get("m")] ? QS.get("m") : "gg";
 let league = {};   // training/models/league.json (training/scouting.py): Elo and tendencies per brain, if it has run
 try { league = (await get("training/models/league.json", "json")).brains || {}; } catch { }
+let probe = null;   // Web/contacts.js: MuJoCo's contacts for the wear decals and the synthesised sound
 let game, speed = 1, paused = false, busy = false, debt = 0, prevT = performance.now();
 let started = false;      // the menu gates the match: nothing runs until the spectator picks one
 let fpsNow = 0, frames = 0, fpsT = performance.now();
@@ -991,6 +1000,7 @@ try {
   $("loadmsg").textContent = "Loading the arena and both brains…";
   game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides); buildPushers(game.m, game.match.sides); initSoles(game.d);
+  probe = new ContactProbe(game.m, game.match);
   game.match.autoNext = false;   // the round trip: after the result's hold, back to the menu (sim.js phase "over")
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
@@ -1063,6 +1073,9 @@ function loop(now) {
   if (sparkOn || (detail && snap.recording)) drawSpark();
   draw(game.d); directTick(game.d, dt); controls.update();
   feetTick(game.d, paused ? 0 : dt);
+  // MuJoCo's contacts, once a frame, for the wear decals and the synthesised impacts and friction (display only)
+  sound.tierHint = look.tier; sound.listen(camera);
+  if (probe && (look.fx.wear || sound.synth)) { const cx = probe.read(game.d, LIVE && !paused ? dt : 0); look.contacts(cx); sound.contacts(cx); }
   sound.tick(Math.max(S.danger.red || 0, S.danger.blue || 0), S.fatigue.red.stamina, S.fatigue.blue.stamina);
   look.render(dt * (paused ? 0 : 1), fpsNow);
   requestAnimationFrame(loop);
