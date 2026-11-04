@@ -4,6 +4,8 @@ own limits, then imitated by the brain while it learns to strike (envs/slap.py).
     .venv/Scripts/python.exe slap_demo.py search [--char kim]  -> models/<char>_slap_demo.json (keyframes + per-brain-step reference)
     .venv/Scripts/python.exe slap_demo.py check      (replays it on 20 variations: hit, palm, speed, stays up)
     .venv/Scripts/python.exe slap_demo.py video out.gif
+    --physics 2: the realism batch's models (models/v2/, its own <char>_slap_demo.json there; the search starts from
+    the v1 reference when v2 has none). Every path steps muscle_step (Hill's cap), as every engine does.
 
 A slap is three key poses held as joint targets (wind-up: trunk turned back, arm raised and pulled back, elbow bent;
 strike: trunk through, lean in, arm swung across, elbow whipping straight; follow-through), each reached in its own time,
@@ -20,10 +22,13 @@ import mujoco
 import numpy as np
 
 from brain_cpu import Athlete, muscle_step, muscle_vmax, stand
+from constants import models_dir
 
 HERE = Path(__file__).parent
 if "--char" in sys.argv:   # before the pool starts: workers re-import this module and read it from the environment
     os.environ["POSLAP_CHAR"] = sys.argv[sys.argv.index("--char") + 1]
+if "--physics" in sys.argv:
+    os.environ["SLAP_PHYSICS"] = sys.argv[sys.argv.index("--physics") + 1]
 CHAR = os.environ.get("POSLAP_CHAR", "grandpa")
 OPP_HEAD = np.array([0.8015, 0.0, 0.74])
 BOX = (0.20, 0.25)
@@ -55,8 +60,14 @@ if "sparring" in _card and "head" in _card["sparring"]:
 
 
 def setup():
-    fp = json.loads((HERE / "models" / f"{CHAR}_fingerprint.json").read_text())
-    return mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{CHAR}_solo.xml")), fp
+    fp = json.loads((models_dir() / f"{CHAR}_fingerprint.json").read_text())
+    return mujoco.MjModel.from_xml_path(str(models_dir() / f"{CHAR}_solo.xml")), fp
+
+
+def demo_path(read=False):
+    """This physics version's reference; reading falls back to the shipped (v1) one when the version has none yet."""
+    p = models_dir() / f"{CHAR}_slap_demo.json"
+    return p if p.exists() or not read else HERE / "models" / f"{CHAR}_slap_demo.json"
 
 
 def unpack(x):
@@ -150,7 +161,7 @@ def _eval(args):
 
 def search(iters=150, pop=96, elite=12, nseeds=3):
     x0 = np.array([GUESS[k][i] for i in range(3) for k in KEYS] + list(TIMES) + list(DELAY.values()), float)
-    prev = HERE / "models" / f"{CHAR}_slap_demo.json"
+    prev = demo_path(read=True)
     if prev.exists():   # continue from the last search: its poses and times, new joints at the guess
         d = json.loads(prev.read_text())
         old = dict(zip(d["joints"], zip(*d["poses_deg"])))
@@ -185,7 +196,7 @@ def save(x):
            "delays_s": delays.round(4).tolist(), "delay_joints": list(DELAY), "result": r,
            "joint_order": fp["joint_order"], "ref_goal": np.round(goals, 5).tolist(), "ref_q": np.round(qs, 5).tolist(),
            "note": "per brain step (50 Hz) from the stand pose; ref_q = the joint angles the slap actually produced"}
-    p = HERE / "models" / f"{CHAR}_slap_demo.json"
+    p = demo_path()
     p.write_text(json.dumps(out))
     print("saved", p, r)
 
@@ -200,7 +211,7 @@ def check(n=20):
 
 
 def demo_x():
-    d = json.loads((HERE / "models" / f"{CHAR}_slap_demo.json").read_text())
+    d = json.loads(demo_path(read=True).read_text())
     return np.array([v for row in d["poses_deg"] for v in row] + d["times_s"] + d["delays_s"], float)
 
 
@@ -211,14 +222,15 @@ def video(out):
     r_ = mujoco.Renderer(m, 480, 360)
     cam = mujoco.MjvCamera(); cam.azimuth, cam.elevation, cam.distance = 90, -8, 2.6
     frames = []
-    d0 = json.loads((HERE / "models" / f"{CHAR}_slap_demo.json").read_text())
+    d0 = json.loads(demo_path(read=True).read_text())
     d = mujoco.MjData(m); stand(m, d, fp)
     A = Athlete(m, fp, "")
+    vmax = muscle_vmax(m, [A])
     d.mocap_pos[0] = d.qpos[:3] + OPP_HEAD; mujoco.mj_forward(m, d)
     for k in range(len(d0["ref_goal"]) * 4):
         if k % 4 == 0:
             d.ctrl[A.act] = d0["ref_goal"][k // 4]
-        mujoco.mj_step(m, d)
+        muscle_step(m, d, vmax)   # Hill's cap, as the search and every engine
         if k % 8 == 0:
             cam.lookat[:] = [d.qpos[0] + 0.3, d.qpos[1], 1.2]
             r_.update_scene(d, cam); frames.append(Image.fromarray(r_.render()))
