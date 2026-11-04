@@ -49,17 +49,17 @@ def value_of(text, ident):
 #         JS file, JS identifier (or None), the literal the JS mirror must contain (or None),
 #         the python constant the JS mirror must equal
 MIRROR_CHECKS = [
-    ("OBS", "Source/PoSlapUnreal/SlapController.cpp", "NumObs", constants.OBS_EXT,
+    ("OBS", "Source/PoSlapUnreal/SlapControllerInternal.h", "NumObs", constants.OBS_EXT,
      "Web/sim.js", "OBS", None, constants.OBS),
-    ("REACT", "Source/PoSlapUnreal/SlapController.cpp", "React", constants.REACT,
+    ("REACT", "Source/PoSlapUnreal/SlapControllerInternal.h", "React", constants.REACT,
      "Web/sim.js", "REACT", None, constants.REACT),
-    ("HILL_K", "Source/PoSlapUnreal/SlapController.cpp", "HillK", constants.HILL_K,
+    ("HILL_K", "Source/PoSlapUnreal/SlapControllerInternal.h", "HillK", constants.HILL_K,
      "Web/sim.js", "HILL_K", None, constants.HILL_K),
     ("MIN_STAMINA", "Source/PoSlapUnreal/SlapController.h", "MinStamina", constants.MIN_STAMINA,
      "Web/sim.js", "MIN_STAMINA", None, constants.MIN_STAMINA),
     ("MIN_NECK", "Source/PoSlapUnreal/SlapController.h", "MinNeck", constants.MIN_NECK,
      "Web/sim.js", "MIN_NECK", None, constants.MIN_NECK),
-    ("DECIM", "Source/PoSlapUnreal/SlapController.cpp", "ControlEvery", constants.DECIM,
+    ("DECIM", "Source/PoSlapUnreal/SlapControllerInternal.h", "ControlEvery", constants.DECIM,
      "Web/sim.js", None, "% 4", constants.DECIM),
 ]
 
@@ -95,12 +95,12 @@ def check_mirrors():
 def check_observation_sizes():
     """The base layout (136) and the extended one (148) must be the same in both mirrors."""
     print("\n=== The observation layout ===")
-    cpp = read("Source/PoSlapUnreal/SlapController.cpp")
+    cpp = read("Source/PoSlapUnreal/SlapControllerInternal.h")
     js = read("Web/sim.js")
     c_n = value_of(cpp, "NumObs")
     j_n = value_of(js, "OBS")
     if c_n is None:
-        fail("SlapController.cpp does not declare NumObs")
+        fail("SlapControllerInternal.h does not declare NumObs")
     if j_n is None:
         fail("Web/sim.js does not declare OBS")
     if c_n is not None and j_n is not None:
@@ -131,25 +131,29 @@ def check_rates():
         fail(f"the model steps at {hz:.0f} Hz, constants.PHYSICS_HZ is {constants.PHYSICS_HZ}")
     if constants.PHYSICS_HZ // constants.DECIM != constants.CONTROL_HZ:
         fail(f"{constants.PHYSICS_HZ} Hz / {constants.DECIM} is not {constants.CONTROL_HZ} Hz")
-    cpp = read("Source/PoSlapUnreal/SlapController.cpp")
+    cpp = read("Source/PoSlapUnreal/SlapControllerInternal.h")
     if value_of(cpp, "ControlEvery") != constants.DECIM:
-        fail(f"SlapController.cpp does not use ControlEvery = {constants.DECIM}")
+        fail(f"SlapControllerInternal.h does not use ControlEvery = {constants.DECIM}")
     print(f"  [PASS] the model steps at {hz:.0f} Hz, the brain every {constants.DECIM} steps "
           f"({constants.CONTROL_HZ} Hz)")
 
 
 def check_feint():
-    """The feint read: match.py's thresholds (constants.FEINT_*) are the ones Unreal's HUD classifies a swing with
-    (SlapHUD.cpp F10, literals there). The browser has no feint read yet."""
-    print("\n=== The feint read (match.py events vs SlapHUD.cpp) ===")
-    hud = read("Source/PoSlapUnreal/SlapHUD.cpp")
-    for want in (f"Now - PeakHandAt > {constants.FEINT_AFTER_S:g}", f"H.HandSpeed < {constants.FEINT_PULLBACK:g} * PeakHand",
-                 f"PeakHand > {constants.FEINT_MIN_PEAK:g}", f"PeakHand * {constants.FEINT_REARM:g}",
-                 f"Now - PeakHandAt > {constants.FEINT_REARM_S:g}"):
-        if want not in hud:
-            fail(f"SlapHUD.cpp no longer reads a feint with '{want}' (constants.FEINT_*)")
-        else:
-            print(f"  [PASS] SlapHUD.cpp: '{want}'")
+    """The feint read: match.py's thresholds (constants.FEINT_*) are the ones Unreal's HUD (SlapSwingRead.h, since the
+    2026-11-03 HUD split) and the browser (Web/sim.js) classify a swing with."""
+    print("\n=== The feint read (match.py vs SlapSwingRead.h vs sim.js) ===")
+    cpp, js = read("Source/PoSlapUnreal/SlapSwingRead.h"), read("Web/sim.js")
+    for name, cpp_id, want in (("FEINT_MIN_PEAK", "FeintMinPeak", constants.FEINT_MIN_PEAK),
+                               ("FEINT_PULLBACK", "FeintPullBack", constants.FEINT_PULLBACK),
+                               ("FEINT_AFTER_S", "FeintAfter", constants.FEINT_AFTER_S),
+                               ("FEINT_REARM", "RearmShare", constants.FEINT_REARM),
+                               ("FEINT_REARM_S", "RearmAfter", constants.FEINT_REARM_S)):
+        for rel, text, ident in (("SlapSwingRead.h", cpp, cpp_id), ("Web/sim.js", js, name)):
+            got = value_of(text, ident)
+            if got is None or got != float(want):
+                fail(f"{name}: {rel} '{ident}' is {got}, training says {want}")
+            else:
+                print(f"  [PASS] {name}: {rel} '{ident}' = {got:g}")
 
 
 def main():
