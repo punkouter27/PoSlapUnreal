@@ -1,8 +1,6 @@
 """Bundle the web version for static hosting: python Web/build.py  ->  Web/dist/ (same layout as the dev server:
 dist/Web/ holds the page and its libraries, dist/training/ the arena, fingerprints, cards and the two brains loader.js names).
 """
-import base64
-import hashlib
 import re
 import shutil
 import time
@@ -43,15 +41,10 @@ page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)',
                         page.read_text(encoding="utf-8")), encoding="utf-8")
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
-# the page's one inline script is its import map: CSP blocks an inline script it has no hash for, so its hash is listed
-importmap = re.search(r'<script type="importmap">(.*?)</script>', page.read_text(encoding="utf-8"), re.S).group(1)
-importmap_hash = base64.b64encode(hashlib.sha256(importmap.encode("utf-8")).digest()).decode()
+# No Content-Security-Policy (user 2026-11-03): the old one sat under "headers", which Azure Static Web Apps does not
+# read (it reads "globalHeaders"), so it was never served; served as written it blocks MuJoCo's WASM bindings (new Function).
 (DIST / "staticwebapp.config.json").write_text(
-    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
-    f'"headers": {{ "Content-Security-Policy": "default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\' \'sha256-{importmap_hash}\'; '
-    'style-src \'self\' \'unsafe-inline\' https://fonts.googleapis.com; font-src \'self\' https://fonts.gstatic.com; '   # the HUD's typefaces
-    'img-src \'self\' data: blob:; connect-src \'self\' ws: wss:; '
-    'worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'" } }\n')
+    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" } }\n')
 
 
 def _fail_lfs_pointers():
