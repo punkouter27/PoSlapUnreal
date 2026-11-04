@@ -25,13 +25,15 @@ export class Sound {
     this.ctx = null; this.buf = {}; this.loops = {};
     this.muted = localStorage.getItem("poslap.sound") === "off";
     this.duckUntil = 0; this.tension = 0;
+    this.room = 0.5;   // 0 ringside (dry) .. 1 the far seats (the hall rings out): setDistance
   }
+  // the camera's distance to the action (m) sets how much hall a one-shot gets (SlapHUD.cpp ReverbMix: 1.5 m dry, 5 m wet)
+  setDistance(m) { this.room = Math.max(0, Math.min(1, (m - 1.5) / 3.5)); }
   async unlock() {
     if (this.ctx) { if (this.ctx.state === "suspended") await this.ctx.resume(); return; }
     const ctx = this.ctx = new AudioContext();
     this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.9;
     const limit = ctx.createDynamicsCompressor();
-    Object.assign(limit, {});
     limit.threshold.value = -10; limit.knee.value = 6; limit.ratio.value = 12; limit.attack.value = 0.002; limit.release.value = 0.2;
     this.master.connect(limit).connect(ctx.destination);
     this.hall = ctx.createConvolver(); this.hall.buffer = hallIR(ctx);
@@ -59,7 +61,8 @@ export class Sound {
     const b = this.buf[name];
     if (!this.ctx || !b) return;
     const src = this.ctx.createBufferSource(), g = this.ctx.createGain(), p = this.ctx.createStereoPanner(), send = this.ctx.createGain();
-    src.buffer = b; src.playbackRate.value = rate; g.gain.value = gain; p.pan.value = Math.max(-1, Math.min(1, pan)); send.gain.value = wet;
+    src.buffer = b; src.playbackRate.value = rate; g.gain.value = gain; p.pan.value = Math.max(-1, Math.min(1, pan));
+    send.gain.value = wet * (0.35 + 1.3 * this.room);   // the reverb follows the camera: a close-up is dry, the wide shot rings
     src.connect(g).connect(p).connect(this.master); p.connect(send).connect(this.hall);
     src.start(this.ctx.currentTime + delay);
   }
@@ -76,6 +79,13 @@ export class Sound {
     const roar = 0.3 + 0.5 * k;
     if (staggered) this.play("CrowdReact", { gain: roar, wet: 0 });
     else if (landed) this.play("CrowdNear", { gain: roar * 0.9, wet: 0 });
+  }
+  // a near miss (a feint, or a palm that went past the face): the crowd's "ooooh", at most every 2.5 s
+  nearMiss(k = 1) {
+    const t = this.ctx?.currentTime || 0;
+    if (t < (this.oohAt || 0) + 2.5) return;
+    this.oohAt = t;
+    this.play("CrowdNear", { gain: 0.45 + 0.4 * Math.min(1, k), rate: 1.08 + 0.06 * Math.random(), wet: 0 });
   }
   knockdown(x) {
     this.play("Thud", { gain: 1.2, rate: 0.9, pan: Sound.pan(x), wet: 0.3 });

@@ -3,9 +3,10 @@
 // fuzz sheen, the cheek ripple and flush, the greyer tired skin: the same parameters as Unreal's M_<athlete>,
 // Scripts/broadcast_fx.py). Drawing only: MuJoCo owns every contact.
 //
-// Quality tiers (?gfx=ultra|high|low, or Settings): ultra = full-res GTAO + bloom + SMAA + 4K shadows + the beam,
-// high = half-res GTAO + bloom + SMAA, low = the plain forward render. "auto" starts at ultra on a desktop and high
-// on a phone, and steps down a tier when the frame rate stays under 30 fps.
+// Quality tiers (?gfx=ultra|high|low, or View): ultra = full-res GTAO + bloom + SMAA + 4K shadows + the beam,
+// high = half-res GTAO + bloom + SMAA, low = the plain forward render. "auto" starts at ultra on a desktop, high on a
+// phone and low on a phone with little memory or few cores, and steps down a tier when the frame rate stays under 30 fps.
+// The screen shake follows the palm's speed and is off under load (low tier, under 30 fps) and for reduced motion.
 import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -132,11 +133,12 @@ class Spray {
     this.points = new THREE.Points(geo, mat); this.points.frustumCulled = false; this.points.renderOrder = 12;
     scene.add(this.points);
   }
-  burst(pos, dir, speed) {   // dir: the slap's direction (unit), speed: the palm's m/s
-    const k = Math.round(40 + 10 * speed);
+  // dir: the slap's direction (unit), speed: the palm's m/s, size: the strike's momentum relative to a clean slap
+  burst(pos, dir, speed, size = 1) {
+    const k = Math.min(this.n, Math.round((40 + 10 * speed) * size));
     for (let j = 0; j < k; j++) {
       const i = this.i = (this.i + 1) % this.n;
-      const s = speed * (0.25 + 0.6 * Math.random());
+      const s = speed * (0.25 + 0.6 * Math.random()) * Math.sqrt(size);
       const r = new THREE.Vector3().randomDirection().multiplyScalar(0.55).add(dir).normalize();
       this.p.set(pos.toArray(), 3 * i); this.v.set([r.x * s, r.y * s, r.z * s + 0.8 * Math.random()], 3 * i); this.life[i] = 0;
     }
@@ -154,6 +156,68 @@ class Spray {
   }
 }
 
+// ---- the knockdown dust: chalk and mat dust kicked up where a body hits the floor or the podium ------------------------
+class Dust {
+  constructor(scene, n = 400) {
+    this.n = n; this.i = 0;
+    this.p = new Float32Array(n * 3); this.v = new Float32Array(n * 3); this.life = new Float32Array(n).fill(9);
+    const geo = new THREE.BufferGeometry();
+    this.attr = new THREE.BufferAttribute(new Float32Array(n * 3).fill(-99), 3); this.attr.setUsage(THREE.DynamicDrawUsage);
+    this.age = new THREE.BufferAttribute(new Float32Array(n).fill(9), 1); this.age.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("position", this.attr); geo.setAttribute("age", this.age);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, uniforms: { scale: { value: 300 } },
+      vertexShader: `
+        attribute float age; uniform float scale; varying float vA;
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vA = clamp(1.0 - age / 1.8, 0.0, 1.0);
+          gl_PointSize = scale * (0.06 + 0.12 * (1.0 - vA)) / -mv.z; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `
+        varying float vA;
+        void main() { float d = length(gl_PointCoord - 0.5);
+          gl_FragColor = vec4(vec3(0.62, 0.58, 0.52), 0.32 * vA * smoothstep(0.5, 0.0, d)); }`,
+    });
+    this.points = new THREE.Points(geo, mat); this.points.frustumCulled = false; this.points.renderOrder = 12;
+    scene.add(this.points);
+  }
+  puff(pos, k = 1) {   // pos: where the body met the floor; k: how hard it landed (0..1.5)
+    const m = Math.round(60 + 90 * k);
+    for (let j = 0; j < m; j++) {
+      const i = this.i = (this.i + 1) % this.n, a = Math.random() * Math.PI * 2, s = (0.4 + 1.2 * Math.random()) * (0.5 + k);
+      this.p.set([pos.x + 0.05 * Math.cos(a), pos.y + 0.05 * Math.sin(a), Math.max(0.02, pos.z)], 3 * i);
+      this.v.set([Math.cos(a) * s, Math.sin(a) * s, 0.2 + 0.5 * Math.random()], 3 * i); this.life[i] = 0;
+    }
+  }
+  tick(dt) {
+    for (let i = 0; i < this.n; i++) {
+      if (this.life[i] > 1.8) { this.attr.array[3 * i + 2] = -99; continue; }
+      this.life[i] += dt;
+      const drag = Math.exp(-dt * 4);
+      this.v[3 * i] *= drag; this.v[3 * i + 1] *= drag; this.v[3 * i + 2] = this.v[3 * i + 2] * drag + 0.05 * dt;   // it hangs, then drifts up
+      for (let c = 0; c < 3; c++) { this.p[3 * i + c] += this.v[3 * i + c] * dt; this.attr.array[3 * i + c] = this.p[3 * i + c]; }
+      this.age.array[i] = this.life[i];
+    }
+    this.attr.needsUpdate = this.age.needsUpdate = true;
+  }
+}
+
+// ---- the contact burst: a ring of light off the cheek, sized by the strike's momentum (strike mass x palm speed) ----
+class Rings {
+  constructor(scene) { this.scene = scene; this.live = []; }
+  add(pos, camera, size) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.04 + 0.03 * size, 0.01 + 0.006 * size, 8, 40),
+      new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ring.position.copy(pos); ring.lookAt(camera.position); ring.renderOrder = 13;
+    this.scene.add(ring); this.live.push([ring, 0, size]);
+  }
+  tick(dt) {
+    for (let i = this.live.length - 1; i >= 0; i--) {
+      const f = this.live[i]; f[1] += dt;
+      f[0].scale.setScalar(1 + f[1] * (10 + 8 * f[2])); f[0].material.opacity = Math.max(0, 1 - f[1] / 0.45);
+      if (f[1] > 0.45) { this.scene.remove(f[0]); f[0].geometry.dispose(); f[0].material.dispose(); this.live.splice(i, 1); }
+    }
+  }
+}
+
 // ---- skin: the glTF's standard material with Unreal's skin parameters -------------------------------------------------
 // wrapped light per channel (red light travels further under the skin: a cheap pre-integrated subsurface look) and a
 // warm rim where the surface turns away (peach fuzz catching the light: three's sheen for a fraction of its cost - the
@@ -165,6 +229,7 @@ export function skin(std) {
     ripplePoint: { value: new THREE.Vector3(0, 0, -9) }, rippleDir: { value: new THREE.Vector3(1, 0, 0) },
     rippleTime: { value: 100 }, rippleAmp: { value: 0 },
     flushPoint: { value: new THREE.Vector3(0, 0, -9) }, flush: { value: 0 }, tired: { value: 0 },
+    flushRadius: { value: 9 }, bruise: { value: 0 },   // cm round the hit; the cheek-wide redness the neck damage builds
   };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
@@ -186,10 +251,11 @@ export function skin(std) {
         vSkinW = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>
-        uniform vec3 flushPoint; uniform float flush, tired; varying vec3 vSkinW;`)
+        uniform vec3 flushPoint; uniform float flush, tired, flushRadius, bruise; varying vec3 vSkinW;`)
       .replace("#include <color_fragment>", `#include <color_fragment>
         {
-          float f = flush * clamp(1.0 - distance(vSkinW, flushPoint) * 100.0 / 9.0, 0.0, 1.0);
+          float D = distance(vSkinW, flushPoint) * 100.0;
+          float f = flush * clamp(1.0 - D / flushRadius, 0.0, 1.0) + bruise * 0.45 * clamp(1.0 - D / (2.2 * flushRadius), 0.0, 1.0);
           vec3 c = mix(diffuseColor.rgb, dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)) * vec3(0.7, 0.72, 0.75), tired * 0.35);
           diffuseColor.rgb = mix(c, c * vec3(1.5, 0.5, 0.5), clamp(f, 0.0, 1.0));
         }`)
@@ -217,7 +283,8 @@ export function envLight(root, k) { root.traverse(o => { if (o.isMesh) for (cons
 // ---- the pipeline -----------------------------------------------------------------------------------------------------
 export class Look {
   constructor(renderer, scene, camera, key) {
-    Object.assign(this, { renderer, scene, camera, key, tier: "low", auto: true, slow: 0, shake: 0, shakeAmp: 0 });
+    Object.assign(this, { renderer, scene, camera, key, tier: "low", auto: true, slow: 0, shake: 0, shakeAmp: 0, fps: 60, shakeOn: true });
+    this.reduced = matchMedia("(prefers-reduced-motion: reduce)");
     const pm = new THREE.PMREMGenerator(renderer);
     scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;   // speculars and reflections from a room
     scene.environmentIntensity = 1;   // per material: the arena keeps its dark, stage-lit look (envLight)
@@ -226,7 +293,7 @@ export class Look {
     const from = key.position.clone(), to = key.target.position.clone();
     this.beam = beam(from, to, 1.5); this.motes = motes(from, to, 1.2);
     scene.add(this.beam, this.motes);
-    this.spray = new Spray(scene);
+    this.spray = new Spray(scene); this.dust = new Dust(scene); this.rings = new Rings(scene);
     this.composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 0 }));
     this.composer.addPass(new RenderPass(scene, camera));
     this.gtao = new GTAOPass(scene, camera, 1, 1);
@@ -243,7 +310,10 @@ export class Look {
   }
   setTier(t) {
     this.auto = !TIERS.includes(t);   // a named tier stays put; "auto" may step down
-    if (this.auto) t = matchMedia("(pointer: coarse)").matches ? "high" : "ultra";
+    if (this.auto) {
+      const phone = matchMedia("(pointer: coarse)").matches, small = (navigator.deviceMemory || 8) <= 3 || (navigator.hardwareConcurrency || 8) <= 4;
+      t = phone ? (small ? "low" : "high") : "ultra";
+    }
     this.tier = t;
     const ultra = t === "ultra";
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, t === "low" ? 1.25 : 2));
@@ -259,27 +329,36 @@ export class Look {
     this.composer.setPixelRatio(pr); this.composer.setSize(w, h);
     if (this.tier === "high") this.gtao.setSize(Math.round(w * pr / 2), Math.round(h * pr / 2));   // half-res AO on a phone
     this.lens.uniforms.aspect.value = w / h;
-    this.motes.material.uniforms.scale.value = this.spray.points.material.uniforms.scale.value = h * pr * 0.5;
+    this.motes.material.uniforms.scale.value = this.spray.points.material.uniforms.scale.value =
+      this.dust.points.material.uniforms.scale.value = h * pr * 0.5;
   }
-  // a strike: droplets off the cheek, the shock ring from the contact, the camera jolts with the palm's speed
-  hit(pos, dir, speed) {
+  // the shake runs only when it is affordable and wanted: not on the low tier, not under 30 fps, not for reduced
+  // motion, not when the viewer turned it off
+  get canShake() { return this.shakeOn && !this.reduced.matches && this.tier !== "low" && this.fps >= 30; }
+  // a strike: droplets off the cheek and a ring of light, both sized by the momentum (size 1 = a 3 kg x 9 m/s clean
+  // slap), the lens's shock ring from the contact, the camera jolts with the palm's speed
+  hit(pos, dir, speed, size = 1) {
     const p = new THREE.Vector3(...pos);
-    this.spray.burst(p, dir, speed);
+    this.spray.burst(p, dir, speed, size);
+    this.rings.add(p, this.camera, size);
     const s = p.clone().project(this.camera);
     this.lens.uniforms.center.value.set(s.x * 0.5 + 0.5, s.y * 0.5 + 0.5);
     this.lens.uniforms.age.value = 0; this.lens.uniforms.amp.value = Math.min(1.5, Math.max(0, (speed - 4) / 6));
-    this.shake = 0; this.shakeAmp = Math.min(0.03, 0.002 * speed);
+    this.shake = 0; this.shakeAmp = this.canShake ? Math.min(0.03, 0.002 * speed) : 0;
   }
+  knockdown(pos, k) { this.dust.puff(new THREE.Vector3(...pos), k); }
   render(dt, fps) {
     const t = performance.now() / 1000;
     this.beam.material.uniforms.time.value = this.motes.material.uniforms.time.value = this.lens.uniforms.time.value = t;
     this.lens.uniforms.age.value += dt;
-    this.spray.tick(dt);
+    this.spray.tick(dt); this.dust.tick(dt); this.rings.tick(dt);
+    if (fps) this.fps = fps;
     if (this.auto && fps) {   // a slow machine steps down a tier after 4 s under 30 fps (the floor)
       this.slow = fps < 30 ? this.slow + dt : 0;
       if (this.slow > 4 && this.tier !== "low") { this.slow = 0; this.setTier(TIERS[TIERS.indexOf(this.tier) - 1]); this.auto = true; }
     }
     let jolt = null;
+    if (this.shakeAmp > 0 && !this.canShake) this.shakeAmp = 0;   // the load or the setting changed mid-jolt
     if (this.shakeAmp > 0) {   // a damped jolt, then the camera is put back where the orbit controls left it
       this.shake += dt;
       const a = this.shakeAmp * Math.exp(-this.shake * 14) * Math.sin(this.shake * 70);

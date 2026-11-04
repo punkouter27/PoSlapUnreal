@@ -44,6 +44,15 @@ export async function loadAthlete(scene, url, mj, m, prefix, tint) {
   const skins = [];   // the skin shader (fx.js): subsurface wrap, sheen, the cheek ripple and flush
   gltf.scene.traverse(o => { if (o.isSkinnedMesh) { o.material = skin(o.material); skins.push(o.material.userData.skin); } });
   envLight(gltf.scene, 0.3);
+  // the deformable cheek: morph targets CheekDent_L / CheekDent_R (the athlete's own left and right), if the GLB has
+  // them; without them cheek() does nothing and the shader's ripple alone pushes the cheek in
+  const dents = [];   // [influences, index of _L, index of _R]
+  gltf.scene.traverse(o => {
+    const dict = o.morphTargetDictionary;
+    if (!dict || !o.morphTargetInfluences) return;
+    const l = dict.CheekDent_L ?? -1, r = dict.CheekDent_R ?? -1;
+    if (l >= 0 || r >= 0) dents.push([o.morphTargetInfluences, l, r]);
+  });
 
   // MuJoCo at rest: qpos0, kinematics
   const d0 = new mj.MjData(m); mj.mj_resetData(m, d0); mj.mj_kinematics(m, d0);
@@ -73,7 +82,8 @@ export async function loadAthlete(scene, url, mj, m, prefix, tint) {
   const W = new THREE.Matrix4(), inv = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3();
 
   return {
-    root: gltf.scene, skins,
+    root: gltf.scene, skins, hasCheek: dents.length > 0,
+    cheek(left, right) { for (const [w, l, r] of dents) { if (l >= 0) w[l] = left; if (r >= 0) w[r] = right; } },
     // push(name, p, d): may move a driven bone's position (app.js keeps the drawn hand out of the face it hits)
     update(d, push) {
       for (const bone of order) {
