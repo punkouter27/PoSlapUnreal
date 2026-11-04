@@ -1,6 +1,8 @@
 """Bundle the web version for static hosting: python Web/build.py  ->  Web/dist/ (same layout as the dev server:
 dist/Web/ holds the page and its libraries, dist/training/ the arena, fingerprints, cards and the two brains loader.js names).
 """
+import base64
+import hashlib
 import re
 import shutil
 import time
@@ -29,7 +31,7 @@ data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerpri
     + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
-for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "fx.js", "audio.js", "assets/arena.glb")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
+for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "assets/arena.glb")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
         + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars] \
         + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS] \
         + [(ROOT / f, DIST / f) for f in data]:
@@ -41,10 +43,14 @@ page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)',
                         page.read_text(encoding="utf-8")), encoding="utf-8")
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
+# the page's one inline script is its import map: CSP blocks an inline script it has no hash for, so its hash is listed
+importmap = re.search(r'<script type="importmap">(.*?)</script>', page.read_text(encoding="utf-8"), re.S).group(1)
+importmap_hash = base64.b64encode(hashlib.sha256(importmap.encode("utf-8")).digest()).decode()
 (DIST / "staticwebapp.config.json").write_text(
     '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
-    '"headers": { "Content-Security-Policy": "default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\'; '
-    'style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: blob:; connect-src \'self\' ws: wss:; '
+    f'"headers": {{ "Content-Security-Policy": "default-src \'self\'; script-src \'self\' \'wasm-unsafe-eval\' \'sha256-{importmap_hash}\'; '
+    'style-src \'self\' \'unsafe-inline\' https://fonts.googleapis.com; font-src \'self\' https://fonts.gstatic.com; '   # the HUD's typefaces
+    'img-src \'self\' data: blob:; connect-src \'self\' ws: wss:; '
     'worker-src \'self\' blob:; object-src \'none\'; base-uri \'self\'" } }\n')
 
 

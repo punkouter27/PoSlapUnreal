@@ -3,153 +3,213 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
 <title>PoSlap Arena</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M0 0h8v16H0z%22 fill=%22%23e5554c%22/%3E%3Cpath d=%22M8 0h8v16H8z%22 fill=%22%235d8cf0%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
-/* Layout: full-bleed 3D arena, a broadcast HUD in the corners, a bottom dock with the pick and the tab row.
-   One viewport, no scrolling: the HUD is a grid, the dock is fixed at the bottom, the sheet opens upwards. */
+/* Layout: a full-bleed 3D arena under a broadcast HUD. One viewport, no scrolling, portrait first (360 x 800 up to
+   21:9): the corner anchors (TL title, TC rate, TR settings + stats, BL telemetry, BR build stamp), the athletes'
+   plates under them, a bottom dock (the pick and the tab row) and a bottom sheet (Match / Brains / View) that opens
+   upwards. Every text is at least 14 px; long names shrink to fit, then ellipsis. */
 :root {
-  --bg: #0b0b0d; --panel: rgb(14 14 18 / .78); --ink: #f2f0ea; --ink-2: #b8b6ad; --rule: rgb(255 255 255 / .12);
-  --red: #e5554c; --blue: #5d8cf0; --gold: #f1c24b; --green: #6fce8f;
+  --bg: #0b0b0d; --panel: rgb(14 14 18 / .80); --ink: #f2f0ea; --ink-2: #c4c2b8; --rule: rgb(255 255 255 / .14);
+  --red: #e5554c; --blue: #6b96f2; --gold: #f1c24b; --green: #6fce8f;
   --display: "Anton", Impact, "Arial Narrow", sans-serif; --body: "Public Sans", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+  --fs: 14px; --fs-m: clamp(14px, 3.6vw, 16px); --fs-l: clamp(15px, 4vw, 18px);
   --inset-t: max(10px, env(safe-area-inset-top)); --inset-r: max(10px, env(safe-area-inset-right));
   --inset-b: max(10px, env(safe-area-inset-bottom)); --inset-l: max(10px, env(safe-area-inset-left));
   --bottomh: 116px;              /* the dock's height (app.js measures it) */
+  --wide: 640px;                 /* the plates, the dock and the sheet stop growing here (desktop, 21:9) */
   color-scheme: dark;
 }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--body); overflow: hidden; overscroll-behavior: none; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: var(--fs)/1.35 var(--body); overflow: hidden; overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-kerning: normal; -webkit-text-size-adjust: 100%; }
+button { font-family: var(--body); }
 canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-.hud { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; backdrop-filter: blur(6px); pointer-events: none; }
+.hud { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; backdrop-filter: blur(6px); pointer-events: none; text-shadow: 0 1px 1px rgb(0 0 0 / .45); }
+.num { font-variant-numeric: tabular-nums; }
 
-/* ---- the corner anchors: TL state, TC rate, TR settings, BL telemetry, BR build stamp ---- */
-.hudgrid { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: var(--inset-t) var(--inset-r) calc(var(--bottomh) + 6px) var(--inset-l); pointer-events: none; }
-.tl { grid-area: 1 / 1; justify-self: start; align-self: start; display: grid; gap: 2px; padding: 8px 10px; }
-.tc { grid-area: 1 / 2; justify-self: center; align-self: start; padding: 6px 9px; font: 500 clamp(10px, 2.5vw, 12px)/1.35 var(--mono); color: var(--ink-2); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tr { grid-area: 1 / 3; justify-self: end; align-self: start; padding: 4px; pointer-events: auto; }
-.tr button { min-width: 44px; min-height: 44px; font-size: clamp(15px, 4vw, 19px); line-height: 1; background: transparent; border: 1px solid var(--rule); border-radius: 6px; color: var(--ink); cursor: pointer; }
-.tr button:hover { background: rgb(255 255 255 / .08); }
-.tr button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.bl { grid-area: 3 / 1; justify-self: start; align-self: end; display: grid; gap: 4px; padding: 7px 9px; }
-.br { grid-area: 3 / 3; justify-self: end; align-self: end; font: 500 clamp(10px, 2.4vw, 12px) var(--mono); color: var(--ink-2); text-align: right; }
-.brand { font-family: var(--display); font-size: clamp(20px, 5.5vw, 30px); letter-spacing: .02em; line-height: 1; }
+/* ---- the anchors ---- */
+.hudgrid { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 6px 8px; padding: var(--inset-t) var(--inset-r) calc(var(--bottomh) + 6px) var(--inset-l); pointer-events: none; }
+.tl { grid-area: 1 / 1; justify-self: start; align-self: start; display: grid; gap: 1px; padding: 7px 10px; max-width: min(52vw, 300px); }
+.tc { grid-area: 1 / 2; justify-self: center; align-self: start; padding: 5px 8px; font: 500 var(--fs)/1.3 var(--mono); color: var(--ink-2); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tr { grid-area: 1 / 3; justify-self: end; align-self: start; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+.tr button { width: 44px; height: 44px; font-size: 19px; line-height: 1; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); cursor: pointer; backdrop-filter: blur(6px); }
+.tr button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.tr button:hover { border-color: var(--ink-2); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.brand { font-family: var(--display); font-size: clamp(22px, 6vw, 30px); letter-spacing: .03em; line-height: 1; }
 .brand b { color: var(--red); font-weight: 400; } .brand i { color: var(--blue); font-style: normal; }
-.round { font: 600 clamp(10px, 2.4vw, 12px)/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
-.turn { font-weight: 700; font-size: clamp(13px, 3.2vw, 16px); line-height: 1.2; }
+.round-track { font: 700 var(--fs)/1.4 var(--mono); color: var(--gold); letter-spacing: .02em; white-space: nowrap; margin-top: 3px; }
+.turn { font-weight: 700; font-size: var(--fs-m); line-height: 1.25; }
 .turn .red { color: var(--red); } .turn .blue { color: var(--blue); }
-.clock { font: 500 clamp(11px, 2.7vw, 13px)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.strike { font: 500 clamp(11px, 2.7vw, 13px)/1.3 var(--mono); color: var(--gold); min-height: 1.3em; }
-.call { font-weight: 600; font-size: clamp(11px, 2.7vw, 13px); min-height: 1.3em; }
-.cards-line { font: 500 clamp(10px, 2.5vw, 12px)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cards-line b { color: var(--ink); font-weight: 500; }
-.streak-line { font: 600 clamp(10px, 2.5vw, 12px)/1.3 var(--mono); color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.streak-line .best { color: var(--ink-2); font-weight: 500; }
-.tel { font: 500 clamp(10px, 2.4vw, 12px)/1.35 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.dmeters { display: grid; gap: 3px; }
-.drow { display: flex; align-items: center; gap: 5px; font: 500 clamp(9px, 2.2vw, 11px) var(--mono); color: var(--ink-2); }
-.drow .lbl { width: 3.4em; }
-.drow .lbl.red { color: var(--red); } .drow .lbl.blue { color: var(--blue); }
-.drow .bar { width: clamp(40px, 12vw, 76px); height: 6px; background: rgb(255 255 255 / .1); border-radius: 3px; overflow: hidden; }
-.drow .bar i { display: block; height: 100%; width: 0; background: var(--green); }
-.drow .val { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
-.drow .src { opacity: .7; }
-.stamp { letter-spacing: .06em; }
+.clock { font: 500 var(--fs)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.call { font-weight: 600; font-size: var(--fs); min-height: 1.3em; }
+.stamp { grid-area: 4 / 3; justify-self: end; align-self: end; font: 500 var(--fs) var(--mono); color: var(--ink-2); letter-spacing: .06em; text-shadow: 0 1px 2px #000; }
 
-/* the banner sits in the free middle row, never over the scoreboard */
-.round-track { font: 700 clamp(10px, 2.5vw, 12px) var(--mono); color: var(--gold); letter-spacing: .06em; margin-bottom: 2px; }
-.momentum-bar { position: relative; width: 100%; height: 12px; background: rgb(93 140 240 / .4); border-radius: 4px; overflow: hidden; margin: 4px 0; border: 1px solid var(--rule); }
-.momentum-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: rgb(229 85 76 / .85); transition: width .3s ease-out; }
-.momentum-bar span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 9px var(--mono); color: #fff; text-shadow: 0 1px 2px #000; letter-spacing: .05em; white-space: nowrap; overflow: hidden; }
-@media (max-width: 420px) { .momentum-bar span { font-size: 8px; letter-spacing: 0; } }
-.tencount { grid-area: 2 / 1 / 3 / -1; justify-self: center; align-self: center; text-align: center; pointer-events: none; padding: 14px 28px; background: rgb(180 20 20 / .85); border: 2px solid #ff4444; border-radius: 10px; }
+/* ---- the athletes' plates: name, KO/knockdown badges, stamina and neck strength, the read or the swing tag ---- */
+.plates { grid-area: 2 / 1 / 3 / -1; justify-self: center; width: min(100%, var(--wide)); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.plate { padding: 6px 9px 5px; display: grid; gap: 3px; border-top: 3px solid var(--red); min-width: 0; }
+.plate.blue { border-top-color: var(--blue); }
+.plate.striking { box-shadow: 0 0 0 1px var(--gold) inset; }
+.pname { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.pname .nm { flex: 1 1 auto; min-width: 0; font: 700 var(--fs-l)/1.15 var(--body); letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pbadges { display: flex; gap: 3px; flex: none; }
+.pbadge { font: 700 var(--fs)/1 var(--mono); padding: 2px 5px; border-radius: 4px; background: var(--gold); color: #1a1400; }
+.pbadge.ko { background: #ff3b30; color: #fff; }
+.meter { display: grid; grid-template-columns: 3.3em 1fr 2.9em; align-items: center; gap: 5px; font: 500 var(--fs)/1.2 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.meter .bar { height: 6px; border-radius: 3px; background: rgb(255 255 255 / .12); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; width: 100%; background: var(--green); border-radius: 3px; transition: width .25s ease-out, background-color .25s; }
+.meter .v { text-align: right; }
+.cue { font: 700 var(--fs)/1.2 var(--mono); min-height: 1.2em; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; color: var(--ink-2); }
+.cue .rd { flex: 0 0 38px; height: 6px; border-radius: 3px; background: rgb(255 255 255 / .12); overflow: hidden; }
+.cue .rd i { display: block; height: 100%; width: 0; background: var(--gold); }
+.cue.feint { color: #7fd8ff; } .cue.real { color: var(--gold); }
+.momentum-bar { grid-column: 1 / -1; position: relative; height: 20px; border-radius: 5px; overflow: hidden; background: rgb(107 150 242 / .5); border: 1px solid var(--rule); }
+.momentum-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: rgb(229 85 76 / .9); transition: width .3s ease-out; }
+.momentum-bar > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 7px; font: 700 var(--fs)/1 var(--body); color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; letter-spacing: .04em; }
+
+/* ---- the middle: the banner, the count, the head-snap sparkline ---- */
+.tencount { grid-area: 3 / 1 / 4 / -1; justify-self: center; align-self: center; text-align: center; padding: 12px 24px; background: rgb(180 20 20 / .88); border: 2px solid #ff4444; border-radius: 10px; }
 .tencount[hidden] { display: none; }
-.tencount .tc-num { font: 800 clamp(36px, 10vw, 72px) var(--display); color: #fff; line-height: 1; }
-.tencount .tc-text { font: 700 clamp(11px, 2.8vw, 14px) var(--mono); color: #ffe08a; letter-spacing: .08em; margin-top: 4px; }
-.banner { grid-area: 2 / 1 / 3 / -1; justify-self: center; align-self: start; margin-top: 4vh; text-align: center; pointer-events: none; opacity: 0; transition: opacity .25s; padding: 10px 24px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; backdrop-filter: blur(6px); }
+.tencount .tc-num { font: 400 clamp(40px, 11vw, 72px)/1 var(--display); color: #fff; }
+.tencount .tc-text { font: 700 var(--fs) var(--mono); color: #ffe08a; letter-spacing: .06em; margin-top: 4px; }
+.banner { grid-area: 3 / 1 / 4 / -1; justify-self: center; align-self: start; margin-top: 2vh; max-width: 100%; text-align: center; opacity: 0; transition: opacity .25s; padding: 8px 20px; }
 .banner.on { opacity: 1; }
-.banner .big { font-family: var(--display); font-size: clamp(28px, 8vw, 60px); line-height: 1; text-transform: uppercase; }
-.banner .small { font-weight: 600; font-size: clamp(11px, 2.8vw, 14px); color: var(--ink-2); margin-top: 4px; }
+.banner .big { font: 400 clamp(26px, 8vw, 56px)/1.05 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.banner .small { font-weight: 600; font-size: var(--fs); color: var(--ink-2); margin-top: 3px; }
+.sparkbox { grid-area: 3 / 1 / 4 / -1; justify-self: center; align-self: end; padding: 6px 9px 7px; display: grid; gap: 2px; opacity: 0; transition: opacity .3s; }
+.sparkbox.on, .detail .sparkbox.has { opacity: 1; }
+.sparkbox .slabel { display: flex; justify-content: space-between; gap: 12px; font: 600 var(--fs)/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.sparkbox .slabel b { color: var(--ink); font-weight: 700; }
+.sparkbox canvas { width: 210px; height: 46px; display: block; }
+
+/* ---- detailed stats (TAB or the stats button): the default HUD stays clean ---- */
+.bl { grid-area: 4 / 1 / 5 / 3; justify-self: start; align-self: end; display: none; gap: 3px; padding: 7px 10px; max-width: 100%; }
+.detail .bl { display: grid; }
+.tel, .statline { font: 500 var(--fs)/1.35 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.statline b { color: var(--ink); font-weight: 700; }
+.statline .gold { color: var(--gold); }
+.dmeters { display: grid; gap: 3px; }
+.drow { display: grid; grid-template-columns: 3.4em 1fr 3.4em; align-items: center; gap: 6px; font: 500 var(--fs)/1.2 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.drow .lbl.red { color: var(--red); } .drow .lbl.blue { color: var(--blue); }
+.drow .bar { min-width: 60px; height: 6px; background: rgb(255 255 255 / .12); border-radius: 3px; overflow: hidden; }
+.drow .bar i { display: block; height: 100%; width: 0; background: var(--green); }
+.drow .val { text-align: right; }
 
 /* ---- the bottom: the sheet opens upwards, the dock holds the pick and the tabs ---- */
-.bottom { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 0 var(--inset-r) var(--inset-b) var(--inset-l); pointer-events: none; }
-.sheet { pointer-events: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; backdrop-filter: blur(8px); padding: 10px 12px; max-height: 46vh; overflow: hidden; }
+.bottom { position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: min(100%, calc(var(--wide) + 20px)); box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 0 var(--inset-r) var(--inset-b) var(--inset-l); pointer-events: none; }
+.sheet { pointer-events: auto; background: rgb(14 14 18 / .9); border: 1px solid var(--rule); border-radius: 12px; backdrop-filter: blur(8px); padding: 10px 12px; max-height: 52vh; overflow: hidden; }
 .sheet[hidden] { display: none; }
-.sheet h3 { margin: 0 0 6px; font: 600 clamp(10px, 2.4vw, 12px) var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.sheet h3 { margin: 4px 0 4px; font: 700 var(--fs) var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 .dock { pointer-events: auto; display: grid; gap: 6px; }
 .pickbar { position: relative; display: flex; gap: 6px; align-items: stretch; }
 .picks { display: flex; gap: 4px; flex: 1 1 auto; }
-.picks button, .tabs button, .sheet button, .menuCard button { font: 600 clamp(11px, 2.9vw, 13px) var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
-.picks button { flex: 1 1 0; min-height: 46px; min-width: 44px; letter-spacing: .04em; }
-.picks button[data-pick="red"] { border-color: rgb(229 85 76 / .55); } .picks button[data-pick="blue"] { border-color: rgb(93 140 240 / .55); }
+.picks button, .tabs button, .sheet button, .menuCard button, .result button { font: 700 var(--fs)/1.1 var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; letter-spacing: .03em; }
+.picks button { flex: 1 1 0; min-height: 46px; min-width: 44px; }
+.picks button[data-pick="red"] { border-color: rgb(229 85 76 / .6); } .picks button[data-pick="blue"] { border-color: rgb(107 150 242 / .6); }
 .picks button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .picks button[aria-pressed="true"][data-pick="red"] { background: var(--red); border-color: var(--red); color: #fff; }
 .picks button[aria-pressed="true"][data-pick="blue"] { background: var(--blue); border-color: var(--blue); color: #fff; }
-.picks button:disabled { opacity: .38; cursor: default; }
-.picks button:focus-visible, .tabs button:focus-visible, .sheet button:focus-visible, .menuCard button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.pickinfo { display: grid; align-content: center; justify-items: end; padding: 0 4px; font: 600 clamp(10px, 2.5vw, 12px) var(--mono); color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.picks button:disabled { opacity: .4; cursor: default; }
+.pickinfo { display: grid; align-content: center; justify-items: end; padding: 0 4px; font: 700 var(--fs)/1.25 var(--mono); color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pickinfo .best { color: var(--ink-2); font-weight: 500; }
-.pickbanner { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 8px; background: rgb(14 14 18 / .92); border: 1px solid var(--rule); font: 700 clamp(12px, 3.2vw, 16px) var(--body); letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.pickbanner { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 8px; background: rgb(14 14 18 / .94); border: 1px solid var(--rule); font: 700 var(--fs-m) var(--body); letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .pickbanner.on { opacity: 1; }
 .pickbanner.good { color: var(--green); } .pickbanner.bad { color: var(--red); } .pickbanner.none { color: var(--ink-2); }
 .tabs { display: flex; gap: 4px; }
-.tabs button { flex: 1 1 0; min-height: 40px; min-width: 44px; position: relative; color: var(--ink-2); font-size: clamp(10px, 2.6vw, 12px); }
+.tabs button { flex: 1 1 0; min-height: 44px; min-width: 44px; color: var(--ink-2); }
 .tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
-.badge { display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 8px; background: rgb(255 255 255 / .12); font: 500 10px var(--mono); vertical-align: 1px; }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 9px; background: rgb(255 255 255 / .12); font: 500 var(--fs) var(--mono); }
 .tabs button[aria-selected="true"] .badge { background: rgb(0 0 0 / .18); }
 .badge.hot { background: var(--gold); color: #1a1400; }
 
-/* the panel inside the sheet */
-.panel { display: grid; gap: 8px; }
-.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font: 500 clamp(10px, 2.5vw, 12px) var(--mono); font-variant-numeric: tabular-nums; margin: 0; }
-.kv dt { color: var(--ink-2); } .kv dd { margin: 0; text-align: right; }
-table { border-collapse: collapse; font: 500 clamp(10px, 2.5vw, 12px) var(--mono); font-variant-numeric: tabular-nums; }
-th, td { padding: 2px 8px; text-align: right; } th { color: var(--ink-2); font-weight: 500; text-align: left; }
+/* the panels inside the sheet: compact pairs that wrap, so a tab never needs a scroll */
+.panel { display: grid; gap: 6px; }
+.kv { display: flex; flex-wrap: wrap; gap: 3px 14px; margin: 0; font: 500 var(--fs)/1.35 var(--mono); font-variant-numeric: tabular-nums; }
+.kv div { display: flex; gap: 6px; white-space: nowrap; } .kv dt { color: var(--ink-2); } .kv dd { margin: 0; font-weight: 700; }
+table { border-collapse: collapse; font: 500 var(--fs) var(--mono); font-variant-numeric: tabular-nums; }
+th, td { padding: 1px 10px 1px 0; text-align: right; } th { color: var(--ink-2); font-weight: 500; text-align: left; }
 td.r { color: var(--red); } td.b { color: var(--blue); }
 .sheet .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.sheet .row > button { min-height: 38px; padding: 0 12px; }
+.sheet .row > button { min-height: 44px; padding: 0 12px; }
 .sheet .row > button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
-.sheet .note { color: var(--ink-2); font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
-.sheet .athlete { display: grid; gap: 1px; font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
-.sheet .athlete b { font-size: clamp(11px, 2.8vw, 13px); }
+.sheet .note { color: var(--ink-2); font: 500 var(--fs)/1.35 var(--body); }
+.sheet .athlete { display: grid; gap: 1px; font: 500 var(--fs) var(--mono); }
+.sheet .athlete b { font: 700 var(--fs-m) var(--body); }
 .sheet .athlete .red { color: var(--red); } .sheet .athlete .blue { color: var(--blue); }
 .matchups { display: flex; flex-wrap: wrap; gap: 5px; }
-.matchups a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: clamp(11px, 2.8vw, 13px); padding: 0 10px; min-height: 38px; display: inline-flex; align-items: center; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); }
+.matchups a { color: var(--ink); text-decoration: none; font: 700 var(--fs) var(--body); padding: 0 10px; min-height: 44px; display: inline-flex; align-items: center; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); }
 .matchups a[aria-current="true"] { background: var(--ink); color: var(--bg); }
-.matchups a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.matchups .note { flex-basis: 100%; color: var(--gold); font-size: clamp(10px, 2.4vw, 12px); }
+.matchups .note { flex-basis: 100%; color: var(--gold); }
 
-/* the menu: the state flow starts here (menu -> live or practice -> result -> reset) */
-.menu { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 16px; background: rgb(6 6 8 / .84); backdrop-filter: blur(4px); }
+/* ---- the result (win / loss): the judges' cards flip one by one, then REMATCH or the menu ---- */
+.result { position: fixed; inset: 0; z-index: 4; display: none; place-items: center; padding: var(--inset-t) var(--inset-r) calc(var(--inset-b) + 76px) var(--inset-l); background: rgb(6 6 8 / .55); }
+.result.on { display: grid; }
+.resultCard { width: min(440px, 100%); box-sizing: border-box; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px; display: grid; gap: 10px; text-align: center; backdrop-filter: blur(8px); }
+.resultCard .who { font: 400 clamp(34px, 11vw, 60px)/1 var(--display); text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resultCard .how { font: 700 var(--fs-m) var(--body); color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+.judges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; perspective: 600px; }
+.jcard { position: relative; height: 92px; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.3, .7, .3, 1); }
+.jcard.flip { transform: rotateY(180deg); }
+.jcard > div { position: absolute; inset: 0; display: grid; place-content: center; gap: 2px; border-radius: 10px; border: 1px solid var(--rule); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.jcard .front { background: repeating-linear-gradient(45deg, #1a1a20 0 8px, #22222a 8px 16px); font: 700 var(--fs) var(--mono); color: var(--ink-2); letter-spacing: .08em; }
+.jcard .back { transform: rotateY(180deg); background: #f4f1e8; color: #15151a; }
+.jcard .back .j { font: 700 var(--fs) var(--mono); color: #5a5850; letter-spacing: .06em; }
+.jcard .back .sc { font: 400 26px/1 var(--display); letter-spacing: .03em; }
+.jcard .back .for { font: 700 var(--fs) var(--body); }
+.jcard .back .for.red { color: #c2392f; } .jcard .back .for.blue { color: #2f5fcf; } .jcard .back .for.even { color: #5a5850; }
+.resultCard .elo, .resultCard .ko { font: 500 var(--fs)/1.35 var(--mono); color: var(--ink-2); }
+.result .actions { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--inset-b) + 12px); width: min(360px, calc(100% - 32px)); display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+.result .actions button { min-height: 56px; font-size: var(--fs-m); }
+.result .actions .primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* ---- the menu: the state flow starts here (menu -> gameplay -> result -> reset) ---- */
+.menu { position: fixed; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box;
+  padding: var(--inset-t) var(--inset-r) calc(var(--inset-b) + 84px) var(--inset-l); background: rgb(6 6 8 / .86); backdrop-filter: blur(4px); }
 .menu[hidden] { display: none; }
-.menuCard { width: min(440px, 100%); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; display: grid; gap: 8px; text-align: center; }
-.menuCard .brand { font-size: clamp(28px, 9vw, 42px); }
-.menuCard .sub { color: var(--ink-2); font-size: clamp(11px, 2.8vw, 13px); }
-.menuCard button { min-height: 44px; padding: 0 14px; }
-.menuCard button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
-.menuCard .matchups { justify-content: center; }
-.lastResult { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--gold); border-radius: 6px; text-align: center; }
-.lastResult b { font-size: clamp(13px, 3.4vw, 16px); color: var(--gold); }
-.lastResult span { font: 500 clamp(10px, 2.6vw, 12px) var(--mono); color: var(--ink-2); }
-.roster16 button small { display: block; font: 500 9px var(--mono); color: var(--ink-2); margin-top: 2px; }
-.menuCard .foot { color: var(--ink-2); font: 500 clamp(10px, 2.4vw, 12px) var(--mono); }
-
-.menuCorners { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 2px 0; }
-.menuCorners .cornerPick { flex: 1 1 0; min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; font-size: 11px; }
-.menuCorners .cornerPick.red { border-color: rgba(229, 85, 76, 0.4); }
-.menuCorners .cornerPick.blue { border-color: rgba(93, 140, 240, 0.4); }
+.menuCard { width: min(440px, 100%); box-sizing: border-box; max-height: 100%; overflow: hidden; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 14px clamp(8px, 2.5vw, 14px); display: grid; gap: 8px; text-align: center; }
+.menuCard .brand { font-size: clamp(32px, 10vw, 46px); }
+.menuCard .sub { color: var(--ink-2); font-size: var(--fs); }
+.lastResult { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid var(--gold); border-radius: 8px; }
+.lastResult[hidden] { display: none; }
+.lastResult b { font-size: var(--fs-m); color: var(--gold); }
+.lastResult span { font: 500 var(--fs) var(--mono); color: var(--ink-2); }
+.menuCorners { display: flex; gap: 8px; align-items: center; }
+.menuCorners .cornerPick { flex: 1 1 0; min-width: 0; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 4px; }
+.menuCorners .cornerPick span { color: var(--ink-2); font-weight: 600; }
+.menuCorners .cornerPick b { font-size: var(--fs-m); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuCorners .cornerPick.red { border-color: rgb(229 85 76 / .5); } .menuCorners .cornerPick.blue { border-color: rgb(107 150 242 / .5); }
 .menuCorners .cornerPick.active { outline: 2px solid var(--gold); outline-offset: 1px; }
-.menuCorners .vs { font-weight: 700; color: var(--ink-2); font-size: 12px; }
-.roster16 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0; }
-.roster16 button { min-height: 44px; padding: 4px 2px; font-size: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; }
-.roster16 button.empty { opacity: 0.25; cursor: default; background: rgba(255,255,255,0.03); }
-.roster16 button.selRed { border-color: var(--red); background: rgba(229,85,76,0.18); font-weight: 700; }
-.roster16 button.selBlue { border-color: var(--blue); background: rgba(93,140,240,0.18); font-weight: 700; }
-.roster16 button.selBoth { border-color: #a855f7; background: rgba(168,85,247,0.22); font-weight: 700; }
-.loading { position: fixed; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; background: var(--bg); z-index: 5; }
+.menuCorners .vs { font: 400 18px var(--display); color: var(--ink-2); }
+.roster16 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.roster16 button { min-height: 48px; padding: 3px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; }
+.roster16 button b { font-size: var(--fs); letter-spacing: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster16 button small { font: 500 var(--fs)/1.1 var(--body); color: var(--ink-2); white-space: nowrap; }
+.roster16 button.empty { opacity: .3; cursor: default; background: rgb(255 255 255 / .03); }
+.roster16 button.selRed { border-color: var(--red); background: rgb(229 85 76 / .2); }
+.roster16 button.selBlue { border-color: var(--blue); background: rgb(107 150 242 / .2); }
+.roster16 button.selBoth { border-color: #a855f7; background: rgb(168 85 247 / .24); }
+.menuCard .foot { color: var(--ink-2); font: 500 var(--fs) var(--mono); }
+.thumb { position: fixed; z-index: 7; left: 50%; transform: translateX(-50%); bottom: calc(var(--inset-b) + 12px); width: min(360px, calc(100% - 32px)); min-height: 58px;
+  font: 700 var(--fs-l)/1 var(--body); letter-spacing: .08em; color: var(--bg); background: var(--ink); border: 0; border-radius: 12px; cursor: pointer; box-shadow: 0 6px 24px rgb(0 0 0 / .5); }
+.thumb[hidden] { display: none; }
+.loading { position: fixed; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; background: var(--bg); z-index: 8; }
 .loading .big { font-family: var(--display); font-size: 40px; }
-@media (max-width: 420px) { .drow .bar { width: 40px; } .picks button { letter-spacing: 0; } }
-@media (prefers-reduced-motion: reduce) { .banner, .pickbanner { transition: none; } }
+@media (max-width: 380px) { .meter { grid-template-columns: 2.9em 1fr 2.9em; gap: 4px; } .plate { padding: 5px 7px 4px; } }
+/* landscape (16:9 to 21:9): the plates go to the sides, under the corners, so the faces in the middle stay clear */
+@media (min-aspect-ratio: 4/3) {
+  .plates { width: 100%; grid-template-columns: minmax(0, 300px) minmax(0, 1fr) minmax(0, 300px); align-items: start; }
+  .plate.blue { grid-column: 3; grid-row: 1; }
+  .momentum-bar { grid-column: 2; grid-row: 1; justify-self: center; width: min(100%, 420px); }
+}
+/* the result is the screen: the dock and the sheet step aside under it */
+body[data-phase="result"] .bottom { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .banner, .pickbanner, .sparkbox, .meter .bar i, .momentum-bar i { transition: none; } .jcard { transition: none; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -167,34 +227,47 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 <div class="hudgrid" id="hudgrid">
   <div class="hud tl" id="tl" aria-live="polite">
     <div class="brand"><b>PO</b>SL<i>AP</i></div>
-    <div class="round-track" id="pipsTrack">R1 [○ ○]  R2 [○ ○]  R3 [○ ○]</div>
-    <div class="round" id="round">Round 1 / 3</div>
+    <div class="round-track" id="pipsTrack">R1/3 ○○ ○○ ○○</div>
     <div class="turn" id="turn">–</div>
     <div class="clock" id="clock">clock 30.0 s</div>
-    <div class="momentum-bar" id="momentumBar"><i id="momentumFill"></i><span id="momentumLabel">RED 50% · MOMENTUM · 50% BLUE</span></div>
     <div class="call" id="call"></div>
-    <div class="cards-line" id="cardsLine"></div>
-    <div class="streak-line" id="streak"></div>
   </div>
 
   <div class="hud tc" id="tc"><span id="fps">– fps</span><br><span id="steps">0 steps</span></div>
 
-  <div class="hud tr"><button id="gear" aria-label="Settings" title="Settings">⚙</button></div>
+  <div class="tr">
+    <button id="gear" aria-label="View settings" title="View settings">⚙</button>
+    <button id="statsBtn" aria-label="Detailed stats (TAB)" title="Detailed stats (TAB)" aria-pressed="false">≡</button>
+  </div>
+
+  <div class="plates" id="plates">
+    <div class="hud plate red" id="plateRed"></div>
+    <div class="hud plate blue" id="plateBlue"></div>
+    <div class="momentum-bar" id="momentumBar" title="Momentum"><i id="momentumFill"></i><span><span id="momRed">50%</span><span>MOMENTUM</span><span id="momBlue">50%</span></span></div>
+  </div>
+
+  <div class="hud tencount" id="tencount" hidden><div class="tc-num" id="tcNum">1</div><div class="tc-text">KNOCKDOWN · BEAT THE COUNT</div></div>
+  <div class="hud banner" id="banner"><div class="big" id="bannerBig"></div><div class="small" id="bannerSmall"></div></div>
+  <div class="hud sparkbox" id="sparkbox" aria-label="Head snap after the strike">
+    <div class="slabel"><span>HEAD SNAP</span><span>peak <b id="sparkPeak">–</b> m/s</span></div>
+    <canvas id="spark" width="420" height="92"></canvas>
+  </div>
 
   <div class="hud bl" id="bl">
     <div class="tel" id="tel">step 0 · 0.0 s</div>
     <div class="dmeters" id="dmeters"></div>
+    <div class="statline" id="swingLine"></div>
+    <div class="statline" id="readLine"></div>
+    <div class="statline" id="camLine"></div>
+    <div class="statline" id="cardsLine"></div>
+    <div class="statline" id="streak"></div>
   </div>
 
-  <div class="br stamp" id="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
-
-  <div class="hud tencount" id="tencount" hidden><div class="tc-num" id="tcNum">1</div><div class="tc-text">KNOCKDOWN — BEAT THE COUNT</div></div>
-  <div class="hud banner" id="banner"><div class="big" id="bannerBig"></div><div class="small" id="bannerSmall"></div></div>
+  <div class="stamp" id="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
 </div>
 
 <div class="bottom" id="bottom">
   <section class="sheet" id="sheet" hidden aria-label="Details"><div class="panel" id="panel"></div></section>
-
   <div class="dock">
     <div class="pickbar">
       <div class="picks" id="picks" role="group" aria-label="Predict the next strike">
@@ -206,31 +279,40 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
       <div class="pickbanner" id="pickbanner" aria-live="polite"></div>
     </div>
     <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
-      <button role="tab" data-tab="telemetry" aria-selected="true">Telemetry<span class="badge" id="bTelemetry"></span></button>
-      <button role="tab" data-tab="science" aria-selected="false">Science<span class="badge" id="bScience"></span></button>
-      <button role="tab" data-tab="roster" aria-selected="false">Roster<span class="badge" id="bRoster"></span></button>
-      <button role="tab" data-tab="settings" aria-selected="false">Settings<span class="badge" id="bSettings"></span></button>
+      <button role="tab" data-tab="match" aria-selected="false">Match<span class="badge" id="bMatch"></span></button>
+      <button role="tab" data-tab="brains" aria-selected="false">Brains<span class="badge" id="bBrains"></span></button>
+      <button role="tab" data-tab="view" aria-selected="false">View<span class="badge" id="bView"></span></button>
     </div>
   </div>
+</div>
+
+<div class="result" id="result" aria-live="polite">
+  <div class="resultCard">
+    <div class="who" id="resWho"></div>
+    <div class="how" id="resHow"></div>
+    <div class="judges" id="judges"></div>
+    <div class="ko" id="resKo"></div>
+    <div class="elo" id="resElo"></div>
+  </div>
+  <div class="actions"><button id="resMenu">MENU</button><button class="primary" id="resAgain">REMATCH</button></div>
 </div>
 
 <div class="menu" id="menu">
   <div class="menuCard">
     <div class="brand"><b>PO</b>SL<i>AP</i></div>
-    <div class="sub">Choose 2 Fighters from 16 Slots · Start Match</div>
+    <div class="sub">Pick two fighters, then START</div>
     <div class="lastResult" id="menuResult" hidden></div>
     <div class="menuCorners">
-      <button class="cornerPick red active" id="btnPickRed"><span>RED (P1)</span><b id="lblRed">GRANDPA</b></button>
+      <button class="cornerPick red active" id="btnPickRed"><span>RED · P1</span><b id="lblRed">GRANDPA</b></button>
       <span class="vs">VS</span>
-      <button class="cornerPick blue" id="btnPickBlue"><span>BLUE (P2)</span><b id="lblBlue">KIM</b></button>
+      <button class="cornerPick blue" id="btnPickBlue"><span>BLUE · P2</span><b id="lblBlue">KIM</b></button>
     </div>
-    <div class="sub" id="slotPrompt">Tap an available slot for RED (P1)</div>
+    <div class="sub" id="slotPrompt">Tap a slot for RED</div>
     <div class="roster16" id="roster16"></div>
-    <button class="primary" id="practice">START MATCH</button>
-    <button class="primary" id="watchlive" hidden>Watch the live match</button>
-    <div class="matchups" id="menuMatch" style="display:none"></div>
-    <div class="foot" id="menuFoot">build —</div>
+    <div class="foot" id="menuFoot">build –</div>
   </div>
+  <button class="thumb" id="practice">START MATCH</button>
+  <button class="thumb" id="watchlive" hidden>WATCH LIVE</button>
 </div>
 
 <script type="module" src="./app.js"></script>
