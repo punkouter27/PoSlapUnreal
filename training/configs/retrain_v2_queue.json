@@ -1,0 +1,18 @@
+[
+ {"level": "L2", "char": "grandpa", "minutes": 75, "envs": 8192, "resume": "models/brains/grandpa_final.pt", "no_gate": true,
+  "args": ["--physics", "2", "--critic-warmup", "20", "--reach-start", "1.0", "--imit-start", "0.5"],
+  "note": "physics 2 (models/v2): re-learn the slap under the asymmetric torques and the stiff palm-head pair; strike + guard; imitates models/v2/grandpa_slap_demo.json"},
+ {"level": "L3", "char": "grandpa", "minutes": 60, "envs": 8192, "no_gate": true, "args": ["--physics", "2"],
+  "note": "absorb the scripted slap on the rigid floor and the new welded-pair contacts, keep the strike"},
+ {"level": "L4", "char": "grandpa", "minutes": 90, "envs": 8192, "no_gate": true, "args": ["--physics", "2"],
+  "note": "self-play duel: the strike impulse from the part that touched (physics 2)"},
+ {"level": "L2", "char": "kim", "minutes": 75, "envs": 8192, "resume": "models/brains/kim_final.pt", "no_gate": true,
+  "args": ["--physics", "2", "--critic-warmup", "20", "--reach-start", "1.0", "--imit-start", "0.5"],
+  "note": "Kim's slap under physics 2; imitates models/v2/kim_slap_demo.json"},
+ {"level": "L3", "char": "kim", "minutes": 60, "envs": 8192, "no_gate": true, "args": ["--physics", "2"]},
+ {"level": "L4", "char": "kim", "minutes": 90, "envs": 8192, "no_gate": true, "args": ["--physics", "2"]},
+ {"level": "L4", "char": "grandpa", "vs": "kim", "minutes": 90, "envs": 8192, "no_gate": true, "args": ["--physics", "2"],
+  "note": "the mixed pairing against Kim's physics-2 brain from this queue (frozen)"},
+ {"level": "L4", "char": "kim", "vs": "grandpa", "minutes": 90, "envs": 8192, "args": ["--physics", "2"],
+  "note": "the last gate: Kim against Grandpa's physics-2 mixed brain; L4 exam = KO 10-40 % per strike, self-falls <= 5 %"}
+]
