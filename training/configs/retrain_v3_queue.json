@@ -1,0 +1,180 @@
+[
+ {
+  "level": "L2",
+  "char": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "runs/grandpa_L4_v2_night3_0109/best.pt",
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0",
+   "--imit-start",
+   "0.3"
+  ],
+  "note": "physics 3 (models/v3): from the graduated grandpa_L4_v2 (on v3: 107/107 landed, KO 7 %, 0 % self-falls in 20 matches); the slap on the face zone (sphere + jaw) of the L2 target"
+ },
+ {
+  "level": "L3",
+  "char": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "absorb on v3: stiff limbs, the jaw, sole friction per foot"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "self-play on v3; the KO reward (envs/arena.py KO_DISP, a KO bootstrapped for the striker)"
+ },
+ {
+  "level": "L2",
+  "char": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/kim_final_vs_grandpa_v2.pt",
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0",
+   "--imit-start",
+   "0.3"
+  ],
+  "note": "from the graduated kim_final_vs_grandpa_v2; Kim's head sphere now sits on her drawn head (9.8 cm forward) with the jaw under it"
+ },
+ {
+  "level": "L3",
+  "char": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ]
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "self-play: the v2 run sat at KO 1-6 %; the KO reward is the lever"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "vs": "kim",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "mixed: against Kim's v3 self-play brain from this queue (frozen)"
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "vs": "grandpa",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "mixed, the gate pairing: KO 10-40 % per strike, self-falls <= 5 %"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "vs": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "polish against the stage-8 Kim"
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "vs": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "polish against the stage-9 Grandpa"
+ },
+ {
+  "level": "L2",
+  "char": "matt",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/matt_L1.pt",
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0",
+   "--imit-start",
+   "1.0"
+  ],
+  "note": "Matt from his graduated L1 (matt_L1.pt); imitates models/v3/matt_slap_demo.json (the v1 reference: Matt has no v2); never graduated L2 on v1 (tasks K13)"
+ },
+ {
+  "level": "L3",
+  "char": "matt",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ]
+ },
+ {
+  "level": "L4",
+  "char": "matt",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": [
+   "--physics",
+   "3"
+  ]
+ }
+]
