@@ -14,6 +14,9 @@ const hill = (fr, a, v, vmax) => {
 const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
 export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
 const BOX = [0.20, 0.25], KICK_STEPS = 2;
+// the feint read (training/constants.py FEINT_*, Unreal's SlapHUD F10): the striker's palm peaked above FEINT_MIN_PEAK
+// and FEINT_AFTER_S later, untouched, is under FEINT_PULLBACK x the peak; back up to FEINT_REARM x it re-arms the read
+const FEINT_MIN_PEAK = 2.5, FEINT_AFTER_S = 0.12, FEINT_PULLBACK = 0.55, FEINT_REARM = 0.95, FEINT_REARM_S = 0.2;
 const WEIGHTS = [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]];      // judges: speed, head, stagger, defence
 // Eye contact (2026-10-24): match.py's GAZE_*/WATCH_* constants and Unreal's ApplyGaze run IDENTICAL maths.
 // The bias lives in WORLD space (a great-circle walk toward the eye line) and is turned into a neck goal in the
@@ -154,6 +157,8 @@ export class Match {
     const gid = n => { const a = m.geom(n); const i = a.id; a.delete(); return i; };
     this.floor = gid("floor"); this.podium = gid("podium"); this.surface = new Set([this.floor, this.podium]);
     this.dt = m.opt.timestep; this.series = [0, 0]; this.matchNo = 0;
+    // physics 2 (build_body.py --physics 2): the strike impulse and speed come from the part that touched, not hand_r's
+    this.physics = Number(corners[0].fp.physics ?? 1);
     this.autoNext = true;   // after the result hold: a new match (the unattended loop); the page sets false (back to the menu)
     this.newMatch();
   }
@@ -208,6 +213,7 @@ export class Match {
     this.handPrev = v3(d.geom_xpos, S.hand); this.headPrev = v3(d.geom_xpos, D.head);
     this.rec = { round: this.round, striker: S.name, touch: null, part: null, palm: false, speed: 0, head_peak: 0, stagger: false, fouls: [], ko: false, end: null };
     this.touchK = null; this.com0 = null; this.seen = []; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
+    this.fe = { peak: 0, at: 0, swing: false, tagged: false, n: 0 }; this.speedNow = 0;
     this.faints = [];
     this.sides.forEach((x, i) => {
       const k0 = faintStep(x.card, this.seed, this.round, this.s, i, this.dt);
@@ -262,6 +268,7 @@ export class Match {
     }
     if (this.touchK === null && t >= STRIKE_CLOCK) { rec.fouls.push([S.name, "no strike in 30 s"]); rec.end = "clock"; return this.finish(); }
     if (this.touchK !== null && (this.k - this.touchK) * dt >= RECOVERY) { rec.end = "recovered"; return this.finish(); }
+    if (this.k % 4 === 0 && this.touchK === null) this.feintRead(this.speedNow, t, S);   // every brain step until the touch
     if (this.k % 4 === 0) {
       mj.mj_kinematics(m, d);
       const clock = 1 - t / STRIKE_CLOCK, hd = v3(d.geom_xpos, D.head);
@@ -280,6 +287,7 @@ export class Match {
     this.applyCtrl();
     for (const x of this.sides) d.xfrc_applied.fill(0, 6 * x.headBody, 6 * x.headBody + 6);
     if (this.touchK !== null && this.k - this.touchK < KICK_STEPS) d.xfrc_applied.set(this.kick, 6 * D.headBody);
+    const gprev = this.physics >= 2 && this.touchK === null ? d.geom_xpos.slice() : null;
     this.physicsStep();
     this.k++;
     if (!d.qpos.every(Number.isFinite)) { rec.end = "blow-up"; this.emit({ type: "blowup" }); this.phase = "over"; return; }
@@ -288,10 +296,20 @@ export class Match {
     const head = v3(d.geom_xpos, D.head);
     if (this.touchK !== null) rec.head_peak = Math.max(rec.head_peak, dist(head, this.headPrev) / dt);
     this.headPrev = head;
-    if (this.touchK === null) this.checkTouch(S, D, speed, vel);
+    if (this.touchK === null) this.checkTouch(S, D, speed, vel, gprev);
   }
 
-  checkTouch(S, D, speed, vel) {
+  feintRead(speed, t, S) {   // match.py feint_read
+    const fe = this.fe;
+    if (speed > fe.peak) Object.assign(fe, { peak: speed, at: t, swing: true });
+    if (fe.swing && !fe.tagged && t - fe.at > FEINT_AFTER_S && speed < FEINT_PULLBACK * fe.peak && fe.peak > FEINT_MIN_PEAK) {
+      fe.tagged = true; fe.n++;
+      this.emit({ type: "feint", t: Math.round(t * 1000) / 1000, striker: S.name, peak: Math.round(fe.peak * 100) / 100, n: fe.n });
+    }
+    if (fe.tagged && speed > FEINT_REARM * fe.peak && t - fe.at > FEINT_REARM_S) Object.assign(fe, { swing: false, tagged: false, peak: 0 });
+  }
+
+  checkTouch(S, D, speed, vel, gprev) {
     const { m, d, dt } = this, cs = d.contact, n = d.ncon;
     for (let i = 0; i < n; i++) {
       const c = cs.get(i), g0 = c.geom1, g1 = c.geom2;
@@ -302,8 +320,16 @@ export class Match {
         c.delete();
         const a = m.geom(other), part = a.name.replace(/^.*?(red|blue)_/, ""); a.delete();
         this.touchK = this.k; this.com0 = [d.subtree_com[3 * D.pelvis], d.subtree_com[3 * D.pelvis + 1]];
-        Object.assign(this.rec, { touch: this.k * dt, part, palm, speed: Math.round(speed * 100) / 100 });
-        this.emit({ type: "strike", t: this.k * dt, striker: S.name, part, palm, speed, pos });
+        const handSpeed = speed;
+        if (gprev) {   // physics 2: the velocity of the part that touched (v1: hand_r's)
+          const g = v3(d.geom_xpos, other), g0p = [gprev[3 * other], gprev[3 * other + 1], gprev[3 * other + 2]];
+          vel = g.map((x, i) => (x - g0p[i]) / dt); speed = dist(g, g0p) / dt;
+        }
+        const feint = this.fe.n > 0;
+        Object.assign(this.rec, { touch: this.k * dt, part, palm, speed: Math.round(speed * 100) / 100, feint });
+        // hand_speed / feint / feints: additive fields (DOCS/20261103/events.md)
+        this.emit({ type: "strike", t: this.k * dt, striker: S.name, part, palm, speed, pos,
+          hand_speed: Math.round(handSpeed * 100) / 100, feint, feints: this.fe.n });
         // the body behind the palm (card strike_mass): an impulse on the head over KICK_STEPS physics steps
         const k = S.card.strike_mass / (KICK_STEPS * dt), f = vel.map(v => v * k), C = v3(d.xipos, D.headBody);
         const r = [pos[0] - C[0], pos[1] - C[1], pos[2] - C[2]];
@@ -327,7 +353,11 @@ export class Match {
       if (!rec.ko) D.neckStrength = Math.max(MIN_NECK, D.neckStrength - D.card.neck_damage_per_snap * rec.head_peak);
     }
     this.recs.push([this.s, rec]);
-    this.emit({ type: "turn_end", ...rec });
+    if (rec.touch !== null)   // the strike's outcome, once the recovery window has measured it (match.py strike_result)
+      this.emit({ type: "strike_result", t: rec.touch, striker: S.name, defender: D.name, part: rec.part, speed: rec.speed,
+        head_peak: rec.head_peak, feint: rec.feint ?? false, stagger: rec.stagger, ko: rec.ko });
+    const { feint: _f, ...recOut } = rec;
+    this.emit({ type: "turn_end", ...recOut });
     if (rec.ko) { this.endMatch("KO", this.s); return; }
     this.turnInRound++;
     if (this.turnInRound === 2) { this.scoreRound(); this.turnInRound = 0; this.round++; }
