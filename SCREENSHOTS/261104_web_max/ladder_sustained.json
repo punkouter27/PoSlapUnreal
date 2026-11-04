@@ -1,0 +1,152 @@
+{
+ "when": "2026-11-04T14:32:01.594Z",
+ "base": "http://127.0.0.1:8093/Web/",
+ "warm": 6,
+ "measure": 12,
+ "sizes": {
+  "1080x1920": {
+   "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5070 Ti Laptop GPU (0x00002F18) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+   "rows": [
+    {
+     "step": "high",
+     "tier": "high",
+     "fx": {},
+     "fps": 70,
+     "frame_ms": 14.29,
+     "p95_ms": 41.4,
+     "median_fps": 185.2,
+     "low1_fps": 7.2,
+     "gpu_ms": 11.23,
+     "submit_median_ms": 5.4
+    },
+    {
+     "step": "+ depth of field (24 taps) = ultra",
+     "tier": "ultra",
+     "fx": {},
+     "fps": 14.9,
+     "frame_ms": 67.18,
+     "p95_ms": 193.6,
+     "median_fps": 294.1,
+     "low1_fps": 0.4,
+     "gpu_ms": 54.64,
+     "submit_median_ms": 3.4
+    },
+    {
+     "step": "+ floor reflection = cinema",
+     "tier": "cinema",
+     "fx": {},
+     "fps": 12.2,
+     "frame_ms": 81.81,
+     "p95_ms": 258.3,
+     "median_fps": 151.5,
+     "low1_fps": 1,
+     "gpu_ms": 78.08,
+     "submit_median_ms": 6.6
+    },
+    {
+     "step": "+ wear decals + micro-relief = max",
+     "tier": "max",
+     "fx": {},
+     "fps": 16.2,
+     "frame_ms": 61.91,
+     "p95_ms": 315.6,
+     "median_fps": 294.1,
+     "low1_fps": 0.7,
+     "gpu_ms": 99.24,
+     "submit_median_ms": 3.4
+    },
+    {
+     "step": "max raised: GI 8 x 16, SSR 48, csh 24, SSS 2 x 33",
+     "tier": "max",
+     "fx": {
+      "gi": 8,
+      "gis": 16,
+      "ssr": 48,
+      "csh": 24,
+      "sss2": 16
+     },
+     "fps": 1.4,
+     "frame_ms": 697.67,
+     "p95_ms": 3312.3,
+     "median_fps": 3.8,
+     "low1_fps": 0.2,
+     "gpu_ms": 117.81,
+     "submit_median_ms": 260.1
+    }
+   ],
+   "errors": []
+  },
+  "1440x2560": {
+   "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5070 Ti Laptop GPU (0x00002F18) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+   "rows": [
+    {
+     "step": "high",
+     "tier": "high",
+     "fx": {},
+     "fps": 125.5,
+     "frame_ms": 7.97,
+     "p95_ms": 27,
+     "median_fps": 232.6,
+     "low1_fps": 24.4,
+     "gpu_ms": 5.36,
+     "submit_median_ms": 4.3
+    },
+    {
+     "step": "+ depth of field (24 taps) = ultra",
+     "tier": "ultra",
+     "fx": {},
+     "fps": 39.7,
+     "frame_ms": 25.17,
+     "p95_ms": 141.7,
+     "median_fps": 434.8,
+     "low1_fps": 2.7,
+     "gpu_ms": 18.8,
+     "submit_median_ms": 2.3
+    },
+    {
+     "step": "+ floor reflection = cinema",
+     "tier": "cinema",
+     "fx": {},
+     "fps": 25.2,
+     "frame_ms": 39.68,
+     "p95_ms": 135.1,
+     "median_fps": 232.6,
+     "low1_fps": 2.3,
+     "gpu_ms": 35.32,
+     "submit_median_ms": 4.3
+    },
+    {
+     "step": "+ wear decals + micro-relief = max",
+     "tier": "max",
+     "fx": {},
+     "fps": 25.5,
+     "frame_ms": 39.23,
+     "p95_ms": 212.9,
+     "median_fps": 384.6,
+     "low1_fps": 1.3,
+     "gpu_ms": 51.19,
+     "submit_median_ms": 2.6
+    },
+    {
+     "step": "max raised: GI 8 x 16, SSR 48, csh 24, SSS 2 x 33",
+     "tier": "max",
+     "fx": {
+      "gi": 8,
+      "gis": 16,
+      "ssr": 48,
+      "csh": 24,
+      "sss2": 16
+     },
+     "fps": 23.7,
+     "frame_ms": 42.27,
+     "p95_ms": 219,
+     "median_fps": 370.4,
+     "low1_fps": 1.1,
+     "gpu_ms": 56.09,
+     "submit_median_ms": 2.7
+    }
+   ],
+   "errors": []
+  }
+ }
+}
