@@ -40,6 +40,23 @@ ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
 BOX = (0.20, 0.25)
 WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, defence
 KICK_STEPS = 2      # the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
+# physics 3: the kick's reaction (momentum conservation, DOCS/20261104/physics3.md). The kick hands the defender's head
+# strike_mass x v of momentum nobody gave up: physics 1/2 created it. On physics 3 the striker's touching part and the arm
+# above it (up to the shoulder: hand, forearm, upper arm) take -f, split by their masses - the arm that drove the
+# palm is what loses the momentum. SLAP_KICK_REACTION=0 turns it off (A/B).
+KICK_REACTION = os.environ.get("SLAP_KICK_REACTION", "1") != "0"
+
+
+def reaction_chain(m, geom):
+    """The bodies that take the kick's reaction: the touching geom's body and its parents below the chest (an arm);
+    (body ids, mass shares). A part that is not on an arm (a head, a chest) takes it alone."""
+    b, out = int(m.geom_bodyid[geom]), []
+    while b > 0 and re.sub(r"^.*?(red|blue)_", "", m.body(b).name).startswith(("hand", "forearm", "upperarm")):
+        out.append(b)
+        b = int(m.body_parentid[b])
+    out = out or [int(m.geom_bodyid[geom])]
+    w = np.array([m.body_mass[x] for x in out])
+    return out, w / w.sum()
 DEFENDER_ROLE = -1.0   # brains from L3 on defend with the striker's head and hand; earlier ones guard (0)
 EXAM_JITTER = 0.01     # rad per joint on each exam turn's start pose (0.6 deg: below what a judge would see)
 
@@ -262,6 +279,7 @@ class Match:
         pa = {id(x): [x.a.prev.copy()] * 2 for x in self.sides}
         iw, ish = S.a.va[S.a.order.index("waist_twist")], S.a.va[S.a.order.index("shoulder_swing_r")]
         kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
+        react = []           # physics 3: (body, mass share) of the striker's arm taking -kick
         # the feint read (constants.py FEINT_*, Unreal's SlapHUD F10): the striker's palm peaked and pulled back untouched
         fe = dict(peak=0.0, at=0.0, swing=False, tagged=False, n=0)
         speed = 0.0
@@ -332,7 +350,10 @@ class Match:
                         action=np.round(x.a.prev, 2).tolist()) for x in self.sides})
             for x in self.sides:
                 d.ctrl[x.a.act] = x.a.goal
-            d.xfrc_applied[D.head_body] = kick if touch_k is not None and k - touch_k < KICK_STEPS else 0.0
+            on = touch_k is not None and k - touch_k < KICK_STEPS
+            d.xfrc_applied[D.head_body] = kick if on else 0.0
+            for b, w in react:   # physics 3: the reaction on the striker's arm (force at each body's COM)
+                d.xfrc_applied[b, :3] = -w * kick[:3] if on else 0.0
             gprev = d.geom_xpos.copy() if self.physics >= 2 and touch_k is None else None
             muscle_step(m, d, self.vmax)
             k += 1
@@ -372,6 +393,8 @@ class Match:
                             # own mass, so the rest of the striker's mass driving through it comes as an impulse
                             f = vel * (S.card["strike_mass"] / (KICK_STEPS * m.opt.timestep))
                             kick = np.concatenate([f, np.cross(c.pos - d.xipos[D.head_body], f)])
+                            if self.physics >= 3 and KICK_REACTION:
+                                react = list(zip(*reaction_chain(m, other)))
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2), feint=fe["n"] > 0)
                             # hand_speed (striker's right palm, m/s) and the feint read are additive fields (DOCS/20261103/

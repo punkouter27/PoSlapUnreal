@@ -29,6 +29,17 @@ HERE = Path(__file__).resolve().parents[1]
 PREFIX = ("red_", "blue_")
 KICK_STEPS = 2      # the slap's impact impulse lasts 10 ms (match.py)
 KO_WINDOW = 250     # control steps after the first head touch: the match's 5 s recovery window (match.py)
+# The KO reward (2026-11-04, DOCS/20261104/physics3.md). Before it, a KO was the WORST end of a landed strike for the
+# striker: the defender's fall ends the episode, so the striker lost the rest of the window's "stick the landing" pay
+# (0.5 a step, up to 125) and, being terminal, the critic's bootstrap that a window running out gets as a time-out -
+# against +40 for the KO. Kim's self-play L4 sat at KO 1-6 % with strikes at 99 %. Now (SLAP_KO_REWARD, default on
+# from physics 3; 0 = the old reward):
+#   * a KO ends the STRIKER's episode as a time-out (bootstrapped: he keeps the value of standing on), the defender's
+#     as before (terminal, his fall penalty); the striker must be up and in his box himself;
+#   * KO_DISP pays the defender's displacement once, as it grows: the peak of his COM's drift since the touch past
+#     3 cm, up to 15 cm (36 at most; a stagger is a KO's lead-in, Blueprint 1's "off balance");
+#   * the +40 KO bonus and every self-fall / box penalty are unchanged (-150 / -60 still outweigh any hit).
+KO_DISP, DISP_FROM, DISP_TO = 300.0, 0.03, 0.15
 
 
 class ArenaEnv:
@@ -65,6 +76,8 @@ class ArenaEnv:
         self.head_g = t([m.geom(p + "head").id for p in PREFIX])
         self.hand_g = t([m.geom(p + "hand_r").id for p in PREFIX])
         self.head_b = t([m.geom_bodyid[m.geom(p + "head").id] for p in PREFIX])
+        # the face (physics 3): sphere + jaw capsules, a touch counting inside the head's face_zone box (match.py)
+        self.face_of, self.face_site, self.site_size = common.face_lookup(m, PREFIX, dev)
         # the slap's impact (match.py): the striker's card mass behind the palm, as an impulse on the head after the touch
         self.strike_mass = t([json.loads((HERE / "characters" / f"{c}.json").read_text())["strike_mass"] for c in self.chars])   # (2,)
         self.feet = t([[m.geom(p + "foot_l").id, m.geom(p + "foot_r").id] for p in PREFIX])
@@ -103,6 +116,7 @@ class ArenaEnv:
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.xfrc, self.xipos = T(self.dw.xfrc_applied), T(self.dw.xipos)
+        self.con_pos, self.site_xpos, self.site_xmat = T(self.dw.contact.pos), T(self.dw.site_xpos), T(self.dw.site_xmat)
         self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.act0 = torch.zeros(m.nu, device=dev)
         for k in range(2):
@@ -145,6 +159,16 @@ class ArenaEnv:
         self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(W, 3), z(W, 3), z(W)
         self.com0, self.com_err = z(W, 2), z(W)
         self.kick, self.kick_left = z(W, 6), torch.zeros(W, dtype=torch.long, device=dev)
+        # physics 3: the kick's reaction on the striker's arm (match.reaction_chain): per geom, up to 3 bodies + mass shares
+        import match as _match
+        self.kick_react = self.physics >= 3 and _match.KICK_REACTION
+        cb, cw = torch.zeros(m.ngeom, 3, dtype=torch.long), torch.zeros(m.ngeom, 3)
+        for g in range(m.ngeom):
+            if m.geom_bodyid[g] > 0:
+                bs, ws = _match.reaction_chain(m, g)
+                cb[g, :len(bs)], cw[g, :len(bs)] = torch.tensor(bs[:3]), torch.tensor(ws[:3], dtype=torch.float32)
+        self.chain_b, self.chain_w = cb.to(dev), cw.to(dev)
+        self.react_b, self.react_w = torch.zeros(W, 3, dtype=torch.long, device=dev), z(W, 3)   # body 0 = world: ignored
         self.gprev = None   # physics 2: every geom's position one physics step ago (the touching part's velocity)
         self.blowups = torch.zeros((), dtype=torch.long, device=dev)   # worlds reset because their state stopped being finite
         self.wid = torch.arange(W, device=dev)
@@ -169,6 +193,8 @@ class ArenaEnv:
         # off). Mixing the two worlds in training is what makes a brain servo-robust.
         self.servo_mix = float(os.environ.get("SLAP_SERVO_MIX", "0.0"))
         self.servo_on = torch.ones(W, dtype=torch.bool, device=dev)
+        self.ko_reward = os.environ.get("SLAP_KO_REWARD", "1" if self.physics >= 3 else "0") != "0"
+        self.disp_peak = z(W)   # the defender's peak COM drift since the touch (the KO_DISP pay), clamped
 
         self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
         self.reset(torch.ones(W, dtype=torch.bool, device=dev))
@@ -229,6 +255,7 @@ class ArenaEnv:
         self.hand_prev[mask], self.hand_prev_ctrl[mask] = hs[0][mask], hs[0][mask]
         self.phi_prev[mask] = self._palm_phi(hs[0], ht[1])[mask]
         self.com_err[mask] = 0.0
+        self.disp_peak[mask] = 0.0
         # the gaze bias starts on the eye line (match.py: the bias is reseeded at every turn start)
         eye = self._gaze_desire()
         self.wbias[mask] = eye[mask]
@@ -315,6 +342,9 @@ class ArenaEnv:
                 self.ctrl[:, self.act_id[k]] = u[:, k]
             self.xfrc[:, self.head_b] = 0.0
             self.xfrc[self.wid, self.head_b[1 - self.striker]] = self.kick * (self.kick_left > 0)[:, None]
+            if self.kick_react:   # -kick on the striker's arm, at each body's COM (body 0, the world, takes the padding)
+                on = (self.kick_left > 0).float()[:, None, None]
+                self.xfrc[self.wid[:, None], self.react_b, :3] = -self.react_w[..., None] * self.kick[:, None, :3] * on
             self.kick_left = (self.kick_left - 1).clamp(min=0)
             fr = self.frange[:, self.h_act].clone()   # muscles: Hill's force-velocity cap for this step only
             self.frange[:, self.h_act] = hill(fr, self.qvel[:, self.h_dof], self.h_vmax)
@@ -339,6 +369,11 @@ class ArenaEnv:
         done = stop | (self.t >= self.T) | (self.struck & (self.t >= self.t_hit + KO_WINDOW))
         timeout = done & ~stop
         self.ko_now, self.self_fall_now = done & ko, done & s_fell
+        timeout = timeout.repeat_interleave(2)
+        if self.ko_reward:   # a KO is a time-out for a striker still up and in his box: he keeps his bootstrap
+            s_out = self._sd(out)[0]
+            keep = (ko & ~s_fell & ~s_out)[:, None] & (role > 0)                      # (W, 2): the striker's row
+            timeout = timeout | self._pair(keep)
         if done.any():
             w = (done & self.struck).nonzero().squeeze(-1)    # the striker's strike, remembered by his next opponent
             self.mem[w, self.striker[w]] = torch.stack([self.t_hit[w].float() / self.T, self.hit_speed[w] / 10.0], -1)
@@ -350,7 +385,7 @@ class ArenaEnv:
                 self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=int(ro), ko=k, struck=st,
                                           absorbed=(not f) if ro < 0 else False, com_err=0.0, side=sd))
             self.reset(done)
-        return self.observe(), rew, done.repeat_interleave(2), timeout.repeat_interleave(2)
+        return self.observe(), rew, done.repeat_interleave(2), timeout
 
     def _palm_phi(self, hand, tgt):
         to = tgt - hand
@@ -373,10 +408,14 @@ class ArenaEnv:
         if self.physics >= 2:
             self.gprev = self.geom_xpos.clone()
         valid, g0, g1, w = contact_slots(self, self.W)
-        dhead = self.head_g[1 - self.striker[w]]                        # the defender's head in that contact's world
-        on = valid & ((g0 == dhead) | (g1 == dhead))
-        other = torch.where(g0 == dhead, g1, g0)
+        dfd = 1 - self.striker[w]                                       # the defender in that contact's world
+        f0 = self.face_of[g0] == dfd                                    # g0 is on his face (sphere or jaw)
+        on = valid & (f0 | (self.face_of[g1] == dfd))
+        other = torch.where(f0, g1, g0)
         on &= self.owner[other] == self.striker[w]                     # touched by the striker's body
+        if self.physics >= 3:   # ... inside his face zone (cheek and jaw): the referee's box test (match.in_face_zone)
+            site = self.face_site[dfd]
+            on &= common.in_face_zone(self.con_pos[:, :3], self.site_xpos[w, site], self.site_xmat[w, site], self.site_size[site])
         hit = torch.zeros(W, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()
         if self.physics >= 2 and gp is not None:   # the part that touched (any one of them), its own velocity
             part = torch.zeros(W, dtype=torch.long, device=self.device).scatter_reduce_(0, w, torch.where(on, other, 0), "amax")
@@ -401,6 +440,10 @@ class ArenaEnv:
         r = at - self.xipos[wid, self.head_b[1 - self.striker]]
         self.kick = torch.where(new[:, None], torch.cat([f, torch.cross(r, f, dim=-1)], -1), self.kick)
         self.kick_left = torch.where(new, torch.full_like(self.kick_left, KICK_STEPS), self.kick_left)
+        if self.kick_react:
+            src = part if (self.physics >= 2 and gp is not None) else self.hand_g[self.striker]
+            self.react_b = torch.where(new[:, None], self.chain_b[src], self.react_b)
+            self.react_w = torch.where(new[:, None], self.chain_w[src], self.react_w)
         self.struck = self.struck | new
         self.t_hit = torch.where(new, self.t, self.t_hit)
         self.com0 = torch.where(new[:, None], self._sd(self.com[:, self.pelvis, :2])[1], self.com0)
@@ -472,6 +515,11 @@ class ArenaEnv:
         gap = self._sd(self.geom_xpos[:, self.belly_g, 0])[0].abs() - self.podium_half - self.belly_r[self.striker]
         land = land - ((0.08 - gap) / 0.08).clamp(0.0, 1.0)
         r_str = torch.where(self.struck, land, before) + self.bonus + 40.0 * ko.float()
+        if self.ko_reward:   # KO_DISP: the defender's displacement, paid once as its peak grows
+            peak = torch.where(self.struck, torch.maximum(self.disp_peak, (self.com_err - DISP_FROM).clamp(0.0, DISP_TO - DISP_FROM)),
+                               torch.zeros_like(self.disp_peak))
+            r_str = r_str + KO_DISP * (peak - self.disp_peak)
+            self.disp_peak = peak
         r_str = r_str - 20.0 * ((self.t + 1 >= self.T) & ~self.struck).float()
         self.bonus.zero_()
 
