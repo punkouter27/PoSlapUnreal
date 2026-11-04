@@ -57,6 +57,15 @@ void ASlapHUD::Pant(const FSlapHud& H)
 		const double Tired = H.Match > 0 ? FMath::Clamp((1.0 - H.Stamina[a]) / (1.0 - MinStamina), 0.0, 1.0) : 0.0;
 		const double Effort = a != Struck && Now - StrikeAt < 3.0 ? 0.4 * FMath::Exp(StrikeAt - Now) : 0.0;
 		const float Need = FMath::Min(1.0, Tired + Effort);
+		if (!H.Card[a].IsEmpty() && BreathCard[a] != H.Card[a])	// his own voice (Web/audio.js startBreaths)
+		{
+			BreathCard[a] = H.Card[a];
+			if (USoundBase* Own = Voice(TEXT("Breath"), H.Card[a]))
+			{
+				A->SetSound(Own);
+				A->Play();
+			}
+		}
 		A->SetWorldLocation(Body[a]->GetBoneLocation(BoneHead));
 		A->SetVolumeMultiplier(0.01f + 0.6f * Need * Need);
 		A->SetPitchMultiplier(1.f + 0.45f * Need);
@@ -71,10 +80,24 @@ void ASlapHUD::Steps(const FSlapHud& H)
 	{
 		if (H.StepSeq[a] == SeenStep[a]) continue;
 		SeenStep[a] = H.StepSeq[a];
-		if (!Step || H.Match <= 0 || H.bWalkIn) continue;
+		if (!Step || H.Match <= 0) continue;
+		// the padded mat inside 2.7 m of the centre, the hard stage deck outside it (the walk-in; Web/audio.js MAT_RADIUS)
+		const bool bDeck = StepDeck && FVector::Dist2D(H.StepPos[a], FVector::ZeroVector) > MatRadius;
 		const float V = FMath::FRandRange(0.9f, 1.1f);
-		UGameplayStatics::PlaySoundAtLocation(this, Step, H.StepPos[a], FMath::FRandRange(0.25f, 0.5f), V, 0.f, Ringside);
+		UGameplayStatics::PlaySoundAtLocation(this, bDeck ? StepDeck.Get() : Step.Get(), H.StepPos[a], FMath::FRandRange(0.25f, 0.5f) * (bDeck ? 0.8f : 1.f), V, 0.f, Ringside);
 	}
+}
+
+USoundBase* ASlapHUD::Voice(const FString& Kind, const FString& Card)
+{
+	// S_Grunt_<card>, S_Breath_<card> (Grandpa's breath is the original S_Breath); looked up once per card, a miss is kept
+	const FString VoiceKey = Kind + TEXT("_") + Card;
+	if (const TObjectPtr<USoundBase>* Found = Voices.Find(VoiceKey)) return Found->Get();
+	USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Audio"), *(TEXT("S_") + VoiceKey));
+	if (!Snd && Kind == TEXT("Breath")) Snd = BreathLoop;
+	Voices.Add(VoiceKey, Snd);
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: voice %s -> %s"), *VoiceKey, Snd ? *Snd->GetName() : TEXT("none"));
+	return Snd;
 }
 
 void ASlapHUD::ReverbMix(double Now)

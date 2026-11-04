@@ -181,6 +181,12 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	PP.bOverride_ColorSaturation = PP.bOverride_VignetteIntensity = true;
 	PP.ColorSaturation = FMath::Lerp(BaseSat, FVector4(0.3, 0.3, 0.35, 1.0), W);
 	PP.VignetteIntensity = FMath::Lerp(BaseVignette, 1.f, float(W));
+	// look parity with the browser's DoF (Web/fx.js, ultra/cinema): the director's close-ups focus on what they frame and
+	// soften the hall behind; desktop at the top tier only (a phone keeps the full-screen blur off: 60 fps first)
+	const bool bClose = Shot == EShot::Tension || Shot == EShot::Strike || Shot == EShot::Impact || Shot == EShot::Replay;
+	PP.bOverride_DepthOfFieldFocalDistance = PP.bOverride_DepthOfFieldFstop = true;
+	PP.DepthOfFieldFocalDistance = bClose && TierLive >= 2 && !PLATFORM_ANDROID && !PLATFORM_IOS ? (float)FVector::Dist(L, Look) : 0.f;	// 0: no DoF
+	PP.DepthOfFieldFstop = 2.f;
 	if (Ts < 0.6 && TierLive > 0)
 	{
 		const bool bOverBudget = Dt * 1000.f > 33.3f || WorstMs > 40.f || Fps < 30.f;	// the shake is the first thing to go

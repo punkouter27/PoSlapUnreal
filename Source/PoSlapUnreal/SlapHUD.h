@@ -24,6 +24,7 @@ class UReverbEffect;
 class UTexture;
 class USoundAttenuation;
 class USoundBase;
+class USoundSubmixBase;
 class SWidget;
 
 /**
@@ -103,7 +104,10 @@ private:
 	void Dust(const FSlapHud& H);			// a puff of dust where a bone (not a sole, not a palm) hit the ground
 	void Burst(double Now);					// the 120 fps burst capture at the impact (render side only)
 	int32 DetectTier() const;				// the quality tier this device can afford (0 low, 1 medium, 2 high)
-	void ApplyTier(int32 Live);				// a tier in force: the spray rate, the crowd, the shadows, the engine's scalability
+	void ApplyTier(int32 Live);
+	void ApplyCinema(bool bOn);	// tier 3 CINEMA (desktop): epic scalability, Lumen GI and reflections, contact shadows, SSS, a denser spray
+	FString CineFeatures = TEXT("epic+gi+refl+contact+sss+spray");	// -SlapCine=: the features tier 3 turns on (the fps ladder)
+	float SprayMul = 1.f;				// a tier in force: the spray rate, the crowd, the shadows, the engine's scalability
 	void AutoTier();						// AUTO: one tier down after 3 s under 30 fps
 	// ---- audio (SlapHUDAudio.cpp)
 	void Crowd(const FSlapHud& H, double Now);	// the crowd rises and roars with the tension; a gasp when a defender wobbles
@@ -172,6 +176,7 @@ private:
 	bool bSceneReady = false;	// the loading curtain is up until the shaders are compiled
 	double LoadStart = -1.0, QuietSince = -1.0;	// FPlatformTime: the first frame, and since when no shader job is left
 	float ShotAt = -1.f, FxTestAt = -1.f;
+	float ShotAfterStrike = -1.f;	// -SlapShotStrike=<s>: the screenshot this long after the first touch (the clamp, the close-up)
 	FDateTime ShotRequested;	// when the last -SlapShot request went out (retried after 5 s)
 	int32 ShotRetries = 0;
 	bool bShotTaken = false, bShotOnResult = false;
@@ -371,6 +376,15 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundAttenuation> Ringside;
 	UPROPERTY(Transient) TObjectPtr<UReverbEffect> HallVerb;		// the arena (wide shots)
 	UPROPERTY(Transient) TObjectPtr<UReverbEffect> CloseVerb;	// ringside (tight shots)
+	// sound pass 2 (Scripts/broadcast_audio.py, as Web/audio.js): the hard stage deck outside the mat, the PA before the bout,
+	// each athlete's own grunt and breath (S_Grunt_<card>, S_Breath_<card>; Grandpa's breath is S_Breath), the arena's
+	// impulse response as a convolution reverb (/Game/Audio/RV_ArenaIR, desktop: a phone keeps the two reverbs)
+	UPROPERTY(Transient) TObjectPtr<USoundBase> StepDeck;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> PAChime;
+	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> Voices;	// "Grunt_<card>" / "Breath_<card>" -> sound (null: none)
+	UPROPERTY(Transient) TObjectPtr<USoundSubmixBase> ArenaIR;
+	FString BreathCard[2];	// the card each breathing loop is voiced for
+	USoundBase* Voice(const FString& Kind, const FString& Card);
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> Skin;	// red, blue
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> CrowdSkin;
 };

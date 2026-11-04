@@ -26,6 +26,10 @@ namespace SlapUi
 	inline constexpr int32 MinSlateFont = 12;	// the smallest Slate text (readable on a 6" phone)
 	inline constexpr float MinTextScale = 0.8f;	// a canvas line shrinks to fit its box down to this share of its scale
 	inline constexpr double SnapSeconds = 2.0;	// the head-snap sparkline's window after each strike
+	/** The phone arena's levels: "<level>_Mobile" (Scripts/arena_mobile_level.py). */
+	inline bool IsMobileLevel(const FString& Name) { return Name.EndsWith(TEXT("_Mobile")); }
+	inline FString DesktopLevel(const FString& Name) { return IsMobileLevel(Name) ? Name.LeftChop(7) : Name; }
+	inline constexpr float MatRadius = 270.f;	// cm: the padded safety mat around the centre; the hard stage deck outside (Web/audio.js MAT_RADIUS)
 	inline const TCHAR* const ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("SIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("IMPACT"), TEXT("KO"), TEXT("REPLAY") };
 	inline const TCHAR* const CamName[] = { TEXT("AUTO"), TEXT("WIDE"), TEXT("SIDE"), TEXT("CLOSE") };
 

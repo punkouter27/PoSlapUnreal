@@ -30,6 +30,7 @@
 #include "Misc/Paths.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "NiagaraSystem.h"
+#include "RHI.h"
 #include "SceneView.h"
 #include "ShaderCompiler.h"
 #include "SlapAthleteVisual.h"
@@ -38,6 +39,7 @@
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
+#include "Sound/SoundSubmix.h"
 #include "UnrealClient.h"
 #include "UObject/UObjectIterator.h"
 
@@ -80,6 +82,7 @@ void ASlapHUD::BeginPlay()
 	const TCHAR* Cmd = FCommandLine::Get();
 	FParse::Value(Cmd, TEXT("SlapShot="), ShotAt);
 	bShotOnResult = FParse::Param(Cmd, TEXT("SlapShotResult"));
+	FParse::Value(Cmd, TEXT("SlapShotStrike="), ShotAfterStrike);
 	FParse::Value(Cmd, TEXT("SlapFxTest="), FxTestAt);
 	bMenu = FParse::Value(Cmd, TEXT("SlapMenu="), Tab);
 	Tab = FMath::Clamp(Tab, 0, NumTabs - 1);
@@ -104,7 +107,8 @@ void ASlapHUD::BeginPlay()
 			if (CamFlag.Equals(CamName[c], ESearchCase::IgnoreCase)) CamMode = (ECam)c;
 	}
 	FParse::Value(Cmd, TEXT("SlapTier="), Tier);
-	Tier = FMath::Clamp(Tier, -1, 2);
+	Tier = FMath::Clamp(Tier, -1, PLATFORM_ANDROID || PLATFORM_IOS ? 2 : 3);	// 3 CINEMA: desktop only (ApplyCinema)
+	FParse::Value(Cmd, TEXT("SlapCine="), CineFeatures);
 	bLive = FParse::Value(Cmd, TEXT("SlapLive="), LiveUrl);
 	FString Zone;	// -SlapSafeZone=0.05+0.03: a fake notch (top) and nav bar (bottom), fractions of the screen height
 	if (FParse::Value(Cmd, TEXT("SlapSafeZone="), Zone) && FSlateApplication::IsInitialized())
@@ -138,6 +142,11 @@ void ASlapHUD::LoadAssets()
 	CrowdNear = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_CrowdNear"));
 	CrowdLoop = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_CrowdLoop"));
 	Bell = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Bell"));
+	StepDeck = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_StepDeck"));
+	PAChime = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_PAChime"));
+	// the arena's impulse response (broadcast_audio.py ArenaIR.wav -> broadcast_fx.py RV_ArenaIR, a convolution reverb
+	// submix): every spatialised one-shot sends to it on desktop; a phone keeps the two algorithmic reverbs (CPU)
+	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ArenaIR = LoadNamed<USoundSubmixBase>(TEXT("/Game/Audio"), TEXT("RV_ArenaIR"));
 	ScuffMat = Load<UMaterialInterface>(TEXT("/Game/FX/M_Scuff.M_Scuff"));
 	DecalMat = Load<UMaterialInterface>(TEXT("/Game/FX/M_DecalTex.M_DecalTex"));
 	for (const TCHAR* N : { TEXT("T_Decal_SoleSkid_01"), TEXT("T_Decal_SoleSkid_02"), TEXT("T_Decal_PalmSmudge_01") }) DecalTex.Add(LoadNamed<UTexture>(TEXT("/Game/FX/Decals"), N));
@@ -167,6 +176,21 @@ void ASlapHUD::LoadAssets()
 	Ringside->Attenuation.bSpatialize = true;
 	Ringside->Attenuation.AttenuationShapeExtents = FVector(1500.f, 0.f, 0.f);
 	Ringside->Attenuation.FalloffDistance = 3000.f;
+	if (!PLATFORM_ANDROID && !PLATFORM_IOS)	// binaural on desktop: the Resonance Audio spatializer's HRTF (Config/DefaultEngine.ini)
+		Ringside->Attenuation.SpatializationAlgorithm = ESoundSpatializationAlgorithm::SPATIALIZATION_HRTF;
+	UScriptStruct* SendType = FindObject<UScriptStruct>(nullptr, TEXT("/Script/Engine.AttenuationSubmixSendSettings"));
+	if (ArenaIR && SendType)	// the hall's own reflections (Web/audio.js "wet" sends ~0.15-0.3): the algorithmic hall steps back
+	{
+		Ringside->Attenuation.bEnableSubmixSends = true;
+		// the struct's constructor is not exported from the engine module: construct it through its reflection data
+		TArray<FAttenuationSubmixSendSettings>& Sends = Ringside->Attenuation.SubmixSendSettings;
+		FAttenuationSubmixSendSettings& Send = Sends[Sends.AddUninitialized()];
+		SendType->InitializeStruct(&Send);
+		Send.SoundSubmix = ArenaIR;
+		Send.SendLevelControlMethod = ESendLevelControlMethod::Manual;
+		Send.SendLevel = 0.2f;
+		Send.MaxSendLevel = 1.f;
+	}
 	for (int32 a = 0; a < 2 && BreathLoop; ++a) Breath[a] = UGameplayStatics::SpawnSoundAtLocation(this, BreathLoop, FVector::ZeroVector, FRotator::ZeroRotator, 0.01f, 1.f, 0.f, Ringside, nullptr, false);
 	for (TActorIterator<ALight> It(GetWorld()); It; ++It)	// Scripts/arena_env.py's rig, by label
 	{
@@ -200,9 +224,9 @@ void ASlapHUD::LoadAssets()
 		L->RegisterComponent();
 		Spot = L;
 	}
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: spray %s dust %s, sounds slap %d squeak %d thud %d scrape %d step %d breath %d crowd %d/%d/%d bell %d, scuff %d decals %d, reverbs %d/%d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"),
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: spray %s dust %s, sounds slap %d squeak %d thud %d scrape %d step %d breath %d crowd %d/%d/%d bell %d deck %d chime %d IR %d, scuff %d decals %d, reverbs %d/%d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"),
 		Spray ? TEXT("yes") : TEXT("MISSING"), DustPuff ? TEXT("yes") : TEXT("MISSING"),
-		SlapTakes.Num(), Squeaks.Num(), Thud != nullptr, Scrape != nullptr, Step != nullptr, BreathLoop != nullptr, CrowdReact != nullptr, CrowdNear != nullptr, CrowdLoop != nullptr, Bell != nullptr,
+		SlapTakes.Num(), Squeaks.Num(), Thud != nullptr, Scrape != nullptr, Step != nullptr, BreathLoop != nullptr, CrowdReact != nullptr, CrowdNear != nullptr, CrowdLoop != nullptr, Bell != nullptr, StepDeck != nullptr, PAChime != nullptr, ArenaIR != nullptr,
 		ScuffMat != nullptr, DecalMat != nullptr, HallVerb != nullptr, CloseVerb != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num(), CrowdSkin.Num(), Scout.Num());
 }
 
@@ -292,7 +316,8 @@ void ASlapHUD::DrawHUD()
 	++FpsFrames;
 	if (FpsFrames > 1 && GetWorld()->GetRealTimeSeconds() - FpsSince >= 10.0)
 	{
-		UE_LOG(LogSlap, Log, TEXT("SlapHUD: %.1f fps average, worst frame %.1f ms (%d frames), tier %d"), FpsFrames / FpsSum, FpsWorst * 1000.0, FpsFrames, TierLive);
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: %.1f fps average, worst frame %.1f ms (%d frames), tier %d, GPU %.1f ms, cinema %s"), FpsFrames / FpsSum, FpsWorst * 1000.0, FpsFrames, TierLive,
+			FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles(0)), TierLive == 3 ? *CineFeatures : TEXT("off"));
 		WorstMs = FpsWorst * 1000.0;
 		FpsSum = FpsWorst = 0.0;
 		FpsFrames = 0;

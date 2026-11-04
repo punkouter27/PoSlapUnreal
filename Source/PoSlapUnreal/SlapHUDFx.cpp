@@ -139,7 +139,8 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 {
 	// the touch: spray along the palm's path, sound, ripple, print and dent on the struck cheek
 	SeenStrike = H.StrikeSeq;
-	StrikeAt = ImpactAt = Now;	// the impact close-up and the 120 fps burst start here
+	StrikeAt = ImpactAt = Now;
+	if (ShotAfterStrike >= 0.f && ShotAt < 0.f && bSceneReady) ShotAt = Now + ShotAfterStrike;	// the impact close-up and the 120 fps burst start here
 	StrikePos = H.StrikePos;
 	StrikeSpeed = H.Speed;
 	Struck = FMath::Clamp(H.StrikeDefender, 0, 1);
@@ -155,7 +156,11 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 	const float K = StrikeK * MassK;
 	// the contact burst, sized by the palm's speed and the mass behind it; a low tier sprays on every other strike only
 	if (Spray && (TierLive > 0 || (SeenStrike & 1)))
+	{
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, H.StrikePos, FRotationMatrix::MakeFromZ(H.StrikeDir).Rotator(), FVector(0.3f * K));
+		if (SprayMul > 1.f)	// cinema: a second, wider burst sized by the strike's energy (mass x speed^2: K squared)
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), Spray, H.StrikePos, FRotationMatrix::MakeFromZ(-H.StrikeDir).Rotator(), FVector(0.15f * K * K * SprayMul));
+	}
 	if (SlapTakes.Num())	// one of four takes, deeper behind a heavier arm, duller for a slow palm
 	{
 		const float Pitch = FMath::Clamp(FMath::Sqrt(3.0 / FMath::Max(H.StrikeMass[Striker], 0.5)), 0.8, 1.25) * FMath::FRandRange(0.94f, 1.06f);
@@ -164,6 +169,12 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 			A->SetLowPassFilterEnabled(true);
 			A->SetLowPassFilterFrequency(2500.f + 17500.f * FMath::Min(StrikeK, 1.0));
 		}
+	}
+	// the striker's grunt as it lands, in his own voice (Web/audio.js strike: above 4 m/s, louder with the speed)
+	if (H.Speed > 4.0 && Body[Striker].IsValid())
+	{
+		if (USoundBase* G = Voice(TEXT("Grunt"), H.Card[Striker]))
+			UGameplayStatics::PlaySoundAtLocation(this, G, Body[Striker]->GetBoneLocation(BoneHead), 0.25f + 0.25f * FMath::Min(1.f, (float)H.Speed / 10.f), FMath::FRandRange(0.97f, 1.03f), 0.f, Ringside);
 	}
 	if (Body[Struck].IsValid())
 	{
@@ -217,6 +228,7 @@ void ASlapHUD::OnMatch(const FSlapHud& H, double Now)
 {
 	SeenMatch = H.MatchSeq;
 	TapeAt = Now;
+	if (PAChime) UGameplayStatics::PlaySound2D(this, PAChime, 0.55f);	// the PA before the bout (it carries its own hall)
 	HeadG.Reset();
 	Snap.Reset();
 	LoadLeague();	// training/scouting.py may have run since
@@ -436,7 +448,7 @@ void ASlapHUD::ApplyTier(int32 Live)
 	// The tier in force: the spray's rate, how much of the crowd is drawn, the follow spot's shadow, the decal budget and,
 	// below HIGH, the engine's scalability for shadows, post-processing and effects (HIGH leaves the project's own settings).
 	// The VIEW tab can pin a tier; AUTO follows the device and steps down under load (AutoTier).
-	TierLive = FMath::Clamp(Live, 0, 2);
+	TierLive = FMath::Clamp(Live, 0, bMobile ? 2 : 3);
 	const bool bLow = TierLive == 0;
 	CrowdKeep = bLow ? 50 : (TierLive == 1 ? 25 : 0);	// per cent of the seats hidden under the floor
 	for (UMaterialInstanceDynamic* M : CrowdSkin)
@@ -448,12 +460,46 @@ void ASlapHUD::ApplyTier(int32 Live)
 		BaseQuality[0] = Q.ShadowQuality; BaseQuality[1] = Q.PostProcessQuality; BaseQuality[2] = Q.EffectsQuality;
 		BaseQuality[3] = Q.FoliageQuality; BaseQuality[4] = Q.ShadingQuality;
 	}
-	auto Cap = [&](int32 Base) { return TierLive == 2 ? Base : FMath::Min(Base, TierLive); };
+	auto Cap = [&](int32 Base) { return TierLive >= 2 ? Base : FMath::Min(Base, TierLive); };
 	Q.ShadowQuality = Cap(BaseQuality[0]); Q.PostProcessQuality = Cap(BaseQuality[1]); Q.EffectsQuality = Cap(BaseQuality[2]);
 	Q.FoliageQuality = Cap(BaseQuality[3]); Q.ShadingQuality = Cap(BaseQuality[4]);
 	Scalability::SetQualityLevels(Q);
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: quality tier %d (%s), crowd cut %d %%, scalability shadows %d post %d effects %d"), TierLive, Tier >= 0 ? TEXT("pinned") : TEXT("auto"), CrowdKeep,
 		Q.ShadowQuality, Q.PostProcessQuality, Q.EffectsQuality);
+	ApplyCinema(TierLive == 3);
+}
+
+void ASlapHUD::ApplyCinema(bool bOn)
+{
+	// Tier 3 CINEMA, desktop only (the user, 2026-11-04: push the desktop look to a 30 fps floor; phones untouched). Each
+	// feature is a word in -SlapCine= so the fps ladder can add them one at a time: epic (scalability 3 across the board),
+	// gi (Lumen GI, hardware ray tracing where the GPU has it: the project's r.Lumen.HardwareRayTracing), refl (Lumen
+	// reflections on the floor and the podium), contact (contact shadows on the key and rim lights), sss (full-res skin
+	// subsurface), spray (a denser impact burst). Off = the project's own settings back. Display only.
+	static bool bWasOn = false;
+	if (bMobile || (!bOn && !bWasOn)) return;
+	bWasOn = bOn;
+	auto Has = [&](const TCHAR* F) { return bOn && CineFeatures.Contains(F); };
+	auto Set = [](const TCHAR* Name, int32 V)
+	{
+		if (IConsoleVariable* C = IConsoleManager::Get().FindConsoleVariable(Name)) C->Set(V, ECVF_SetByCode);
+	};
+	if (Has(TEXT("epic")))
+	{
+		Scalability::FQualityLevels Q = Scalability::GetQualityLevels();
+		Q.SetFromSingleQualityLevel(3);
+		Scalability::SetQualityLevels(Q);
+	}
+	Set(TEXT("r.DynamicGlobalIlluminationMethod"), !bOn || Has(TEXT("gi")) ? 1 : 0);	// the project's default is Lumen (1)
+	Set(TEXT("r.ReflectionMethod"), !bOn || Has(TEXT("refl")) ? 1 : 2);			// Lumen reflections, else screen space
+	Set(TEXT("r.Lumen.Reflections.HardwareRayTracing"), Has(TEXT("refl")) ? 1 : 0);
+	Set(TEXT("r.SSS.Quality"), Has(TEXT("sss")) ? 1 : 0);
+	Set(TEXT("r.SSS.HalfRes"), Has(TEXT("sss")) ? 0 : 1);
+	const float Contact = Has(TEXT("contact")) ? 0.08f : 0.f;	// screen share of the contact-shadow ray: the palm on the cheek, the soles
+	for (const FStageLight* L : { &Key, &Rim[0], &Rim[1] })
+		if (ULightComponent* C = L->Light.Get()) { C->ContactShadowLength = Contact; C->MarkRenderStateDirty(); }
+	SprayMul = Has(TEXT("spray")) ? 2.5f : 1.f;
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: cinema %s (%s)"), bOn ? TEXT("on") : TEXT("off"), bOn ? *CineFeatures : TEXT("project settings"));
 }
 
 void ASlapHUD::AutoTier()

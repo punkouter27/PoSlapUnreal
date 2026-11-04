@@ -9,6 +9,10 @@ by RippleTime / RippleAmp (ASlapHUD sets them per athlete on a strike); wear on 
 FlushPoint (Flush, from neck damage), a palm print there (Print, along PrintU / PrintV: fingers, across the palm) and a
 greyer skin (Tired, from stamina); M_Scuff, the deferred decal for sole and palm marks; LODs on every athlete; the crowd (/Game/FX/M_CrowdLive, the parent
 of the arena's M_Crowd and M_PhoneLight): Rise bounces the seats, Cheer flickers the phone lights (ASlapHUD::Crowd).
+Pass 3 (2026-11-04, the browser's gfx/sound pass 2): the new sounds (stage deck, PA chime, per-athlete grunts and
+breaths), RV_ArenaIR (ArenaIR.wav as a convolution reverb submix), T_SkinDetail as a detail normal and a wet layer by
+Tired, a Subsurface Profile (SSP_Skin) on the athletes, LOD0 CPU copies for the drawn-hand clamp. SLAP_SKIN_DETAIL=0 /
+SLAP_SSS=0 leave those off.
 Display only: MuJoCo owns every contact.
 """
 import os
@@ -346,10 +350,187 @@ def add_crowd():
     log("M_Crowd, M_PhoneLight -> M_CrowdLive")
 
 
+# sound pass 2 (2026-11-03, Web/audio.js): the hard stage deck, the PA chime, each athlete's grunt and breath
+SOUNDS = ("Slap", "Slap1", "Slap2", "Slap3", "Thud", "Squeak0", "Squeak1", "Scrape", "Step", "Breath", "CrowdReact", "CrowdNear",
+          "CrowdLoop", "Bell", "StepDeck", "PAChime", "Grunt_grandpa", "Grunt_kim", "Grunt_matt", "Breath_kim", "Breath_matt")
+
+
+def add_arena_ir():
+    """/Game/Audio/RV_ArenaIR: a submix whose one effect is a convolution reverb on broadcast_audio.py's ArenaIR.wav (the
+    floor, the stands, the roof; stereo). ASlapHUD's Ringside attenuation sends every spatialised one-shot to it on
+    desktop (Web/audio.js's ConvolverNode); a phone keeps RV_Arena / RV_Ringside. The impulse response's sample array is
+    not an editable property, so unreal.SlapEditorLib (SlapEditorLib.cpp) fills it."""
+    import array
+    import wave
+    src = os.path.join(PROJ, "Content/Art/Exports/Audio", "ArenaIR.wav")
+    if not os.path.isfile(src):
+        log("RV_ArenaIR: no ArenaIR.wav")
+        return
+    with wave.open(src, "rb") as w:
+        ch, rate, width, n = w.getnchannels(), w.getframerate(), w.getsampwidth(), w.getnframes()
+        raw = w.readframes(n)
+    if width != 2:
+        log(f"RV_ArenaIR: {width * 8}-bit WAV, expected 16")
+        return
+    samples = [x / 32768.0 for x in array.array("h", raw)]
+    tools = unreal.AssetToolsHelpers.get_asset_tools()
+
+    def make(name, cls, factory):
+        path = f"/Game/Audio/{name}"
+        return ASSETS.load_asset(path) if ASSETS.does_asset_exist(path) else tools.create_asset(name, "/Game/Audio", cls, factory)
+
+    ir = make("RV_ArenaIR_Response", unreal.AudioImpulseResponse, unreal.AudioImpulseResponseFactory())
+    if not unreal.SlapEditorLib.fill_impulse_response(ir, samples, ch, rate, -12.0):
+        log("RV_ArenaIR: the impulse response was not filled")
+        return
+    ASSETS.save_loaded_asset(ir)
+    preset = make("RV_ArenaIR_Convolution", unreal.SubmixEffectConvolutionReverbPreset, None)
+    preset.set_editor_property("impulse_response", ir)
+    st = preset.get_editor_property("settings")
+    st.set_editor_property("wet_volume_db", 0.0)    # a send bus: all wet, the dry stays on the master
+    st.set_editor_property("dry_volume_db", -96.0)
+    preset.set_editor_property("settings", st)
+    try:
+        preset.set_settings(st)
+    except Exception:
+        pass
+    ASSETS.save_loaded_asset(preset)
+    sm = make("RV_ArenaIR", unreal.SoundSubmix, unreal.SoundSubmixFactory())
+    sm.set_editor_property("submix_effect_chain", [preset])
+    ASSETS.save_loaded_asset(sm)
+    log(f"RV_ArenaIR: convolution reverb, {ch} ch, {rate} Hz, {n / rate:.2f} s")
+
+
+SKIN_DETAIL_TEX = "/Game/Athletes/T_SkinDetail"
+
+
+def skin_detail_texture():
+    """T_SkinDetail (Scripts/blender_skin_detail.py): R height, G sweat beads; linear (sRGB off), tileable."""
+    if not ASSETS.does_asset_exist(SKIN_DETAIL_TEX):
+        src = os.path.join(PROJ, "Content/Art/Exports/Textures/T_SkinDetail.png")
+        if not os.path.isfile(src):
+            return None
+        t = unreal.AssetImportTask()
+        t.filename, t.destination_path, t.destination_name = src, "/Game/Athletes", "T_SkinDetail"
+        t.automated, t.replace_existing, t.save = True, True, True
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
+    tex = ASSETS.load_asset(SKIN_DETAIL_TEX)
+    tex.set_editor_property("srgb", False)
+    tex.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
+    tex.set_editor_property("address_x", unreal.TextureAddress.TA_WRAP)
+    tex.set_editor_property("address_y", unreal.TextureAddress.TA_WRAP)
+    ASSETS.save_loaded_asset(tex)
+    return tex
+
+
+# Web/fx.js's skin, in Unreal: the detail map sampled triplanar in the bind pose (pre-skinned local position, cm;
+# ~22 tiles per metre = 0.22 per cm), the height turned into a normal by screen-space derivatives (surface gradient),
+# and that detail put on top of the scan's own normal map (tangent space).
+TRIPLANAR = ("float3 p = P * 0.22;\n"
+             "float3 bw = pow(abs(L), 4.0); bw /= max(bw.x + bw.y + bw.z, 1e-4);\n"
+             "float2 d = Texture2DSample(Tex, TexSampler, p.yz).rg * bw.x + Texture2DSample(Tex, TexSampler, p.zx).rg * bw.y\n"
+             "         + Texture2DSample(Tex, TexSampler, p.xy).rg * bw.z;\n")
+SKIN_DETAIL = (TRIPLANAR +
+               "float h = d.r * 0.04;\n"                                                    # cm of relief: pores, fine creases
+               "float3 n = normalize(N);\n"
+               "float3 dpdx = ddx(W), dpdy = ddy(W);\n"
+               "float3 r1 = cross(dpdy, n), r2 = cross(n, dpdx);\n"
+               "float det = dot(dpdx, r1);\n"
+               "float3 g = sign(det) * (ddx(h) * r1 + ddy(h) * r2);\n"
+               "float3 nb = normalize(abs(det) * n - g);\n"
+               "float3 t = mul((float3x3)Parameters.TangentToWorld, nb);\n"                   # world -> tangent (orthonormal)
+               "return normalize(float3(B.xy + t.xy, B.z));")
+SKIN_DETAIL_IN = ("P", "L", "Tex", "N", "W", "B")
+# the sweat (Web/fx.js gSweat): wetter as the stamina goes (Tired 0-1), beading on the map's G; a wet skin is glossy
+SKIN_WET = (TRIPLANAR +
+            "float wet = (0.15 + 0.85 * T) * (0.25 + 0.75 * smoothstep(0.5, 0.85, d.g));\n"
+            "return lerp(R, 0.12, saturate(wet) * 0.8);")
+SKIN_WET_IN = ("P", "L", "Tex", "T", "R")
+
+
+def expr(mat, names, x, y):
+    for n in names:   # class names moved across engine versions
+        cls = getattr(unreal, n, None)
+        if cls:
+            return MEL.create_material_expression(mat, cls, x, y)
+    return None
+
+
+def add_skin_detail(skin, tex):
+    """Skin detail normal (T_SkinDetail R) and the wet layer (G, by Tired) on M_<athlete>. Idempotent."""
+    nprop, rprop = unreal.MaterialProperty.MP_NORMAL, unreal.MaterialProperty.MP_ROUGHNESS
+    nsrc = MEL.get_material_property_input_node(skin, nprop)
+    if isinstance(nsrc, unreal.MaterialExpressionCustom) and nsrc.get_editor_property("code") == SKIN_DETAIL:
+        return False
+    nout = MEL.get_material_property_input_node_output_name(skin, nprop) if nsrc else ""
+    rsrc = MEL.get_material_property_input_node(skin, rprop)
+    rout = MEL.get_material_property_input_node_output_name(skin, rprop) if rsrc else ""
+    pre_p = expr(skin, ("MaterialExpressionPreSkinnedPosition", "MaterialExpressionPreSkinnedLocalPosition"), -1400, 1600)
+    pre_n = expr(skin, ("MaterialExpressionPreSkinnedNormal", "MaterialExpressionPreSkinnedLocalNormal"), -1400, 1700)
+    if pre_p is None or pre_n is None:
+        log("skin detail: no pre-skinned position node in this engine")
+        return False
+    vi_p = MEL.create_material_expression(skin, unreal.MaterialExpressionVertexInterpolator, -1200, 1600)   # vertex -> pixel
+    vi_n = MEL.create_material_expression(skin, unreal.MaterialExpressionVertexInterpolator, -1200, 1700)
+    MEL.connect_material_expressions(pre_p, "", vi_p, "VS")
+    MEL.connect_material_expressions(pre_n, "", vi_n, "VS")
+    to = MEL.create_material_expression(skin, unreal.MaterialExpressionTextureObject, -1200, 1800)
+    to.set_editor_property("texture", tex)
+    to.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
+    wn = MEL.create_material_expression(skin, unreal.MaterialExpressionVertexNormalWS, -1200, 1900)
+    wp = MEL.create_material_expression(skin, unreal.MaterialExpressionWorldPosition, -1200, 2000)
+    try:   # camera-relative: the derivatives of a small number
+        wp.set_editor_property("world_position_shader_offset", unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE_WORLD_POSITION)
+    except Exception as e:
+        log(f"skin detail: world position stays absolute ({e})")
+    if nsrc is None:
+        flat = MEL.create_material_expression(skin, unreal.MaterialExpressionConstant3Vector, -1200, 2100)
+        flat.set_editor_property("constant", unreal.LinearColor(0, 0, 1, 1))
+        nsrc, nout = flat, ""
+    det = custom(skin, SKIN_DETAIL, SKIN_DETAIL_IN, -800, 1700)
+    for n, (node, out) in zip(SKIN_DETAIL_IN, ((vi_p, ""), (vi_n, ""), (to, ""), (wn, ""), (wp, ""), (nsrc, nout))):
+        MEL.connect_material_expressions(node, out, det, n)
+    MEL.connect_material_property(det, "", nprop)
+    if rsrc is not None:
+        tired = None
+        base = MEL.get_material_property_input_node(skin, unreal.MaterialProperty.MP_BASE_COLOR)
+        for e in (MEL.get_inputs_for_material_expression(skin, base) if base else []):
+            if isinstance(e, unreal.MaterialExpressionScalarParameter) and str(e.get_editor_property("parameter_name")) == "Tired":
+                tired = e
+        if tired is None:
+            tired = MEL.create_material_expression(skin, unreal.MaterialExpressionScalarParameter, -1200, 2200)
+            tired.set_editor_property("parameter_name", "Tired")
+        wet = custom(skin, SKIN_WET, SKIN_WET_IN, -800, 2000)
+        wet.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
+        for n, (node, out) in zip(SKIN_WET_IN, ((vi_p, ""), (vi_n, ""), (to, ""), (tired, ""), (rsrc, rout))):
+            MEL.connect_material_expressions(node, out, wet, n)
+        MEL.connect_material_property(wet, "", rprop)
+    return True
+
+
+def add_subsurface(skin):
+    """Skin subsurface (Web/fx.js sss, ultra/cinema): a Subsurface Profile on the athlete material, /Game/Athletes/SSP_Skin.
+    Desktop draws it (scalability turns it down with the post quality); a phone's mobile renderer falls back to default lit."""
+    path = "/Game/Athletes/SSP_Skin"
+    if ASSETS.does_asset_exist(path):
+        prof = ASSETS.load_asset(path)
+    else:
+        prof = unreal.AssetToolsHelpers.get_asset_tools().create_asset("SSP_Skin", "/Game/Athletes", unreal.SubsurfaceProfile, unreal.SubsurfaceProfileFactory())
+        ASSETS.save_loaded_asset(prof)
+    if skin.get_editor_property("shading_model") == unreal.MaterialShadingModel.MSM_SUBSURFACE_PROFILE and skin.get_editor_property("subsurface_profile") == prof:
+        return False
+    skin.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_SUBSURFACE_PROFILE)
+    skin.set_editor_property("subsurface_profile", prof)
+    return True
+
+
 def main():
     tools = unreal.AssetToolsHelpers.get_asset_tools()
-    for name in ("Slap", "Slap1", "Slap2", "Slap3", "Thud", "Squeak0", "Squeak1", "Scrape", "Step", "Breath", "CrowdReact", "CrowdNear", "CrowdLoop", "Bell"):
-        loop = name in ("CrowdLoop", "Breath")
+    for name in SOUNDS:
+        if not os.path.isfile(os.path.join(PROJ, "Content/Art/Exports/Audio", f"{name}.wav")):
+            log(f"S_{name}: no WAV (run broadcast_audio.py)")
+            continue
+        loop = name in ("CrowdLoop", "Breath") or name.startswith("Breath_")
         t = unreal.AssetImportTask()
         t.filename = os.path.join(PROJ, "Content/Art/Exports/Audio", f"{name}.wav")
         t.destination_path, t.destination_name = "/Game/Audio", f"S_{name}"
@@ -368,22 +549,36 @@ def main():
     add_dust()
     log(f"NS_DustPuff: {ASSETS.does_asset_exist('/Game/FX/NS_DustPuff')}")
 
+    detail = skin_detail_texture()
     for name in sorted(athlete_names()):
         skin, mesh = f"/Game/Athletes/M_{name}", f"/Game/Athletes/SK_{name}"
         if not ASSETS.does_asset_exist(skin):   # the per-athlete folder layout
             skin, mesh = f"/Game/Athletes/{name}/M_{name}", f"/Game/Athletes/{name}/SK_{name}"
+        if not ASSETS.does_asset_exist(mesh):   # an overlay material (M_TeamOverlay), not an athlete
+            continue
         if ASSETS.does_asset_exist(skin):
             skin = ASSETS.load_asset(skin)
-            if add_ripple(skin) | add_wear(skin):
+            changed = add_ripple(skin) | add_wear(skin)
+            if detail is not None and os.environ.get("SLAP_SKIN_DETAIL", "1") != "0":
+                changed |= add_skin_detail(skin, detail)
+            if os.environ.get("SLAP_SSS", "1") != "0":
+                changed |= add_subsurface(skin)
+            if changed:
+                MEL.recompile_material(skin)
                 ASSETS.save_loaded_asset(skin)
-            log(f"cheek ripple, wear and print on M_{name}")
+            log(f"cheek ripple, wear, print, skin detail, wet and subsurface on M_{name}")
         if ASSETS.does_asset_exist(mesh):
             mesh = ASSETS.load_asset(mesh)
-            if add_lods(mesh):
+            changed = add_lods(mesh)
+            if unreal.SlapEditorLib.set_mesh_cpu_access(mesh, True):   # the drawn-hand clamp reads LOD0 (SlapAthleteVisual.cpp)
+                changed = True
+                log(f"{mesh.get_name()}: LOD0 keeps a CPU copy")
+            if changed:
                 ASSETS.save_loaded_asset(mesh)
     add_scuff()
     add_decals()
     add_reverb()
+    add_arena_ir()
     add_crowd()
 
 

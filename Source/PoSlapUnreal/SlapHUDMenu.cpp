@@ -127,6 +127,12 @@ void ASlapHUD::FindBrainsAndLevels()
 	}
 	Find(TEXT("/Game/Levels"), UWorld::StaticClass(), false, Pairings);
 	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("L_Arena")); });
+	// The phone arena (Scripts/arena_mobile_level.py: Arena_Mobile.glb, one palette atlas, a lighter crowd) is the same
+	// level under "<level>_Mobile": a phone lists only those, a desktop only the full ones. A phone build without them
+	// keeps the full arena.
+	const bool bPhone = PLATFORM_ANDROID || PLATFORM_IOS;
+	const bool bAnyMobile = Pairings.ContainsByPredicate([](const FAssetData& A) { return IsMobileLevel(A.AssetName.ToString()); });
+	Pairings.RemoveAll([&](const FAssetData& A) { return IsMobileLevel(A.AssetName.ToString()) != (bPhone && bAnyMobile); });
 	Pairings.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 	const FName Here(*UGameplayStatics::GetCurrentLevelName(this));	// PIE prefix stripped
 	Pairing = HerePairing = Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName == Here; });
@@ -145,7 +151,7 @@ void ASlapHUD::BuildUi()
 	FindBrainsAndLevels();
 	LoadRoster();
 	{	// the picks open on the pairing that is loaded ("L_Arena" is build_scene.py's grandpa vs grandpa)
-		const FString N = UGameplayStatics::GetCurrentLevelName(this);
+		const FString N = DesktopLevel(UGameplayStatics::GetCurrentLevelName(this));
 		FString R = TEXT("grandpa"), B = TEXT("grandpa");
 		if (N.StartsWith(TEXT("L_Arena_"))) N.RightChop(8).Split(TEXT("_vs_"), &R, &B);
 		for (int32 a = 0; a < 2; ++a)
@@ -552,7 +558,7 @@ TSharedRef<SWidget> ASlapHUD::BuildViewTab()
 		+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda([Self]
 		{
 			if (!Self.IsValid()) return FText();
-			static const TCHAR* Names[3] = { TEXT("LOW"), TEXT("MEDIUM"), TEXT("HIGH") };
+			static const TCHAR* Names[4] = { TEXT("LOW"), TEXT("MEDIUM"), TEXT("HIGH"), TEXT("CINEMA") };
 			return FText::FromString(FString::Printf(TEXT("QUALITY  %s, in force %s (this device %s)"), Self->Tier < 0 ? TEXT("AUTO") : Names[Self->Tier], Names[Self->TierLive], Names[Self->DetectTier()]));
 		}), 13, Hi)]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 8.f)
@@ -681,7 +687,7 @@ int32 ASlapHUD::PairingFor(int32 RedSlot, int32 BlueSlot) const
 	if (!SlotCards.IsValidIndex(RedSlot) || !SlotCards.IsValidIndex(BlueSlot) || SlotCards[RedSlot].IsEmpty() || SlotCards[BlueSlot].IsEmpty()) return INDEX_NONE;
 	auto Find = [this](const FString& Level)
 	{
-		return Pairings.IndexOfByPredicate([&](const FAssetData& A) { return A.AssetName.ToString().Equals(Level, ESearchCase::IgnoreCase); });
+		return Pairings.IndexOfByPredicate([&](const FAssetData& A) { return DesktopLevel(A.AssetName.ToString()).Equals(Level, ESearchCase::IgnoreCase); });
 	};
 	const FString& R = SlotCards[RedSlot];
 	const FString& B = SlotCards[BlueSlot];

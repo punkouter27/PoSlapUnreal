@@ -93,6 +93,7 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 	float Obs[NumObs];
 	const bool bRunNet = StepCount % ControlEvery == 0;	// 50 Hz, also while WalkInLeft holds still (level load)
 	const bool bReady = HudLive();
+	if (bRunNet && bReady) PublishFootsteps(d);	// display only: the walk-in's footfalls (the deck outside the mat: ASlapHUD::Steps)
 	if (!bReady)	// nothing is being drawn (level load, a hitch): the walk waits for the screen
 	{
 		if (WalkInLeft == WalkInTotal) PlaceWalkers(m, d);	// not begun: at the top of the aisle
