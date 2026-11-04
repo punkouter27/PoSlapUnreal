@@ -111,6 +111,7 @@ class SlapEnv:
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.mocap = T(self.dw.mocap_pos)
+        self.con_pos, self.site_xpos, self.site_xmat = T(self.dw.contact.pos), T(self.dw.site_xpos), T(self.dw.site_xmat)
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
@@ -145,6 +146,12 @@ class SlapEnv:
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
+        # physics 3: the target is a face (sphere + jaw capsules), a touch counting inside its face_zone box
+        tb = m.body("target").id
+        self.is_target = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
+        self.is_target[[g for g in range(m.ngeom) if m.geom_bodyid[g] == tb]] = True
+        self.tsite = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_SITE, "target_face_zone")
+        self.tsite_half = torch.tensor(m.site_size[max(self.tsite, 0)], dtype=torch.float32, device=dev)
         # physics 2: either hand may strike (its own speed counts); physics 1: the right hand only
         self.strikers = [m.geom("hand_l").id, self.hand] if self.physics >= 2 else [self.hand]
         self.striker_of = torch.full((m.ngeom,), -1, dtype=torch.long, device=dev)
@@ -371,9 +378,14 @@ class SlapEnv:
         speeds = vels.norm(dim=-1)
         self.hand_prev = hands.clone()
         valid, g0, g1, w = contact_slots(self, self.N)
-        other = torch.where(g0 == self.tgeom, g1, g0)
+        t0 = self.is_target[g0]
+        other = torch.where(t0, g1, g0)
         k = self.striker_of[other]                                          # which striking hand (-1: not one)
-        on = valid & ((g0 == self.tgeom) | (g1 == self.tgeom)) & (k >= 0)   # the hand only:
+        on = valid & (t0 | self.is_target[g1]) & (k >= 0)                   # the hand only:
+        if self.tsite >= 0:   # physics 3: on its face zone (cheek and jaw), the referee's box test
+            n = self.con_pos.shape[0]
+            on &= common.in_face_zone(self.con_pos[:, :3], self.site_xpos[w, self.tsite], self.site_xmat[w, self.tsite],
+                                      self.tsite_half.expand(n, 3))
         # a head/chest/arm bump used to end the attempt for ~-3, cheaper than the clock (-95): he learned to head-butt it
         # every contact slot at once, scattered to its world: no host sync per physics step
         hit = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()

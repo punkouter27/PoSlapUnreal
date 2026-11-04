@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import mujoco
 import torch
 import warp as wp
 
@@ -53,6 +54,25 @@ def capture(mw, dw):
     with wp.ScopedCapture() as c:
         mjw.kinematics(mw, dw)
     return g_step, c.graph
+
+
+def face_lookup(m, prefixes, device):
+    """Physics 3's face (build_body.face_parts): (per geom: the athlete whose face it is, else -1; per athlete: its
+    face_zone site id). v1/v2 models have no jaw: the face is the head sphere alone, the site is never tested."""
+    owner = torch.full((m.ngeom,), -1, dtype=torch.long, device=device)
+    for k, p in enumerate(prefixes):
+        for n in ("head", "jaw_l", "jaw_r"):
+            i = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, p + n)
+            if i >= 0:
+                owner[i] = k
+    sites = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_SITE, p + "face_zone") for p in prefixes]
+    return owner, torch.tensor(sites, device=device), torch.tensor(m.site_size, dtype=torch.float32, device=device)
+
+
+def in_face_zone(pos, site_xpos, site_xmat, half):
+    """match.in_face_zone batched: (n, 3) contact points against their head's face_zone box ((n, 3), (n, 3, 3), (n, 3))."""
+    local = (site_xmat.transpose(-1, -2) @ (pos - site_xpos)[..., None]).squeeze(-1)
+    return (local.abs() <= half).all(-1)
 
 
 def contact_slots(env, worlds):

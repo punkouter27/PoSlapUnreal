@@ -291,7 +291,7 @@ def main():
                     help="prune the observation to N channels INSIDE the network's input layer (a fixed projection, "
                          "baked into the exported ONNX: the brain I/O stays the same 136 floats and the C++/JS "
                          "engines need no change)")
-    ap.add_argument("--physics", type=int, default=None, choices=(1, 2),
+    ap.add_argument("--physics", type=int, default=None, choices=(1, 2, 3),
                     help="the physics version's models: 1 shipped (models/), 2 the realism batch (models/v2/); default SLAP_PHYSICS or 1")
     ap.add_argument("--supervise", type=int, default=0, help="crash guard: resume a crashed run from latest.pt up to N times (see the docstring)")
     a = ap.parse_args()

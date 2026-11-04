@@ -134,8 +134,8 @@ def mesh_push(v, hp, hR, H, iters=5, skin=0.002):
     return v + total
 
 
-def run(physics, pairing):
-    f = CR / f"p{physics}_{pairing}_poses.npz"
+def run(physics, pairing, tag=""):
+    f = CR / f"p{physics}_{pairing}{tag}_poses.npz"   # tag "_v2b": collision_review.py --brains v2
     if not f.exists():
         return None
     poses = np.load(f)["poses"]
@@ -170,7 +170,7 @@ def run(physics, pairing):
     raw, clamped, meshed = np.array(raw) * 1000, np.array(clamped) * 1000, np.array(meshed) * 1000
     q = lambda a, p: round(float(np.percentile(a, p)), 1) if len(a) else None
     so = {k: [round(x * 1000, 1) for x in skin_outside(A[k])] for k in A}
-    return dict(physics=physics, pairing=pairing, samples=int(len(raw)),
+    return dict(physics=physics, pairing=pairing, brains=tag.strip("_") or "shipped", samples=int(len(raw)),
                 drawn_depth_mm=dict(median=q(raw, 50), p90=q(raw, 90), max=q(raw, 100), clipping_pct=round(100 * float((raw > 0).mean()), 1) if len(raw) else None),
                 clamped_depth_mm=dict(median=q(clamped, 50), p90=q(clamped, 90), max=q(clamped, 100), clipping_pct=round(100 * float((clamped > 0).mean()), 1) if len(clamped) else None),
                 mesh_clamped_depth_mm=dict(median=q(meshed, 50), p90=q(meshed, 90), max=q(meshed, 100), clipping_pct=round(100 * float((meshed > 0).mean()), 1) if len(meshed) else None),
@@ -179,7 +179,7 @@ def run(physics, pairing):
 
 if __name__ == "__main__":
     DIRS = fib(NB)
-    res = [r for p in (1, 2) for g in PAIR_CHARS if (r := run(p, g))]
+    res = [r for p in (1, 2, 3) for g in PAIR_CHARS for t in ("", "_v2b") if (r := run(p, g, t))]
     (CR / "mesh_clip.json").write_text(json.dumps(res, indent=1))
     for r in res:
         print(json.dumps(r))

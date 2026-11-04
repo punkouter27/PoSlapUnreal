@@ -1,6 +1,6 @@
 """Collision review: real matches (training/match.py's own loop, CPU MuJoCo), every contact measured per pair class.
 
-    training/.venv/Scripts/python.exe Scripts/collision_review.py --physics 1 --pairing gk --matches 6 [--workers 6]
+    training/.venv/Scripts/python.exe Scripts/collision_review.py --physics 1 --pairing gk --matches 6 [--workers 6] [--brains v2]
 
 Reads the models, never changes them (match.muscle_step is wrapped to look at d.contact after each physics step).
 Pair classes: palm_head (a hand box vs the other athlete's head), other_head (any other part vs that head),
@@ -29,12 +29,18 @@ PAIRINGS = {   # red brain, blue brain, red character, blue character (the shipp
     "gk": ("grandpa_final_vs_kim", "kim_final_vs_grandpa", "grandpa", "kim"),
     "kk": ("kim_final", "kim_final", "kim", "kim"),
 }
+PAIRINGS_V2 = {   # --brains v2: the physics-2 retrain's brains (2026-11-04), the starting points of the physics-3 retrain
+    "gg": ("grandpa_L4_v2", "grandpa_L4_v2", "grandpa", "grandpa"),
+    "gk": ("grandpa_final_vs_kim_v2", "kim_final_vs_grandpa_v2", "grandpa", "kim"),
+    "kk": ("kim_L4_v2_candidate", "kim_L4_v2_candidate", "kim", "kim"),   # export_candidate.py kim_L4_v2_night6_0348
+}
+FACE = ("head", "jaw_l", "jaw_r")   # physics 3: the jaw capsules are the head's too (build_body.face_parts)
 CLASSES = ("palm_head", "other_head", "body_body", "self", "sole_floor", "body_floor", "hand_podium", "body_podium",
            "sole_podium")
 
 
 def one(args):
-    phys, pairing, i = args
+    phys, pairing, i, brains = args
     os.environ["SLAP_PHYSICS"] = str(phys)
     sys.path.insert(0, str(TRAIN))
     os.chdir(TRAIN)
@@ -43,7 +49,7 @@ def one(args):
     import match
     from brain_cpu import muscle_step as real
 
-    rb, bb, rc, bc = PAIRINGS[pairing]
+    rb, bb, rc, bc = (PAIRINGS_V2 if brains == "v2" else PAIRINGS)[pairing]
     st = {c: dict(pen=[], dur=[], vin=[], vout=[], slip=[], fuse=[]) for c in CLASSES}
     live = {}        # (g1, g2) -> [class, steps, max pen, normal, vn at touch]
     ended = []       # pairs whose contact ended last step: measure the separation speed now
@@ -73,8 +79,8 @@ def one(args):
             return "sole_podium" if sole else "hand_podium" if hand else "body_podium"
         if s1 == s2:
             return "self"
-        if p1 == "head" or p2 == "head":
-            other = p2 if p1 == "head" else p1
+        if p1 in FACE or p2 in FACE:
+            other = p2 if p1 in FACE else p1
             return "palm_head" if other.startswith("hand_") else "other_head"
         return "body_body"
 
@@ -215,14 +221,16 @@ if __name__ == "__main__":
     ap.add_argument("--pairing", default="gk", choices=list(PAIRINGS))
     ap.add_argument("--matches", type=int, default=6)
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--brains", default="shipped", choices=("shipped", "v2"), help="shipped (physics 1) or the v2 retrain's brains")
     a = ap.parse_args()
+    tag = "" if a.brains == "shipped" else f"_{a.brains}b"
     with Pool(min(a.workers, a.matches)) as p:
-        outs = p.map(one, [(a.physics, a.pairing, i) for i in range(a.matches)])
+        outs = p.map(one, [(a.physics, a.pairing, i, a.brains) for i in range(a.matches)])
     import numpy as np
     s = summary(outs)
-    s["_match"].update(physics=a.physics, pairing=a.pairing)
+    s["_match"].update(physics=a.physics, pairing=a.pairing, brains=a.brains)
     dst = ROOT / "Saved" / "collision_review"
     dst.mkdir(parents=True, exist_ok=True)
-    (dst / f"p{a.physics}_{a.pairing}.json").write_text(json.dumps(s, indent=1))
-    np.savez_compressed(dst / f"p{a.physics}_{a.pairing}_poses.npz", poses=np.concatenate([o["poses"] for o in outs]))
+    (dst / f"p{a.physics}_{a.pairing}{tag}.json").write_text(json.dumps(s, indent=1))
+    np.savez_compressed(dst / f"p{a.physics}_{a.pairing}{tag}_poses.npz", poses=np.concatenate([o["poses"] for o in outs]))
     print(json.dumps(s))

@@ -99,6 +99,15 @@ def load(mjb=None, character="grandpa", blue_character=None):
     return m, (fp, fps[bc]), (pre + "red_", pre + "blue_")
 
 
+def in_face_zone(m, d, site, p):
+    """Physics 3's referee rule (every engine runs the same test): the contact point p inside the face_zone box,
+    in the head's frame. The site carries the box: its world position, its frame and its half-sizes."""
+    r = np.asarray(p, float) - d.site_xpos[site]
+    R = d.site_xmat[site]   # row-major 3x3, site -> world: local = R^T r
+    h = m.site_size[site]
+    return all(abs(R[k] * r[0] + R[3 + k] * r[1] + R[6 + k] * r[2]) <= h[k] for k in range(3))
+
+
 def stand_both(m, d, sides):
     """Both athletes to their own stand pose (their own fingerprint): reset once, then set each corner's joints by
     its full prefixed name - a suffix match would give the second corner's pose to both in a mixed pairing."""
@@ -124,6 +133,10 @@ class Side:
         self.head, self.hand, self.feet = g("head"), g("hand_r"), (g("foot_l"), g("foot_r"))
         self.hands = (g("hand_l"), g("hand_r"))
         self.head_body = m.geom_bodyid[self.head]
+        # the face (physics 3, build_body.face_parts): the cranium sphere and the jaw capsules; a touch counts where its
+        # contact point lies inside the head's face_zone site (cheek and jaw). v1/v2: the sphere, anywhere on it
+        self.face = {i for i in (mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, prefix + n) for n in ("head", "jaw_l", "jaw_r")) if i >= 0}
+        self.face_zone = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_SITE, prefix + "face_zone")
         self.geoms = {i for i in range(m.ngeom) if m.body_rootid[m.geom_bodyid[i]] == self.a.pelvis}
 
 
@@ -344,9 +357,9 @@ class Match:
             head_prev, vh_prev, w_prev = head, vh, w
             if touch_k is None:
                 for c in d.contact[:d.ncon]:
-                    if D.head in (c.geom[0], c.geom[1]):
-                        other = c.geom[1] if c.geom[0] == D.head else c.geom[0]
-                        if other in S.geoms:
+                    if c.geom[0] in D.face or c.geom[1] in D.face:
+                        other = c.geom[1] if c.geom[0] in D.face else c.geom[0]
+                        if other in S.geoms and (self.physics < 3 or in_face_zone(m, d, D.face_zone, c.pos)):
                             sign = 1.0 if c.geom[0] == other else -1.0   # normal from the striker's part to the head
                             z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
                             palm = bool(other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
