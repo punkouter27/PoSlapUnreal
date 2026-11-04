@@ -1,0 +1,97 @@
+{
+ "when": "2026-11-04T04:25:46.043Z",
+ "base": "http://127.0.0.1:8093/Web/",
+ "warm": 2.5,
+ "measure": 3.5,
+ "sizes": {
+  "412x915": {
+   "gpu": "ANGLE (Intel, Intel(R) Graphics (0x00007D67) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+   "rows": [
+    {
+     "step": "low",
+     "tier": "low",
+     "fx": {},
+     "fps": 307.4,
+     "frame_ms": 3.25,
+     "p95_ms": 5.5,
+     "submit_median_ms": 2.1
+    },
+    {
+     "step": "high",
+     "tier": "high",
+     "fx": {},
+     "fps": 195,
+     "frame_ms": 5.13,
+     "p95_ms": 7.7,
+     "submit_median_ms": 3
+    },
+    {
+     "step": "ultra (11-03 set: full GTAO, 4K shadows)",
+     "tier": "ultra",
+     "fx": {
+      "sss": 0,
+      "vol": 0,
+      "dof": 0
+     },
+     "fps": 110.8,
+     "frame_ms": 9.03,
+     "p95_ms": 13.1,
+     "submit_median_ms": 3.5
+    },
+    {
+     "step": "+ skin SSS (16 taps)",
+     "tier": "ultra",
+     "fx": {
+      "vol": 0,
+      "dof": 0
+     },
+     "fps": 102.7,
+     "frame_ms": 9.74,
+     "p95_ms": 10,
+     "submit_median_ms": 4.4
+    },
+    {
+     "step": "+ volumetric key light (24 steps)",
+     "tier": "ultra",
+     "fx": {
+      "dof": 0
+     },
+     "fps": 136.1,
+     "frame_ms": 7.35,
+     "p95_ms": 8.4,
+     "submit_median_ms": 4
+    },
+    {
+     "step": "+ depth of field (24 taps) = ultra",
+     "tier": "ultra",
+     "fx": {},
+     "fps": 106.6,
+     "frame_ms": 9.38,
+     "p95_ms": 7,
+     "submit_median_ms": 2
+    },
+    {
+     "step": "cinema: SSS 32, volume 64, DoF 48",
+     "tier": "cinema",
+     "fx": {
+      "refl": 0
+     },
+     "fps": 88.1,
+     "frame_ms": 11.35,
+     "p95_ms": 9.8,
+     "submit_median_ms": 2.3
+    },
+    {
+     "step": "+ floor reflection = cinema",
+     "tier": "cinema",
+     "fx": {},
+     "fps": 49.7,
+     "frame_ms": 20.14,
+     "p95_ms": 18.2,
+     "submit_median_ms": 4
+    }
+   ],
+   "errors": []
+  }
+ }
+}
