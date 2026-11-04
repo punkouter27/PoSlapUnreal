@@ -34,4 +34,21 @@ three.js r-GLTFLoader + meshopt decoder (Node):
 python Scripts/check_naming.py: 130 assets, 0 errors, 0 warnings (PASS)
 </pre>
 <h2>File sizes (bytes)</h2><table><tr><th>file</th><th>before</th><th>after</th></tr><tr><td>Web/assets/grandpa.glb</td><td>605752</td><td>623384</td></tr><tr><td>Content/Art/Exports/Grandpa_rigged.fbx</td><td>1050812</td><td>1140684</td></tr><tr><td>Content/Art/Exports/Grandpa_rigged.glb</td><td>38621876</td><td>38725572</td></tr><tr><td>Content/Art/Exports/Grandpa_LOD1.fbx</td><td>572108</td><td>616300</td></tr><tr><td>Content/Art/Exports/Grandpa_LOD2.fbx</td><td>327244</td><td>349420</td></tr><tr><td>Content/Art/Raw/Grandpa_rigged.blend</td><td>1113740</td><td>1170572</td></tr><tr><td>Content/Art/Raw/Grandpa_rigged_scanhands.blend (new: the scan's hands)</td><td>-</td><td>1113740</td></tr></table>
-<!--BATCH-->
+<h2>Asset batch pipeline (added scope): <code>Scripts/blender_batch.py</code></h2>
+<p>One command, headless: <code>"C:\Program Files\Blender Foundation\Blender 5.2lender.exe" -b --factory-startup --python Scripts/blender_batch.py</code>
+(options: asset names, <code>--skip clean,lods,bake,export</code>, <code>--size 2048</code>, <code>--report &lt;dir&gt;</code>). Every athlete and arena .blend in
+<code>Content/Art/Raw</code>: topology cleanup (no rest vertex moves more than 0.1 mm, else the asset is not saved; the armature compared before/after),
+LOD1/LOD2 (Scripts/athlete_lods.py, cheek morphs rebuilt), baked detail maps (Cycles AO, curvature/cavity, a normal map from the high-res scan where one exists),
+runtime exports (FBX, GLB, web GLB with meshopt + WebP, the phone arena), and <code>Content/Art/Exports/asset_manifest.json</code> (sizes, triangles, texture sizes).
+Full run: 283 s on this machine. Details and bake thumbnails: <a href="batch/batch.html">batch/batch.html</a>.</p>
+<table><tr><th>asset</th><th>cleanup</th><th>tris</th><th>exports changed</th></tr>
+<tr><td>grandpa</td><td>nothing to fix (closed, manifold)</td><td>21388</td><td>none (re-export byte-identical but for FBX timestamps; not re-committed)</td></tr>
+<tr><td>kim</td><td>nothing to fix; 2 non-manifold edges reported, left (fixing would move vertices)</td><td>8394</td><td>none (as Grandpa)</td></tr>
+<tr><td>matt</td><td>1 loose vertex deleted, 28 sliver holes on the soles closed (62 faces, each on one rim texel); 2 large sole openings left; max move 0.0 mm</td><td>27742</td><td>Matt_rigged.fbx, Matt_LOD1/2.fbx, Web/assets/matt.glb</td></tr>
+<tr><td>arena (Arena_v2.blend)</td><td>nothing to fix; each of 27 props gets a second UV layer <code>BakeUV</code> for its maps</td><td>162360</td><td>Arena.glb (+TEXCOORD_1; same 27 nodes, same 166,200 tris, same tangents/bevels), Arena.fbx (was stale: PressTables at y 0 instead of 1.3 like the GLB), Web/assets/arena.glb; Arena_Mobile.glb equivalent (built without BakeUV), not re-committed</td></tr>
+<tr><td>arena_v1 (Arena.blend, reference only)</td><td>1,060 boundary cracks welded per ApronText mesh; no export</td><td>180466</td><td>-</td></tr></table>
+<p>Rig rules: every athlete FBX re-imported old vs new: 17 bones, bone matrices max diff 0.0, vertex groups and CheekDent_L/R the same; web GLBs load in three.js (17 bones,
+both morphs), bone world matrices max diff 0.0. Maps are linear (sRGB off) and delivered as files, not wired into materials:
+<code>Content/Art/Exports/&lt;Name&gt;_tex/T_&lt;Name&gt;_AO|Cavity|NormalScan.png</code> (2048), <code>Content/Art/Exports/Textures/Bake/T_&lt;Prop&gt;_AO|Cavity.png</code> (64-1024, BakeUV).
+The scan normal maps cover only the regions whose scan still aligns after rigging (head, trunk, legs; per-region ICP, 1.6-8.3 mm RMS); re-posed arms and Grandpa's new hands stay flat.</p>
+
