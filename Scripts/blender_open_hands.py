@@ -1,16 +1,18 @@
-r"""Grandpa's drawn hands remodelled as open palms that match the MuJoCo hand boxes (BLUEPRINT 2.1: the hand is a flat
-box, fingers fixed open). Approved 2026-11-04 after DOCS/20261103/collision_review.md found the scan's right hand curled
-and rolled ~30 deg off its box and the left hand a fist.
+r"""An athlete's drawn hands remodelled as open palms that match the MuJoCo hand boxes (BLUEPRINT 2.1: the hand is a flat
+box, fingers fixed open). Approved 2026-11-04 for Grandpa after DOCS/20261103/collision_review.md found the scan's right
+hand curled and rolled ~30 deg off its box and the left hand a fist; the same day for Kim and Matt ("whatever looks more
+realistic").
 
-    "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" -b --factory-startup --python Scripts/blender_open_hands.py -- [--no-save] [--no-export] [--no-web] [--out <test.blend>]
+    "C:\Program Files\Blender Foundation\Blender 5.2lender.exe" -b --factory-startup --python Scripts/blender_open_hands.py -- [grandpa kim matt] [--no-save] [--no-export] [--no-web] [--out <test.blend>]
 
-Source: Content/Art/Raw/Grandpa_rigged_scanhands.blend (the scan's hands; made from Grandpa_rigged.blend on the first
-run), so the script always starts from the scan and re-runs give the same result. Output: Content/Art/Raw/Grandpa_rigged.blend,
-then Scripts/blender_cheek_morphs.py's export(): Content/Art/Exports/Grandpa_rigged.fbx + .glb and Web/assets/grandpa.glb.
-LODs after it: Scripts/athlete_lods.py on the new blend.
+Per athlete <Name>: source Content/Art/Raw/<Name>_rigged_scanhands.blend (the scan's hands; made from <Name>_rigged.blend
+on the first run), so the script always starts from the scan and re-runs give the same result. Output:
+Content/Art/Raw/<Name>_rigged.blend, then Scripts/blender_cheek_morphs.py's export() (Content/Art/Exports/<Name>_rigged.fbx
++ .glb, Web/assets/<name>.glb). Scripts/blender_batch.py runs the LODs, bakes and the final exports after it.
+The hand model is Grandpa's (sized to his 18.4 x 8.4 x 3 cm box) scaled per axis to the athlete's own box.
 
 Per hand:
-  1. The hand box from training/models/grandpa_solo.xml in the Blender frame: the box's pose in its body (geom pos/quat),
+  1. The hand box from training/models/<name>_solo.xml in the Blender frame: the box's pose in its body (geom pos/quat),
      the body's rest frame, turned into Blender by the rigid map Blender rest -> MuJoCo qpos0 (Kabsch over the 17 bone
      heads vs the 17 body origins, as Scripts/grandpa_v2.py drives the rig) and anchored at the hand bone's head (bone =
      body position, as Web/art.js and Unreal pose the bones). Hand frame: u = the box's long axis (distal), w = its
@@ -54,12 +56,17 @@ from blender_cheek_morphs import add_cheek_morphs, export, rig_and_mesh  # noqa:
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "Content/Art/Raw"
-SRC = RAW / "Grandpa_rigged.blend"
-SCAN = RAW / "Grandpa_rigged_scanhands.blend"
 XML = ROOT / "training/models/grandpa_solo.xml"
+REF = np.array([0.0918, 0.042, 0.015])   # Grandpa's hand box half sizes (long, wide, thin): the SDF's own proportions
+
+
+def paths(name):
+    """The athlete's rigged blend, its scan-hands copy and its MuJoCo solo model."""
+    Name = name.capitalize()
+    return RAW / f"{Name}_rigged.blend", RAW / f"{Name}_rigged_scanhands.blend", ROOT / f"training/models/{name}_solo.xml"
 HANDS = ("hand_l", "hand_r")
 GRID = 0.001          # m, the surface-nets grid
-TARGET_FACES = 1600   # per hand, after decimation
+TARGET_FACES = 1600   # per hand, after decimation, at most: 2.5x the scan hand's faces, at least 500 (low-poly scans)
 SKIN_PCT = 60        # % of the scan hand's texels (closest to the median skin colour) a patch may sample
 PATCH = 0.025        # m, the UV patch cell (the scan's hand skin comes in islands ~5 cm across at its density)
 GAP = 0.004           # m, the zipped band between the arm's cut and the new hand
@@ -177,16 +184,23 @@ class HandSDF:
     """The open hand in the hand frame (u distal, w thumb side, n back of the hand), metres. `outline` is the arm's
     cut: centre (w, n) and radius per angle (bins over -pi..pi) at u_cut."""
 
-    def __init__(self, u_cut, centre, radius):
+    def __init__(self, u_cut, centre, radius, scale=(1.0, 1.0, 1.0)):
+        # scale: the box's half sizes over Grandpa's (u, w, n). The hand parts are modelled at Grandpa's size and
+        # evaluated at p / scale (a distance x the smallest factor: exact on the surface, close enough near it); the
+        # stub is the athlete's own wrist and stays in metres
+        self.S = np.asarray(scale, float)
+        self.k = float(self.S.min())
         self.u_cut, self.c0, self.R0 = u_cut, np.asarray(centre), np.asarray(radius)
+        uq = u_cut / self.S[0]                     # the cut in the hand model's own units
         nb = len(radius)
         self.th = -math.pi + (np.arange(nb) + 0.5) * 2 * math.pi / nb
         # the wrist the stub eases into: 5.8 x 3.9 cm, centred a little toward the scan's forearm
         self.c1 = np.clip(0.2 * self.c0, -0.005, 0.005)
-        a1, b1 = 0.029, 0.0195
+        a1, b1 = 0.029 * self.S[1], 0.0195 * self.S[2]
         self.R1 = a1 * b1 / np.sqrt((b1 * np.cos(self.th)) ** 2 + (a1 * np.sin(self.th)) ** 2)
-        self.u_s = max(u_cut, 0.0) + 0.02          # the stub's end (it hands over to the palm)
-        self.cn = float(np.clip(0.3 * self.c0[1], -0.005, 0.005))   # the palm's mid plane, eased toward the forearm
+        self.u_s = max(u_cut, 0.0) + 0.02 * self.S[0]   # the stub's end (it hands over to the palm)
+        self.cn = float(np.clip(0.3 * self.c0[1], -0.005, 0.005)) / self.S[2]   # the palm's mid plane (model units)
+        self.uq = uq
         cn = self.cn
         # fingers: knuckle (u, w), splay, flex, phalanx lengths, radii (knuckle, PIP, DIP, tip)
         F = {
@@ -202,7 +216,7 @@ class HandSDF:
             self.knuckles.append((np.array([u0, w0, cn + 0.0045]), r[0] * 0.95))
         # thumb, adducted along the index finger, a little toward the palm (CMC -> MCP -> IP -> tip)
         self.lim = u_cut + GAP + 0.004    # nothing but the stub reaches back past the seam (one clean loop there)
-        T = [np.array(x) for x in ((max(0.020, u_cut + 0.015), 0.020, cn - 0.007), (0.058, 0.039, cn - 0.008), (0.087, 0.044, cn - 0.006),
+        T = [np.array(x) for x in ((max(0.020, uq + 0.015), 0.020, cn - 0.007), (0.058, 0.039, cn - 0.008), (0.087, 0.044, cn - 0.006),
                                    (0.108, 0.045, cn - 0.004))]
         Tr = (0.0125, 0.0105, 0.0094, 0.0082)
         self.thumb = [(T[i], T[i + 1], Tr[i], Tr[i + 1]) for i in range(3)]
@@ -232,22 +246,23 @@ class HandSDF:
         qx, qy = np.abs(w) - (hw - r), np.abs(n) - (ht - r)
         d2 = np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - r
         u1 = 0.090 + 0.006 * (1 - np.clip(w / 0.041, -1, 1) ** 2)    # the knuckle line, the middle finger's furthest
-        du = np.maximum(u - u1, max(self.u_cut, 0.0) - 0.005 - u)
+        du = np.maximum(u - u1, max(self.uq, 0.0) - 0.005 - u)
         return np.hypot(np.maximum(d2, 0), np.maximum(du, 0)) + np.minimum(np.maximum(d2, du), 0)
 
     def __call__(self, p):
-        cn = self.cn
+        cn, k = self.cn, self.k
+        q = p / self.S                              # the hand model's own units
         back = self.lim - p[:, 0]
-        d = smin(self.stub(p), np.maximum(self.palm(p), back), 0.012)
-        pads = np.minimum(ellipsoid(p, np.array([0.036, 0.022, cn - 0.005]), np.array([0.030, 0.017, 0.0105])),     # thenar
-                          ellipsoid(p, np.array([0.045, -0.026, cn - 0.004]), np.array([0.036, 0.0125, 0.0095])))   # hypothenar
-        d = smin(d, np.maximum(pads, back), 0.008)
-        th = np.maximum(np.min([round_cone(p, *s) for s in self.thumb], axis=0), back)
-        d = smin(d, th, 0.007)
-        fing = np.min([round_cone(p, *s) for s in self.segs], axis=0)
-        d = smin(d, fing, 0.004)
+        d = smin(self.stub(p), np.maximum(self.palm(q) * k, back), 0.012 * k)
+        pads = np.minimum(ellipsoid(q, np.array([0.036, 0.022, cn - 0.005]), np.array([0.030, 0.017, 0.0105])),     # thenar
+                          ellipsoid(q, np.array([0.045, -0.026, cn - 0.004]), np.array([0.036, 0.0125, 0.0095])))   # hypothenar
+        d = smin(d, np.maximum(pads * k, back), 0.008 * k)
+        th = np.maximum(np.min([round_cone(q, *s) for s in self.thumb], axis=0) * k, back)
+        d = smin(d, th, 0.007 * k)
+        fing = np.min([round_cone(q, *s) for s in self.segs], axis=0) * k
+        d = smin(d, fing, 0.004 * k)
         for c, r in self.knuckles:
-            d = smin(d, np.linalg.norm(p - c, axis=1) - r, 0.004)
+            d = smin(d, (np.linalg.norm(q - c, axis=1) - r) * k, 0.004 * k)
         return d
 
 
@@ -443,8 +458,8 @@ def uv_stretch(faces, uvl):
 
 
 # ------------------------------------------------------------------------------------------------------- the remodel
-def remodel(mesh, arm):
-    boxes = hand_boxes(arm)
+def remodel(mesh, arm, xml=XML):
+    boxes = hand_boxes(arm, xml)
     me = mesh.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -499,9 +514,11 @@ def remodel(mesh, arm):
         hA = np.array([v[dl].get(gidx[hand], 0.0) for v in loopA])
         # -- 3. the new hand
         c0, R0 = outline(LA[:, 1:])
-        sdf = HandSDF(u_cut, c0, R0)
+        size = B["size"]                            # box half sizes: wide, long, thin
+        scale = np.array([size[1], size[0], size[2]]) / REF
+        sdf = HandSDF(u_cut, c0, R0, scale)
         lo = np.array([u_cut - 0.02, min(-0.055, LA[:, 1].min() - 0.012), min(-0.04, LA[:, 2].min() - 0.012)])
-        hi = np.array([0.205, max(0.075, LA[:, 1].max() + 0.012), max(0.04, LA[:, 2].max() + 0.012)])
+        hi = np.array([0.205 * scale[0], max(0.075 * scale[1], LA[:, 1].max() + 0.012), max(0.04, LA[:, 2].max() + 0.012)])
         V, Q = surface_nets(sdf, lo, hi, GRID)
         tmp_me = bpy.data.meshes.new(f"_{hand}_nets")
         tmp_me.from_pydata(world(V, O, E).tolist(), [], Q.tolist())
@@ -515,7 +532,8 @@ def remodel(mesh, arm):
         n_rem = len(tmp.evaluated_get(dg).data.polygons)
         dec = tmp.modifiers.new("dec", "DECIMATE")
         dec.decimate_type = "COLLAPSE"
-        dec.ratio = min(1.0, TARGET_FACES / (2.0 * n_rem))
+        budget = int(np.clip(2.5 * len(hand_faces), 500, TARGET_FACES))
+        dec.ratio = min(1.0, budget / (2.0 * n_rem))
         dg = bpy.context.evaluated_depsgraph_get()
         ev = tmp.evaluated_get(dg)
         hb = bmesh.new()
@@ -579,7 +597,8 @@ def remodel(mesh, arm):
         nfaces = len(new_faces)
         report[hand] = dict(
             cut_u_mm=round(u_cut * 1000, 1), cut_perimeter_cm=round(min(pers) * 100, 1),
-            cut_loop_verts=len(loopA), removed_scan_verts=len(old_removed),
+            box_half_mm=[round(float(x) * 1000, 1) for x in size], sdf_scale=[round(float(x), 3) for x in scale],
+            face_budget=budget, cut_loop_verts=len(loopA), removed_scan_verts=len(old_removed),
             scan_hand_extent_u_mm=round(float(old_ext[:, 0].max()) * 1000, 1), new_verts=len(new_verts),
             new_faces=nfaces, nets_quads=int(len(Q)), nets_nonmanifold_edges_after_decimate=nm_edges, duplicate_faces_dropped=dup,
             scan_uv_anisotropy=dict(median=round(float(np.median(aniso0)), 2), p90=round(float(np.percentile(aniso0, 90)), 2)))
@@ -802,20 +821,20 @@ def head_state(mesh):
     return out
 
 
-def main():
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    if not SCAN.exists():
-        bpy.ops.wm.open_mainfile(filepath=str(SRC))
+def run(name, argv):
+    src, scan, xml = paths(name)
+    if not scan.exists():
+        bpy.ops.wm.open_mainfile(filepath=str(src))
         if any("open_hands" in o for o in bpy.data.objects):
-            raise SystemExit(f"{SRC.name} already has open hands and {SCAN.name} is missing: restore it from git")
-        shutil.copy2(SRC, SCAN)
-        print(f"[open_hands] kept the scan's hands in {SCAN.name}")
-    bpy.ops.wm.open_mainfile(filepath=str(SCAN))
+            raise SystemExit(f"{src.name} already has open hands and {scan.name} is missing: restore it from git")
+        shutil.copy2(src, scan)
+        print(f"[open_hands] kept the scan's hands in {scan.name}")
+    bpy.ops.wm.open_mainfile(filepath=str(scan))
     bpy.context.preferences.filepaths.save_version = 0
     arm, mesh = rig_and_mesh()
     head = head_state(mesh)
     mesh.shape_key_clear()
-    report = remodel(mesh, arm)
+    report = remodel(mesh, arm, xml)
     stats, _ = add_cheek_morphs(mesh)
     after = head_state(mesh)
     shared = set(head) & set(after)
@@ -825,12 +844,19 @@ def main():
                             mask_max_diff=max(abs(head[k][1] - after[k][1]) for k in shared),
                             dent_verts={k: stats[k]["verts"] for k in ("CheekDent_L", "CheekDent_R")})
     mesh["open_hands"] = "Scripts/blender_open_hands.py 2026-11-04"
-    out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else SRC   # --out: a test copy elsewhere
+    out = Path(argv[argv.index("--out") + 1]) if "--out" in argv else src   # --out: a test copy elsewhere
     if "--no-save" not in argv:
         bpy.ops.wm.save_mainfile(filepath=str(out))
     if "--no-export" not in argv:
-        report["exports"] = export("grandpa", arm, mesh, web="--no-web" not in argv)
-    print("[open_hands] REPORT " + json.dumps(report))
+        report["exports"] = export(name, arm, mesh, web="--no-web" not in argv)
+    print(f"[open_hands] REPORT {name} " + json.dumps(report), flush=True)
+
+
+def main():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    flags = {argv[i + 1] for i, a in enumerate(argv) if a == "--out" and i + 1 < len(argv)}
+    for name in [a for a in argv if not a.startswith("--") and a not in flags] or ["grandpa"]:
+        run(name, argv)
 
 
 if __name__ == "__main__":
