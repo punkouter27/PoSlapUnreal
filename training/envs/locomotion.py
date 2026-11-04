@@ -41,7 +41,9 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import LAGS, MIN_STAMINA, OBS
+from constants import LAGS, MIN_STAMINA, OBS, OBS_EXT, models_dir
+from envs import common
+from envs.common import blown_up, contact_slots
 from envs.slap import DECIM, hill, quat_mat
 from levels import LEVELS
 
@@ -67,16 +69,17 @@ class LocomotionEnv:
         cfg_dir = HERE / "configs"
         self.joint_cfg = json.loads((cfg_dir / "joint_and_strength_config.json").read_text())
 
-        fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
+        md = models_dir()   # the physics version (SLAP_PHYSICS): models/ (1, shipped) or models/v2/
+        fp = json.loads((md / f"{character}_fingerprint.json").read_text())
         # S2 walks on the open floor of the solo scene; the obstacle courses need the low step and the podium
         # in the scene, so they load <name>_loco.xml (build_body.py writes it: the same athlete, plus a step
         # and the podium; the solo and arena models are untouched, so the shipped brains stay valid).
         scene = "solo" if self.course == COURSE_BOX else "loco"
-        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_{scene}.xml"))
+        m = self.m = mujoco.MjModel.from_xml_path(str(md / f"{character}_{scene}.xml"))
         order = fp["joint_order"]
         self.A = len(order)
         jid = [m.joint(n).id for n in order]
-        self.jq = torch.tensor([m.joint_qposadr[j] if hasattr(m, "joint_qposadr") else m.jnt_qposadr[j] for j in jid], device=dev)
+        self.jq = torch.tensor([m.jnt_qposadr[j] for j in jid], device=dev)
         self.jv = torch.tensor([m.jnt_dofadr[j] for j in jid], device=dev)
         self.act_id = torch.tensor([m.actuator(n).id for n in order], device=dev)
         self.neck_act = torch.tensor([m.actuator(n).id for n in order if n.startswith("neck")], device=dev)
@@ -104,12 +107,7 @@ class LocomotionEnv:
         self.mw = mjw.put_model(m)
         self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
 
-        def per_world(name):
-            a = getattr(self.mw, name)
-            t = wp.to_torch(a)
-            t = t.repeat(num_envs, *[1] * (t.dim() - 1)).contiguous()
-            setattr(self.mw, name, wp.from_torch(t, dtype=a.dtype))
-            return t
+        per_world = lambda name: common.per_world(self.mw, name, num_envs)   # one row per world (randomised)
 
         self.friction = per_world("geom_friction")
         self.mass = per_world("body_mass")
@@ -156,6 +154,12 @@ class LocomotionEnv:
         self.bad[[g for g in body_geoms if g not in feet]] = True
         self.surface = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.surface[self.floor] = True
+        # S3: the trunk, the head or an arm on the step is a knockdown (as on the floor); a shin or a thigh brushing its
+        # edge while climbing is not (a smoke run that counted the legs too fell in 99.7 % of episodes, 2026-11-03)
+        self.on_step_bad = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
+        if self.step_g >= 0:
+            legs = {m.geom(n).id for n in ("thigh_l", "thigh_r", "shin_l", "shin_r")}
+            self.on_step_bad[[g for g in body_geoms if g not in feet and g not in legs]] = True
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         self.hand = m.geom("hand_r").id
 
@@ -223,7 +227,12 @@ class LocomotionEnv:
         self.cmd_tgt = z(N, 2)           # the point the command points at (after the reaction delay)
         self.pend_tgt = z(N, 2)          # the point it will point at when the reaction delay expires
         self.react_t = z(N)              # the reaction delay left (s)
-        self.ep_clear = zb()             # the episode stepped up onto the step
+        self.ep_clear = zb()             # the episode stepped up onto the step (a sole on its top)
+        self.ep_down = zb()              # ... and down off its far side (both soles on the floor beyond it)
+        self.on_step = torch.zeros(N, 2, dtype=torch.bool, device=dev)   # each sole on the step this step
+        # the step-height curriculum (S3, train.py step_scale): 0 = a 1 cm sill, 1 = the full 10-20 cm step
+        self.step_scale = 1.0
+        self.blowups = torch.zeros((), dtype=torch.long, device=dev)
         self.ep_reach = zb()             # the episode reached the last waypoint
         self.ep_wp = zl()                # the waypoints visited
         self.step_top = z(N)             # the step's top height (m)
@@ -233,14 +242,7 @@ class LocomotionEnv:
         self.reaction = tuple(self.cfg.get("reaction", (0.0, 0.0)))   # the human reaction latency (s)
         self.slope = float(self.cfg.get("slope_deg", 0.0))            # the per-world gravity tilt (deg)
 
-        # Pre-capture CUDA graphs for zero-overhead GPU execution
-        mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
-        with wp.ScopedCapture() as c:
-            mjw.step(self.mw, self.dw)
-        self.g_step = c.graph
-        with wp.ScopedCapture() as c:
-            mjw.kinematics(self.mw, self.dw)
-        self.g_kin = c.graph
+        self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
 
         self.reset(torch.ones(N, dtype=torch.bool, device=dev))
         self.t += torch.randint(0, max(1, self.T - 250), (N,), device=dev)
@@ -292,7 +294,7 @@ class LocomotionEnv:
         self.x0[mask] = self.qpos[mask, 0]
         self.cmd_dist[mask] = 0.0
         self.yaw_cmd[mask] = 0.0
-        self.ep_clear[mask], self.ep_reach[mask], self.ep_wp[mask] = False, False, 0
+        self.ep_clear[mask], self.ep_reach[mask], self.ep_wp[mask], self.ep_down[mask] = False, False, 0, False
         self.wp_i[mask], self.stall_t[mask], self.wp_best[mask] = 0, 0.0, 1e9
         self.reach_paid[mask] = False
         self.wp_dist_prev[mask] = 0.0
@@ -335,8 +337,10 @@ class LocomotionEnv:
             side = torch.where(torch.rand(n, device=dev) < 0.5, -1.0, 1.0)   # which way round the podium
             self.step_xy[mask] = torch.stack([d * d_step, step_off], -1)
             self.pod_xy[mask] = torch.stack([d * d_pod, pod_off], -1)
-            # the step's top: 0.10-0.20 m (a step he can climb), its half-sizes from the model
-            self.step_top[mask] = self._u(n, 0.10, 0.20)
+            # the step's top: 0.10-0.20 m (a step he can climb), its half-sizes from the model; the curriculum
+            # (step_scale) starts it as a 1 cm sill and raises it as the clear rate comes (the S2 walker's shuffle
+            # clears ~1-2 cm: a 3 cm sill tripped it in every episode, 2026-11-03)
+            self.step_top[mask] = 0.01 + self.step_scale * (self._u(n, 0.10, 0.20) - 0.01)
             self.gsize[mask, self.step_g, 2] = self.step_top[mask] / 2
             self.gpos[mask, self.step_g, 0] = d * d_step
             self.gpos[mask, self.step_g, 1] = step_off
@@ -422,15 +426,18 @@ class LocomotionEnv:
             self.co_contract = torch.where(on, torch.full_like(self.co_contract, 1.20), torch.ones_like(self.co_contract))
 
     def _update_foot_contacts(self):
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        w = self.con_world.long().clamp(0, self.N - 1)
-        valid = idx < n
-        on_l = valid & (((g0 == self.floor) & (g1 == self.foot_l)) | ((g1 == self.floor) & (g0 == self.foot_l)))
-        on_r = valid & (((g0 == self.floor) & (g1 == self.foot_r)) | ((g1 == self.floor) & (g0 == self.foot_r)))
-        cl = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on_l.float(), "amax")
-        cr = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on_r.float(), "amax")
+        valid, g0, g1, w = contact_slots(self, self.N)
+                # a sole carries weight on the floor or, on the obstacle course, on the step's top
+        sup = (g0 == self.floor) | (g1 == self.floor)
+        stp = ((g0 == self.step_g) | (g1 == self.step_g)) if self.step_g >= 0 else torch.zeros_like(sup)
+        foot_l = (g0 == self.foot_l) | (g1 == self.foot_l)
+        foot_r = (g0 == self.foot_r) | (g1 == self.foot_r)
+        scat = lambda x: torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, x.float(), "amax") > 0.5
+        sl, sr = scat(valid & stp & foot_l), scat(valid & stp & foot_r)
+        # on its TOP (a toe stubbing the step's face is a contact too): the sole's centre above the step's top
+        self.on_step = torch.stack([sl, sr], -1) & (self.geom_xpos[:, self.feet, 2] > self.step_top[:, None] + 0.01)
+        cl = (scat(valid & sup & foot_l) | sl).float()
+        cr = (scat(valid & sup & foot_r) | sr).float()
         self.foot_contact = torch.stack([cl > 0.5, cr > 0.5], -1)
         # Approximate normalized vertical load distribution from contact state and foot height
         fz_l = cl * (1.0 - 0.5 * cr)
@@ -438,11 +445,10 @@ class LocomotionEnv:
         self.foot_load = torch.stack([fz_l, fz_r], -1)
 
     def _fallen(self):
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        hit = (idx < n) & ((self.surface[g0] & self.bad[g1]) | (self.surface[g1] & self.bad[g0]))
-        w = self.con_world.long().clamp(0, self.N - 1)
+        valid, g0, g1, w = contact_slots(self, self.N)
+        hit = valid & ((self.surface[g0] & self.bad[g1]) | (self.surface[g1] & self.bad[g0]))
+        if self.step_g >= 0:
+            hit |= valid & (((g0 == self.step_g) & self.on_step_bad[g1]) | ((g1 == self.step_g) & self.on_step_bad[g0]))
         fell = torch.zeros(self.N, dtype=torch.bool, device=self.device)
         fell[w[hit]] = True
         return fell | (self.qpos[:, 2] < 0.45)
@@ -478,7 +484,9 @@ class LocomotionEnv:
         wp.capture_launch(self.g_kin)
         self._update_foot_contacts()
 
-        fell = self.fell_now = self._fallen()
+        boom = blown_up(self.qpos, self.qvel)   # a NaN world would step on forever: it ends like a fall and resets
+        self.blowups += boom.sum()
+        fell = self.fell_now = self._fallen() | boom
         rew = self._reward(a, fell)
         self.prev2_action = self.prev_action
         self.prev_action = a
@@ -498,7 +506,7 @@ class LocomotionEnv:
         if done.any():
             mean_v_err = self.speed_err_sum / self.t.clamp(min=1).float()
             cols = (self.ret, self.t, fell, self.com_err, mean_v_err, self.lead_swaps, self.dist_walked)
-            extra = (self.ep_clear, self.ep_reach, self.ep_wp) if self.course != COURSE_BOX else (None, None, None)
+            extra = (self.ep_clear, self.ep_reach, self.ep_wp, self.ep_down) if self.course != COURSE_BOX else (None,) * 4
             for i, (r, l, f, ce, ve, ls, dw) in enumerate(zip(*(c[done].tolist() for c in cols))):
                 rec = dict(
                     ret=r, len=l, fell=f, left_box=False, hit=False, speed=0.0,
@@ -506,7 +514,7 @@ class LocomotionEnv:
                     v_err=ve, lead_swaps=ls, dist_walked=dw,
                 )
                 if extra[0] is not None:
-                    rec.update(clear=bool(extra[0][i]), reach=bool(extra[1][i]), waypoints=int(extra[2][i]))
+                    rec.update(clear=bool(extra[0][i]), reach=bool(extra[1][i]), waypoints=int(extra[2][i]), down=bool(extra[3][i]))
                 self.episodes.append(rec)
             self.reset(done)
         return self.observe(), rew, done, timeout
@@ -622,15 +630,12 @@ class LocomotionEnv:
         * the arrival: the last waypoint reached, once.
         """
         dev = self.device
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=dev)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        w = self.con_world.long().clamp(0, self.N - 1)
+        valid, g0, g1, w = contact_slots(self, self.N)
         obst = torch.zeros(self.m.ngeom, dtype=torch.bool, device=dev)
         obst[self.podium] = True
         if self.step_g >= 0:
             obst[self.step_g] = True
-        hit = (idx < n) & ((obst[g0] & self.bad[g1]) | (obst[g1] & self.bad[g0]))
+        hit = valid & ((obst[g0] & self.bad[g1]) | (obst[g1] & self.bad[g0]))
         bump = torch.zeros(self.N, device=dev).scatter_reduce_(0, w, hit.float(), "amax")
         self.bump = bump
         # the progress along the path (the waypoint closed this step) and the arrival
@@ -641,14 +646,22 @@ class LocomotionEnv:
         arrived = (dist < 0.45) & last & ~self.reach_paid
         self.reach_paid |= arrived
         self.ep_reach |= arrived
-        # the step-up: the pelvis above the step's top and over it
-        pel = self.xpos[:, self.pelvis]
-        off = (pel[:, 0:2] - self.step_xy).abs()
-        over = ((pel[:, 2] > (self.step_top + 0.05)) & (off[:, 0] < 0.35) & (off[:, 1] < 0.70) & (self.step_top > 0.0))
-        first = over & ~self.ep_clear
+        # the step-up: a sole standing on the step's top (2026-11-03: it was the pelvis "above the top", which a
+        # 0.9 m pelvis always is - walking past the step's footprint counted as climbing it)
+        up = self.on_step.any(-1) & (self.step_top > 0.0)
+        first = up & ~self.ep_clear
         self.ep_clear |= first
+        # the step-down: after the climb, both soles back on the floor beyond the step's far edge (balance kept)
+        if self.step_g >= 0:
+            half = self.gsize[:, self.step_g, 0]
+            ahead = (self.geom_xpos[:, self.feet, 0] - self.step_xy[:, None, 0]) * self.dir[:, None].to(half.dtype)
+            beyond = (ahead > (half[:, None] + 0.02)).all(-1) & self.foot_contact.all(-1) & ~self.on_step.any(-1)
+            down = beyond & self.ep_clear & ~self.ep_down
+        else:
+            down = torch.zeros_like(up)
+        self.ep_down |= down
         r = 1.5 * prog - 0.30 * bump - 0.5 * (self.stall_t.clamp(max=2.0) - 1.0).clamp(min=0.0)
-        return r + 0.30 * over + 5.0 * first + 10.0 * arrived.float()
+        return r + 0.30 * up.float() + 5.0 * first + 5.0 * down + 10.0 * arrived.float()
 
     def _heading(self, v, c, s):
         return torch.stack([c * v[:, 0] + s * v[:, 1], -s * v[:, 0] + c * v[:, 1], v[:, 2]], -1)
@@ -687,7 +700,7 @@ class LocomotionEnv:
             self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),
         ], -1)
 
-        if self.obs_dim == 148:
+        if self.obs_dim == OBS_EXT:
             # Option 5: +12 explicit locomotion proprioception channels (foot_l/r pos, contact flags, vertical load, gait clock)
             fl_h = self._heading(self.geom_xpos[:, self.foot_l] - self.xpos[:, self.pelvis], c, s)
             fr_h = self._heading(self.geom_xpos[:, self.foot_r] - self.xpos[:, self.pelvis], c, s)

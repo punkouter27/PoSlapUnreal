@@ -19,7 +19,9 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP
+from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP, models_dir
+from envs import common
+from envs.common import blown_up, contact_slots
 from envs.slap import DECIM, WAIT, hill, quat_mat
 from levels import LEVELS
 
@@ -43,8 +45,10 @@ class ArenaEnv:
         wp.set_stream(wp.stream_from_torch(self.stream))
 
         self.chars = (character, character) if isinstance(character, str) else tuple(character)
-        fps = [json.loads((HERE / "models" / f"{c}_fingerprint.json").read_text()) for c in self.chars]
-        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{self.chars[0]}_vs_{self.chars[1]}_arena.xml"))
+        md = models_dir()   # the physics version (SLAP_PHYSICS): models/ (1, shipped) or models/v2/
+        fps = [json.loads((md / f"{c}_fingerprint.json").read_text()) for c in self.chars]
+        m = self.m = mujoco.MjModel.from_xml_path(str(md / f"{self.chars[0]}_vs_{self.chars[1]}_arena.xml"))
+        self.physics = int(fps[0].get("physics", 1))   # 2: the strike impulse from the part that touched
         order = fps[0]["joint_order"]
         assert fps[1]["joint_order"] == order, "both corners need the same joint order"
         self.A = len(order)
@@ -85,12 +89,7 @@ class ArenaEnv:
         self.mw = mjw.put_model(m)
         self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
 
-        def per_world(name):
-            a = getattr(self.mw, name)
-            x = wp.to_torch(a)
-            x = x.repeat(num_envs, *[1] * (x.dim() - 1)).contiguous()
-            setattr(self.mw, name, wp.from_torch(x, dtype=a.dtype))
-            return x
+        per_world = lambda name: common.per_world(self.mw, name, num_envs)   # one row per world (randomised)
         self.friction, self.mass, self.inertia = per_world("geom_friction"), per_world("body_mass"), per_world("body_inertia")
         self.gain, self.bias, self.frange = per_world("actuator_gainprm"), per_world("actuator_biasprm"), per_world("actuator_forcerange")
         self.mass0, self.inertia0 = self.mass[0].clone(), self.inertia[0].clone()
@@ -103,7 +102,6 @@ class ArenaEnv:
         self.xmat = T(self.dw.xmat)   # the body frames (the gaze servo projects into the chest frame)
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
-        self.con_frame = T(self.dw.contact.frame)
         self.xfrc, self.xipos = T(self.dw.xfrc_applied), T(self.dw.xipos)
         self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.act0 = torch.zeros(m.nu, device=dev)
@@ -137,7 +135,7 @@ class ArenaEnv:
         self.striker = torch.zeros(W, dtype=torch.long, device=dev)
         self.goal, self.prev_action, self.prev2_action = self.stand_n.clone(), z(N, A), z(N, A)
         self.t = torch.zeros(W, dtype=torch.long, device=dev)
-        self.delay = torch.zeros(W, dtype=torch.long, device=dev)
+        self.delay = torch.zeros(W, 2, dtype=torch.long, device=dev)   # per athlete: each has his own 0-20 ms action delay
         self.ret, self.left_box = z(N), torch.zeros(N, dtype=torch.bool, device=dev)
         self.foot0, self.head0 = z(W, 2, 2, 2), z(W, 2, 3)
         self.hit_v = float(self.cfg.get("hit_speed", 8.0))
@@ -147,6 +145,8 @@ class ArenaEnv:
         self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(W, 3), z(W, 3), z(W)
         self.com0, self.com_err = z(W, 2), z(W)
         self.kick, self.kick_left = z(W, 6), torch.zeros(W, dtype=torch.long, device=dev)
+        self.gprev = None   # physics 2: every geom's position one physics step ago (the touching part's velocity)
+        self.blowups = torch.zeros((), dtype=torch.long, device=dev)   # worlds reset because their state stopped being finite
         self.wid = torch.arange(W, device=dev)
         self.force_striker = None   # exams: None = coin toss
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
@@ -170,13 +170,7 @@ class ArenaEnv:
         self.servo_mix = float(os.environ.get("SLAP_SERVO_MIX", "0.0"))
         self.servo_on = torch.ones(W, dtype=torch.bool, device=dev)
 
-        mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
-        with wp.ScopedCapture() as c:
-            mjw.step(self.mw, self.dw)
-        self.g_step = c.graph
-        with wp.ScopedCapture() as c:
-            mjw.kinematics(self.mw, self.dw)
-        self.g_kin = c.graph
+        self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
         self.reset(torch.ones(W, dtype=torch.bool, device=dev))
 
     # ------------------------------------------------------------------ helpers
@@ -220,7 +214,7 @@ class ArenaEnv:
             for a in range(2):
                 fr[:, self.neck_act[a]] *= self.neck[mask][:, a, None, None]
             self.gain[mask], self.bias[mask], self.frange[mask] = self.gain0 * k[..., None], self.bias0 * k[..., None], fr
-            self.delay[mask] = torch.randint(0, 5, (n,), device=self.device)
+            self.delay[mask] = torch.randint(0, 5, (n, 2), device=self.device)
         self.mem[mask & (torch.rand(self.W, device=self.device) < 1 / 6)] = 0.0   # a new match
         self.fresh |= mask
         self.striker[mask] = torch.randint(0, 2, (n,), device=self.device) if self.force_striker is None else self.force_striker
@@ -315,7 +309,7 @@ class ArenaEnv:
                                      torch.full_like(self.gaze_step, GAZE_MAX_STEP))
         self._gaze(tw)          # the eye-contact servo writes the neck yaw goal (match.py: after the decision)
         for s in range(DECIM):
-            on = (s >= self.delay)[:, None, None]
+            on = (s >= self.delay)[:, :, None]   # (W, 2, 1): each athlete's own delay
             u = torch.where(on, tw, ow)
             for k in range(2):
                 self.ctrl[:, self.act_id[k]] = u[:, k]
@@ -329,8 +323,11 @@ class ArenaEnv:
             self._strike_check()
         wp.capture_launch(self.g_kin)
 
-        fell = self.fell_now = self._fallen()                  # (W, 2)
+        boom = blown_up(self.qpos, self.qvel)                   # a NaN world would step on forever: ends like a fall
+        self.blowups += boom.sum()
+        fell = self.fell_now = self._fallen() | boom[:, None]  # (W, 2)
         rew, out = self._reward(a, fell)                       # (2W,), (W, 2)
+        rew = torch.where(boom.repeat_interleave(2), torch.full_like(rew, -5.0), rew)
         self.prev2_action = self.prev_action
         self.prev_action = a
         self.t += 1
@@ -363,50 +360,56 @@ class ArenaEnv:
         return 2.0 * torch.exp(-d ** 2 / 0.08) * face
 
     def _strike_check(self):
-        """After each physics step: the striker's first touch on the defender's head decides the strike."""
+        """After each physics step: the striker's first touch on the defender's head decides the strike.
+
+        Every contact slot at once, scattered to its world, with no host sync: this runs after every physics step,
+        and the old `if not on.any(): return` synchronised the GPU 4 times per decision (it is also where an
+        earlier kernel's fault was reported - CUDA 719 always surfaced here, tasks J10: the report, not the cause)."""
+        W, wid = self.W, self.wid
         hand = self._sd(self.geom_xpos[:, self.hand_g])[0]
         vel = (hand - self.hand_prev) / 0.005
-        speed = vel.norm(dim=-1)
         self.hand_prev = hand.clone()
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        w = self.con_world.long().clamp(0, self.W - 1)                # slots past nacon hold stale ids
+        gp = self.gprev
+        if self.physics >= 2:
+            self.gprev = self.geom_xpos.clone()
+        valid, g0, g1, w = contact_slots(self, self.W)
         dhead = self.head_g[1 - self.striker[w]]                        # the defender's head in that contact's world
-        on = (idx < n) & ((g0 == dhead) | (g1 == dhead))
+        on = valid & ((g0 == dhead) | (g1 == dhead))
         other = torch.where(g0 == dhead, g1, g0)
         on &= self.owner[other] == self.striker[w]                     # touched by the striker's body
-        if not bool(on.any()):
-            return
-        w = w[on]
-        hit = torch.zeros(self.W, dtype=torch.bool, device=self.device)
-        hit[w] = True
+        hit = torch.zeros(W, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()
+        if self.physics >= 2 and gp is not None:   # the part that touched (any one of them), its own velocity
+            part = torch.zeros(W, dtype=torch.long, device=self.device).scatter_reduce_(0, w, torch.where(on, other, 0), "amax")
+            vel = (self.geom_xpos[wid, part] - gp[wid, part]) / 0.005
+            at = self.geom_xpos[wid, part]
+        else:                                      # physics 1: hand_r's, whatever touched
+            at = hand
+        speed = vel.norm(dim=-1)
         early = self.t < WAIT                                # the 4 s stand (envs/slap.py WAIT): an early touch is a foul
-        self.bonus[hit & early & ~self.struck] -= 0.5
-        self.bonus[hit & self.struck & (self.t > self.t_hit + 15)] -= 1.0   # one slap per turn: a second touch costs
+        self.bonus = self.bonus - 0.5 * (hit & early & ~self.struck).float()
+        self.bonus = self.bonus - 1.0 * (hit & self.struck & (self.t > self.t_hit + 15)).float()   # one slap per turn
         new = hit & ~self.struck & ~early
-        if bool(new.any()):
-            v = speed[new]
-            clean = v >= self.hit_v                          # any hit counts (user 2026-10-25): the palm is technique, not validity
-            self.hit_ok[new], self.hit_speed[new] = clean, v
-            self.bonus[new] += torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
-            dh = self._sd(self.geom_xpos[:, self.head_g])[1][new] - self._sd(self.head0)[1][new]   # feint: he had flinched
-            self.bonus[new] += 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15)
-            f = vel[new] * (self.strike_mass[self.striker[new]] / (KICK_STEPS * 0.005))[:, None]
-            r = hand[new] - self.xipos[new.nonzero().squeeze(-1), self.head_b[1 - self.striker[new]]]
-            self.kick[new], self.kick_left[new] = torch.cat([f, torch.cross(r, f, dim=-1)], -1), KICK_STEPS
-            self.struck |= new
-            self.t_hit[new] = self.t[new]
-            self.com0[new] = self._sd(self.com[:, self.pelvis, :2])[1][new]
+        v = speed
+        clean = v >= self.hit_v                              # any hit counts (user 2026-10-25): the palm is technique, not validity
+        self.hit_ok = torch.where(new, clean, self.hit_ok)
+        self.hit_speed = torch.where(new, v, self.hit_speed)
+        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
+        dh = self._sd(self.geom_xpos[:, self.head_g])[1] - self._sd(self.head0)[1]   # feint: he had flinched
+        pay = pay + 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15)
+        self.bonus = self.bonus + torch.where(new, pay, torch.zeros_like(pay))
+        f = vel * (self.strike_mass[self.striker] / (KICK_STEPS * 0.005))[:, None]
+        r = at - self.xipos[wid, self.head_b[1 - self.striker]]
+        self.kick = torch.where(new[:, None], torch.cat([f, torch.cross(r, f, dim=-1)], -1), self.kick)
+        self.kick_left = torch.where(new, torch.full_like(self.kick_left, KICK_STEPS), self.kick_left)
+        self.struck = self.struck | new
+        self.t_hit = torch.where(new, self.t, self.t_hit)
+        self.com0 = torch.where(new[:, None], self._sd(self.com[:, self.pelvis, :2])[1], self.com0)
 
     def _fallen(self):
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        w = self.con_world.long().clamp(0, self.W - 1)
+        valid, g0, g1, w = contact_slots(self, self.W)
         defender = 1 - self.striker[w]                                   # per contact: who defends in its world
-        down = (idx < n) & self.surface[g0] & self.bad[g1] & ~((g0 == self.podium) & self.is_hand[g1] & (self.owner[g1] == defender))
-        down2 = (idx < n) & self.surface[g1] & self.bad[g0] & ~((g1 == self.podium) & self.is_hand[g0] & (self.owner[g0] == defender))
+        down = valid & self.surface[g0] & self.bad[g1] & ~((g0 == self.podium) & self.is_hand[g1] & (self.owner[g1] == defender))
+        down2 = valid & self.surface[g1] & self.bad[g0] & ~((g1 == self.podium) & self.is_hand[g0] & (self.owner[g0] == defender))
         fell = torch.zeros(self.W, 2, dtype=torch.bool, device=self.device)
         fell[w[down], self.owner[g1[down]]] = True
         fell[w[down2], self.owner[g0[down2]]] = True
@@ -426,6 +429,8 @@ class ArenaEnv:
         smooth = ((a2 - p2) ** 2).sum(-1)
         jerk = ((a2 - 2.0 * p2 + p2_prev) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
+        if self.physics >= 2:   # the anti-flail term (envs/locomotion.py's): the action's spread across the joints
+            r = r - 0.02 * (a2 - a2.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
         bx, by = self.cfg["foot_box"]
         d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()                       # (W, 2, 2 feet, 2)
         out = (d[..., 0] > bx).any(-1) | (d[..., 1] > by).any(-1)

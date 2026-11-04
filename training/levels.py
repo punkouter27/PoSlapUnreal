@@ -66,10 +66,12 @@ LEVELS = {
         model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),
         target_speed=(0.9, 1.3), box_dist=(1.3, 1.9),   # the distance to the step (randomised per episode)
         course="podium", reaction=(0.15, 0.35),        # the human reaction latency (the command lands 0.15-0.35 s late)
+        step_scale_start=0.0,                           # the step from a 1 cm sill up to 10-20 cm as the clear rate comes (train.py)
         slope_deg=3.0,                                  # the per-world gravity tilt (a slope of up to 3 deg)
         reward_target={0: 2400.0},
-        # clear: stepped up onto the step; reach: got past the podium to the last waypoint, still on his feet
-        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_reach=0.70)},
+        # clear: a sole on the step's top; down: both soles back on the floor beyond it; reach: past the podium to the
+        # last waypoint, still on his feet (graduation only at the full step height)
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_down=0.70, min_reach=0.70)},
     ),
     "S4": dict(  # Stage 4: the aisle lap - 2-4 waypoints around the podium, a jog speed band, slopes
         model="locomotion", roles={0: 1.0}, seconds=40.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),

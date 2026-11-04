@@ -24,8 +24,9 @@ def main():
     assert j_cfg["physics_engine"]["physics_hz"] == 200 and j_cfg["physics_engine"]["control_hz"] == 50
     assert j_cfg["joint_firmness_and_damping"]["damping_ratio_zeta"] == 0.8
     assert j_cfg["anthropometric_mass_distribution_pct"]["total_pct"] == 100.0
-    assert s_cfg["proprioception_observation_space"]["base_dimension"] == 136
-    assert s_cfg["proprioception_observation_space"]["extended_locomotion_dimension"] == 148
+    from constants import OBS, OBS_EXT   # one source for the observation count
+    assert s_cfg["proprioception_observation_space"]["base_dimension"] == OBS
+    assert s_cfg["proprioception_observation_space"]["extended_locomotion_dimension"] == OBS_EXT
     assert "Stage_2_Steady_Natural_Walk" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
     print("  [PASS] All 3 realism configuration files verified.")
 
@@ -75,6 +76,40 @@ def main():
         assert not (m.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_FILTERPARENT), f"{card}: the parent-child filter is off"
         print(f"  [PASS] {card}: the torque caps, the mass table, the COM, the muscle lag and the primitive hulls "
               f"({m.nu} motors, {m.ngeom} geoms) all follow the card.")
+
+    print("\n=== [2b/6] Physics 2 (models/v2, the realism batch for the retrain: DOCS/20261103/training_realism.md) ===")
+    from build_body import STIFF_SOLREF, STRIKE_MARGIN, TORQUE_V2, filtered_pairs
+    from constants import models_dir
+    for card in ("grandpa", "kim"):   # the athletes the retrain queue trains on physics 2
+        res = subprocess.run([sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / f"{card}.json"), "--physics", "2"],
+                             capture_output=True, text=True, check=True)
+        assert "swing & stride arcs" in res.stdout, res.stdout
+        c = json.loads((HERE / "characters" / f"{card}.json").read_text())
+        fp = json.loads((models_dir(2) / f"{card}_fingerprint.json").read_text())
+        assert fp.get("physics") == 2, f"{card}: the v2 fingerprint does not say physics 2"
+        m = mujoco.MjModel.from_xml_path(str(models_dir(2) / f"{card}_solo.xml"))
+        pairs = {tuple(sorted((m.geom(int(m.pair_geom1[i])).name, m.geom(int(m.pair_geom2[i])).name))) for i in range(m.npair)}
+        for a, b in filtered_pairs():   # every pair MuJoCo's weld-aware parent filter skips now collides
+            assert tuple(sorted((a, b))) in pairs, f"{card}: no explicit pair for {a}-{b}"
+        for h in ("hand_l", "hand_r"):   # the palm-target pair: stiff, with the early margin
+            i = next(i for i in range(m.npair) if {m.geom(int(m.pair_geom1[i])).name, m.geom(int(m.pair_geom2[i])).name} == {h, "target"})
+            assert abs(m.pair_margin[i] - STRIKE_MARGIN) < 1e-6 and abs(m.pair_solref[i, 0] - STIFF_SOLREF[0]) < 1e-6
+        fl = m.geom("floor").id
+        assert m.geom_condim[fl] == 4 and abs(m.geom_solref[fl, 0] - STIFF_SOLREF[0]) < 1e-6, f"{card}: the floor is not rigid / condim 4"
+        for i in range(m.nu):
+            j = m.joint(m.actuator_trnid[i, 0]).name
+            base = j.rsplit("_", 1)[0] if j.endswith(("_l", "_r")) else j
+            if base in TORQUE_V2:
+                st = c["strength"]
+                neg, pos = TORQUE_V2[base]
+                assert abs(m.actuator_forcerange[i, 0] + neg * st) < 1e-3 and abs(m.actuator_forcerange[i, 1] - pos * st) < 1e-3, \
+                    f"{card} {j}: forcerange {m.actuator_forcerange[i]} != TORQUE_V2 x strength"
+        v1 = json.loads((HERE / "models" / f"{card}_fingerprint.json").read_text())
+        import hashlib
+        assert hashlib.sha256((HERE / "models" / f"{card}_solo.xml").read_bytes().replace(b"\r\n", b"\n")).hexdigest() == v1["sha256"], \
+            f"{card}: the shipped v1 model changed"
+        print(f"  [PASS] {card} v2: {m.npair} explicit pairs ({len(filtered_pairs())} welded + 2 palm-target, margin "
+              f"{STRIKE_MARGIN * 1000:.0f} mm), rigid condim-4 floor, asymmetric torques; v1 model unchanged (sha {v1['sha256'][:12]})")
 
     print("\n=== [3/6] Verifying the S2 Walking & Proprioception Env on GPU (Options 3, 5, 6, 7, 8, 9, 10) ===")
     from envs.locomotion import LocomotionEnv

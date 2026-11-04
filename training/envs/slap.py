@@ -1,6 +1,6 @@
 """Slap training env on MuJoCo Warp: N worlds of one athlete, on the GPU (levels L0-L3).
 
-Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same 130 numbers.
+Observation and action are DOCS/BRAIN_IO.md exactly; Unreal's USlapController builds the same OBS (constants.py) numbers.
 One brain, every role (Blueprint 7): each world plays one role per episode, drawn from the level's `roles` mix, so a
 level keeps the earlier ones' skills (2026-10-22: L2 trained on strikes alone had forgotten how to guard).
     0  guard   (L0, L1): stand in the foot box under random pushes, 30 s
@@ -27,7 +27,9 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT
+from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, models_dir
+from envs import common
+from envs.common import blown_up, contact_slots
 from levels import LEVELS
 
 HERE = Path(__file__).resolve().parents[1]
@@ -65,8 +67,10 @@ class SlapEnv:
         torch.cuda.set_stream(self.stream)
         wp.set_stream(wp.stream_from_torch(self.stream))
 
-        fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
-        m = self.m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_solo.xml"))
+        md = models_dir()   # the physics version (SLAP_PHYSICS): models/ (1, shipped) or models/v2/
+        fp = json.loads((md / f"{character}_fingerprint.json").read_text())
+        m = self.m = mujoco.MjModel.from_xml_path(str(md / f"{character}_solo.xml"))
+        self.physics = int(fp.get("physics", 1))
         order = fp["joint_order"]
         self.A = len(order)
         jid = [m.joint(n).id for n in order]
@@ -92,12 +96,7 @@ class SlapEnv:
         self.dw = mjw.put_data(m, d0, nworld=num_envs, naconmax=num_envs * 48, njmax=512)
 
         # model fields randomised per world: one row each
-        def per_world(name):
-            a = getattr(self.mw, name)
-            t = wp.to_torch(a)
-            t = t.repeat(num_envs, *[1] * (t.dim() - 1)).contiguous()
-            setattr(self.mw, name, wp.from_torch(t, dtype=a.dtype))
-            return t
+        per_world = lambda name: common.per_world(self.mw, name, num_envs)   # one row per world (randomised)
         self.friction, self.mass, self.inertia = per_world("geom_friction"), per_world("body_mass"), per_world("body_inertia")
         self.gain, self.bias, self.frange = per_world("actuator_gainprm"), per_world("actuator_biasprm"), per_world("actuator_forcerange")
         self.gpos = per_world("geom_pos")   # the podium's height (a shorter opponent, see reset)
@@ -111,7 +110,7 @@ class SlapEnv:
         self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
-        self.con_frame, self.mocap = T(self.dw.contact.frame), T(self.dw.mocap_pos)
+        self.mocap = T(self.dw.mocap_pos)
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
@@ -134,7 +133,7 @@ class SlapEnv:
         self.pod_z0, self.shorter = float(pg.pos[2]), torch.zeros(num_envs, device=dev)
         # strike imitation (2026-10-22): the reference slap from slap_demo.py (wind-up, strike, follow-through), its joint
         # angles per brain step from the stand pose; the striker earns up to `imit` per step for matching it
-        demo = HERE / "models" / f"{character}_slap_demo.json"
+        demo = md / f"{character}_slap_demo.json"
         self.ref_q, self.imit = None, 0.0
         if demo.exists():
             dj = json.loads(demo.read_text())
@@ -146,6 +145,11 @@ class SlapEnv:
         self.pelvis, self.chest, self.head = m.body("pelvis").id, m.body("chest").id, m.body("head").id
         # strike: the mocap sphere stands in for the opponent's head; other roles park it out of reach
         self.tgeom, self.hand = int(m.body_geomadr[m.body("target").id]), m.geom("hand_r").id
+        # physics 2: either hand may strike (its own speed counts); physics 1: the right hand only
+        self.strikers = [m.geom("hand_l").id, self.hand] if self.physics >= 2 else [self.hand]
+        self.striker_of = torch.full((m.ngeom,), -1, dtype=torch.long, device=dev)
+        for i, g in enumerate(self.strikers):
+            self.striker_of[g] = i
         # the practice opponent (character card "sparring"): his face from our start pelvis, how much shorter he may be,
         # how far he leans in when braced (x SLAP_LEAN)
         self.spar = json.loads((HERE / "characters" / f"{character}.json").read_text())["sparring"]
@@ -178,21 +182,15 @@ class SlapEnv:
         self.episodes = []  # finished episodes, dicts (see step); the trainer drains it
         self.struck, self.hit_ok, self.done_hit = zb(), zb(), zb()
         self.settle = zl()   # strike: control steps left after the strike
-        self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, 3), z(N, 3), z(N)
+        self.hit_speed, self.bonus, self.hand_prev, self.hand_prev_ctrl, self.phi_prev = z(N), z(N), z(N, len(self.strikers), 3), z(N, 3), z(N)
+        self.blowups = torch.zeros((), dtype=torch.long, device=dev)   # worlds reset because their state stopped being finite (envs/common.blown_up)
         self.near, self.whiff = torch.full((N,), 9.0, device=dev), zb()   # strike: closest approach of a fast swing; a miss
         self.recoil, self.tgt_hit, self.back = z(N, 3), z(N, 3), z(N, 1)   # strike: the struck target's recoil, where it was hit, how fast it comes back
         self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
         self.stamina, self.neck = torch.ones(N, device=dev), torch.ones(N, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
 
-        # CUDA graphs: compile once, then replay
-        mjw.step(self.mw, self.dw); mjw.kinematics(self.mw, self.dw); wp.synchronize()
-        with wp.ScopedCapture() as c:
-            mjw.step(self.mw, self.dw)
-        self.g_step = c.graph
-        with wp.ScopedCapture() as c:
-            mjw.kinematics(self.mw, self.dw)
-        self.g_kin = c.graph
+        self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
         self.reset(torch.ones(N, dtype=torch.bool, device=dev))
         # desynchronise the episode clocks once: a run (or a resume) starting every world at t = 0 put all strikes in the same
         # iteration and the resumed striker unlearned the slap (2026-10-22: 0 touches 12 min after resuming a 61 % brain).
@@ -264,7 +262,7 @@ class SlapEnv:
         self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10 * lean)
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
-        self.hand_prev[mask] = self.geom_xpos[mask][:, self.hand]
+        self.hand_prev[mask] = self.geom_xpos[mask][:, self.strikers]
         self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
         self.near[mask], self.whiff[mask] = 9.0, False
         self.phi_prev[mask] = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])[mask]
@@ -333,8 +331,11 @@ class SlapEnv:
         self.mocap[:, 0] = torch.where(self.struck[:, None], self.tgt_hit + self.recoil * (1 - torch.exp(-k / 5)) * torch.exp(-k * self.back), self.mocap[:, 0])
         wp.capture_launch(self.g_kin)
 
-        fell = self.fell_now = self._fallen()
+        boom = blown_up(self.qpos, self.qvel)   # a NaN world would step on forever: it ends like a fall and resets
+        fell = self.fell_now = self._fallen() | boom
         rew, out = self._reward(a, fell)
+        rew = torch.where(boom, torch.full_like(rew, -5.0), rew)
+        self.blowups += boom.sum()   # a device counter: no host sync
         self.prev2_action = self.prev_action
         self.prev_action = a
         self.t += 1
@@ -365,18 +366,22 @@ class SlapEnv:
 
     def _strike_check(self):
         """After each physics step: the first contact with the target decides the strike (Blueprint L2)."""
-        hand = self.geom_xpos[:, self.hand]
-        vel = (hand - self.hand_prev) / 0.005
-        speed = vel.norm(dim=-1)
-        self.hand_prev = hand.clone()
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        on = (idx < n) & (((g0 == self.tgeom) & (g1 == self.hand)) | ((g1 == self.tgeom) & (g0 == self.hand)))   # the hand only:
+        hands = self.geom_xpos[:, self.strikers]                            # (N, 1 or 2, 3)
+        vels = (hands - self.hand_prev) / 0.005
+        speeds = vels.norm(dim=-1)
+        self.hand_prev = hands.clone()
+        valid, g0, g1, w = contact_slots(self, self.N)
+        other = torch.where(g0 == self.tgeom, g1, g0)
+        k = self.striker_of[other]                                          # which striking hand (-1: not one)
+        on = valid & ((g0 == self.tgeom) | (g1 == self.tgeom)) & (k >= 0)   # the hand only:
         # a head/chest/arm bump used to end the attempt for ~-3, cheaper than the clock (-95): he learned to head-butt it
         # every contact slot at once, scattered to its world: no host sync per physics step
-        w = self.con_world.long().clamp(0, self.N - 1)                     # slots past nacon hold stale ids (masked by on)
         hit = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, on.float(), "amax").bool()
+        # the touching hand's speed (physics 1: always hand_r's)
+        sc = torch.where(on, speeds[w, k.clamp(min=0)], torch.zeros_like(on, dtype=speeds.dtype))
+        speed = torch.zeros(self.N, device=self.device).scatter_reduce_(0, w, sc, "amax")
+        ki = torch.zeros(self.N, dtype=torch.long, device=self.device).scatter_reduce_(0, w, torch.where(on, k, 0), "amax")
+        vel = vels[torch.arange(self.N, device=self.device), ki]
         early = self.t < WAIT                                # before the 4 s stand is over: a foul, not the strike
         self.bonus -= 0.5 * (hit & early & ~self.struck).float()
         new = hit & ~self.struck & ~early
@@ -397,11 +402,8 @@ class SlapEnv:
         self.settle = torch.where(new, torch.full_like(self.settle, SETTLE), self.settle)
 
     def _fallen(self):
-        n = self.nacon[0]
-        idx = torch.arange(self.con_geom.shape[0], device=self.device)
-        g0, g1 = self.con_geom[:, 0].long(), self.con_geom[:, 1].long()
-        hit = (idx < n) & ((self.surface[g0] & self.bad[g1]) | (self.surface[g1] & self.bad[g0]))
-        w = self.con_world.long()
+        valid, g0, g1, w = contact_slots(self, self.N)
+        hit = valid & ((self.surface[g0] & self.bad[g1]) | (self.surface[g1] & self.bad[g0]))
         fell = torch.zeros(self.N, dtype=torch.bool, device=self.device)
         fell[w[hit]] = True
         # the defender (guard / absorb) may brace with his hands on the podium (user, 2026-10-22); the striker may not
@@ -428,6 +430,8 @@ class SlapEnv:
         smooth = ((a - self.prev_action) ** 2).sum(-1)
         jerk = ((a - 2.0 * self.prev_action + self.prev2_action) ** 2).sum(-1)
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
+        if self.physics >= 2:   # the anti-flail term (envs/locomotion.py's): the action's spread across the joints
+            r = r - 0.02 * (a - a.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()

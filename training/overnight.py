@@ -8,7 +8,8 @@ Stages come from runs/overnight_queue.json, re-read before every stage (a stage 
 Each stage resumes from the previous stage's brain (its best.pt, else latest.pt) unless it names one. A mixed pairing
 alternates two athletes in one queue: {"level": "L4", "char": "kim", "vs": "grandpa", ...} trains Kim against Grandpa's
 latest brain in this queue (else models/brains/grandpa_final.pt), frozen. A stage that
-crashes is retried once from its own latest.pt. A stage that ends without graduating stops the queue (the ladder;
+crashes is retried (up to 5 times) from its own latest.pt, each time after the GPU has cooled under 75 C (gpuwatch.py:
+every CUDA 719 of 2026-10-30 hit a card running at its thermal limit). A stage that ends without graduating stops the queue (the ladder;
 "no_gate": true on a stage lets the queue go on after it). Milestones go to runs/overnight.jsonl; every stage keeps train.py's
 TensorBoard, telemetry, checkpoints, videos and report. At the end: models/brains/<char>_final.pt + .onnx per athlete
 (<char>_final_vs_<opponent> from a mixed pairing, so the self-play finals stay) and
@@ -19,6 +20,7 @@ from pathlib import Path
 
 
 from brain_cpu import OBS
+from gpuwatch import cooldown, gpu_status
 from ppo import PPO, PPOConfig, export_onnx
 
 HERE = Path(__file__).parent
@@ -79,10 +81,15 @@ def main():
         minutes = min(stage["minutes"], (deadline - time.time()) / 60 - 1)
         char, vs = stage.get("char", a.char), stage.get("vs")
         vs_of[char] = f"_vs_{vs}" if vs else ""
+        args = stage.get("args", [])
+        if "--physics" in args and args[args.index("--physics") + 1] != "1":   # a physics-2 final never replaces a shipped one
+            vs_of[char] += f"_v{args[args.index('--physics') + 1]}"
         run = RUNS / f"{char}_{stage['level']}{vs_of[char]}_night{len(done) + 1}_{time.strftime('%H%M')}"
         resume = stage.get("resume") or carry.get(char)
         if vs:
             opp = carry.get(vs) or stage.get("opponent") or HERE / "models" / "brains" / f"{vs}_final.pt"   # "opponent": seed the first spar
+            if not carry.get(vs) and not stage.get("opponent") and "_v" in vs_of[char]:
+                log(event="warning", note=f"{vs} has no brain on this physics in the queue: sparring the shipped {opp.name}")
             stage = {**stage, "args": stage.get("args", []) + ["--opponent", f"{vs}:{opp}"]}
         log(event="stage", level=stage["level"], run=run.name, minutes=round(minutes, 1), resume=str(resume))
         end = time.time() + minutes * 60
@@ -90,7 +97,8 @@ def main():
         for _ in range(5):   # retries from where it got to (a crash, or a trainer restarted to pick up a fix)
             if code == 0 or not (run / "latest.pt").exists() or time.time() > end - 300:
                 break
-            log(event="crash", run=run.name, code=code)
+            log(event="crash", run=run.name, code=code, gpu=gpu_status())
+            cooldown(log=lambda s: log(event="cooldown", note=s))
             code = train(stage, run, (end - time.time()) / 60, run / "latest.pt", char)
         meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
         carry[char] = brain(run) or carry.get(char)

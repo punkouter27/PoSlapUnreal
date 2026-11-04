@@ -2,10 +2,19 @@
 
     .venv/Scripts/python.exe train.py --level L0 --minutes 5            (Unreal Editor closed for long runs)
 
+    .venv/Scripts/python.exe train.py --level L2 --physics 2 --minutes 600 --supervise 5   (crash guard, below)
+
 TensorBoard starts with the run (http://localhost:6006). A brain is exported to ONNX only on graduation
 (AGENTS.md): mean episode return >= the level's target over 100 consecutive episodes, zero NaN, and the
 level's own exam passed by the deterministic policy. runs/<run>/: latest.pt, telemetry.jsonl, meta.json,
 report.html (runs over 30 min). At start, runs older than 24 h are pruned (housekeeping).
+
+--physics 2 trains on the realism batch (models/v2/, DOCS/20261103/training_realism.md); the default is the shipped 1.
+--supervise N (the CUDA 719 guard, tasks J10): the run is a child process; when it dies (a GPU fault kills the CUDA
+context, so it cannot be caught in-process) it is resumed from its latest.pt after the GPU cools, up to N times,
+inside the same --minutes. Checkpoints are written every 3 minutes, so a crash costs at most that.
+Every 10 iterations the telemetry carries the buffers' fill (nefc vs njmax, contacts vs naconmax, Warp's overflow
+bits), the worlds reset after a blow-up, and the GPU's temperature and clock.
 """
 import argparse, copy, json, os, shutil, socket, subprocess, sys, time
 from collections import deque
@@ -16,7 +25,9 @@ import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, pca_projection, video
-from constants import GAZE_ON
+from constants import GAZE_ON, models_dir, physics
+from envs.common import buffer_health
+from gpuwatch import cooldown, gpu_status
 from envs.arena import ArenaEnv, Field, VsFrozen
 from envs.locomotion import LocomotionEnv
 from envs.slap import SlapEnv
@@ -100,6 +111,11 @@ def write_config_snapshot(run, args):
         "worlds": args.envs,
         "gaze_servo": GAZE_ON,
         "servo_mix": os.environ.get("SLAP_SERVO_MIX", "0.0"),
+        "physics": physics(),
+        "models_dir": str(models_dir().relative_to(HERE)),
+        "fingerprint_sha256": (json.loads((models_dir() / f"{args.char}_fingerprint.json").read_text()).get("sha256")
+                               if (models_dir() / f"{args.char}_fingerprint.json").exists() else None),
+        "gpu": gpu_status(),
     }
     (run / "config_snapshot.json").write_text(json.dumps(snap, indent=1, default=str))
     day = HERE.parent / "DOCS" / time.strftime("%Y%m%d") / "config_snapshots"
@@ -190,6 +206,7 @@ def exam(ppo, character, level):
     env.hit_v = float(L.get("hit_speed", 8.0))
     env.reach = 1.0                                     # and the real opponent's head
     env.slap_j, env.exam = float(L.get("slap_impulse", 0.0)), True
+    env.step_scale = 1.0                                # the obstacle course: the full step
     for role, chk in L["check"].items():
         env.force_role = role
         env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
@@ -198,6 +215,7 @@ def exam(ppo, character, level):
         pace = torch.zeros(env.N, device="cuda")   # walking levels: distance walked over distance commanded
         stop = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # ... and standing within 0.3 m of the box at the end
         clear = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # the obstacle course: stepped up onto the step
+        down = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # ... stepped down off its far side
         reach = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # ... and reached the last waypoint
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
@@ -206,6 +224,7 @@ def exam(ppo, character, level):
                 p0 = env.dist_walked / env.cmd_dist.clamp(min=1e-3)
                 s0 = env.rem.abs() < 0.3
                 c0 = getattr(env, "ep_clear", torch.zeros_like(fell)).clone()
+                d0 = getattr(env, "ep_down", torch.zeros_like(fell)).clone()
                 r0 = getattr(env, "reach_paid", torch.zeros_like(fell)).clone()
             obs, _, done, timeout = env.step(a)
             live = ~seen
@@ -213,6 +232,7 @@ def exam(ppo, character, level):
                 pace = torch.where(live & done, p0.clamp(max=1.5), pace)
                 stop = torch.where(live & done, s0 & ~env.fell_now, stop)
                 clear = torch.where(live & done, c0, clear)
+                down = torch.where(live & done, d0 & ~env.fell_now, down)
                 reach = torch.where(live & done, r0 & ~env.fell_now, reach)
             fell |= live & env.fell_now
             left_box |= live & lb
@@ -235,6 +255,8 @@ def exam(ppo, character, level):
             r[f"{tag}_stop"] = stop.float().mean().item()
         if "min_clear" in chk:      # the obstacle course: stepped up onto the low step
             r[f"{tag}_clear"] = clear.float().mean().item()
+        if "min_down" in chk:       # ... and stepped down off its far side, still on his feet (2026-11-03)
+            r[f"{tag}_down"] = down.float().mean().item()
         if "min_reach" in chk:      # ... and got past the podium to the last waypoint, still on his feet
             r[f"{tag}_reach"] = reach.float().mean().item()
         for k, v in r.items():
@@ -269,7 +291,12 @@ def main():
                     help="prune the observation to N channels INSIDE the network's input layer (a fixed projection, "
                          "baked into the exported ONNX: the brain I/O stays the same 136 floats and the C++/JS "
                          "engines need no change)")
+    ap.add_argument("--physics", type=int, default=None, choices=(1, 2),
+                    help="the physics version's models: 1 shipped (models/), 2 the realism batch (models/v2/); default SLAP_PHYSICS or 1")
+    ap.add_argument("--supervise", type=int, default=0, help="crash guard: resume a crashed run from latest.pt up to N times (see the docstring)")
     a = ap.parse_args()
+    if a.physics is not None:   # before any env is built: every env reads its models from constants.models_dir()
+        os.environ["SLAP_PHYSICS"] = str(a.physics)
     RUNS.mkdir(exist_ok=True)
     run_dir = RUNS / (a.run or "")
     housekeeping(keep=[run_dir] + ([Path(a.resume).parent] if a.resume else []))
@@ -285,6 +312,8 @@ def main():
     field = [tuple(x.split(":", 1)) for x in a.field.split(",")] if a.field else None
     vs = f"_vs_{opp[0]}" if opp else ""   # brains from a mixed pairing never overwrite the self-play graduates
     out_name = a.out or (f"{a.char}_all" if field else f"{a.char}_{a.level}{vs}")
+    if physics() >= 2 and not a.out:   # a physics-2 brain never overwrites a shipped (physics 1) one in models/brains
+        out_name += f"_v{physics()}"
     env_cls = ArenaEnv if arena else (LocomotionEnv if loco else SlapEnv)
     env = (Field(a.char, field, a.level, num_envs=a.envs) if field
            else VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs))
@@ -335,11 +364,14 @@ def main():
     env.reach = carry("reach", 1, float(a.reach_start if a.reach_start is not None else L.get("reach_start", 0.0 if "hit_speed_start" in L else 1.0)))
     env.imit = carry("imit", 1, float(a.imit_start if a.imit_start is not None else L.get("imit_start", 0.0)))
     env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
-    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit, "lr": ppo.cfg.lr}
+    if loco:   # the obstacle course's step height (S3): from a sill to the full step as the clear rate comes
+        env.step_scale = float(extra["step_scale"]) if extra.get("level") == a.level and "step_scale" in extra else float(L.get("step_scale_start", 1.0))
+    curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit, "lr": ppo.cfg.lr,
+                    **({"step_scale": env.step_scale} if loco else {})}
     target = L["reward_target"]
     recent = {r: deque(maxlen=100) for r in roles}
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
-    last_video, best_exam = time.time(), -1.0
+    last_video, best_exam, last_save = time.time(), -1.0, time.time()
     (run / "videos").mkdir(exist_ok=True)
     print(f"run {run.name}: {a.level}, roles {L['roles']}, {a.envs} worlds, {a.minutes} min, graduate at returns {target} over 100 episodes each")
     mean = lambda xs: sum(xs) / max(1, len(xs))
@@ -370,6 +402,7 @@ def main():
                 m[f"{tag}_clear"] = mean([e["clear"] for e in rec])
                 m[f"{tag}_reach"] = mean([e["reach"] for e in rec])
                 m[f"{tag}_waypoints"] = mean([e["waypoints"] for e in rec])
+                m[f"{tag}_down"] = mean([e.get("down", False) for e in rec])
             if r == 1:
                 m["strike_hit"] = mean([e["hit"] for e in rec])
                 m["strike_whiff"] = mean([e.get("whiff", False) for e in rec])   # missed swings (each ends the attempt)
@@ -395,16 +428,26 @@ def main():
                 env.hit_v = min(float(L["hit_speed"]), round(env.hit_v + 0.25, 2))
         if -1 in recent and "slap_impulse" in L and len(recent[-1]) == 100 and m["absorb_ok"] > 0.7:
             env.slap_j = min(float(L["slap_impulse"]), round(env.slap_j + 0.25, 2))
+        if loco and "guard_clear" in m and len(recent[0]) == 100 and env.step_scale < 1.0 and m["guard_clear"] > 0.6 \
+                and m.get("guard_down", 0.0) > 0.5:   # the step grows once he climbs and comes down off the sill
+            env.step_scale = min(1.0, round(env.step_scale + 0.01, 2))   # 0.05 per iteration hit the full step in 20 (smoke)
+        if it % 10 == 0:   # the CUDA 719 watch: the buffers' fill, blow-ups and the GPU (one host sync per 10 iterations)
+            seat = env.seats[0] if hasattr(env, "seats") else getattr(env, "env", env)
+            m.update({f"buf_{k}": v for k, v in buffer_health(seat.dw).items()})
+            m["blowups"] = int(seat.blowups) if hasattr(seat, "blowups") else 0
+            if it % 50 == 0:
+                m.update({f"gpu_{k}": v for k, v in gpu_status().items()})
         for k, v in {**stats, **m, **curr()}.items():
             tb.add_scalar(k, v, steps)
         tele.write(json.dumps({"it": it, "steps": steps, "min": round((time.time() - t0) / 60, 2), "episodes": len(eps),
                                **m, **curr(), **stats, "pelvis_z_w0": env.qpos[0, 2].item()}) + "\n")
         tele.flush()
         if it % 10 == 0:
-            line = " | ".join(f"{k} {v:.2f}" for k, v in m.items() if not k.endswith("episode_s"))
+            line = " | ".join(f"{k} {v:.2f}" for k, v in m.items() if not k.endswith("episode_s") and not k.startswith(("buf_", "gpu_")))
             print(f"it {it:5d} {steps / 1e6:7.1f}M {(time.time() - t0) / 60:5.1f} min | {line} | push {env.push_scale:.2f} "
                   f"bar {env.hit_v:.2f} reach {env.reach:.2f} imit {env.imit:.2f} slap {env.slap_j:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
-        if it % 50 == 0:
+        if it % 50 == 0 or time.time() - last_save > 180:   # every 3 min at most: what a crash can cost (--supervise)
+            last_save = time.time()
             ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr()})
         if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)
             last_video = time.time()
@@ -414,7 +457,8 @@ def main():
         ready = full and all(m[f"{TAG[r]}_return"] >= target[r] for r in roles) \
             and (0 not in roles or not L.get("pushes") or env.push_scale >= L.get("max_push", 1.0)) \
             and (1 not in roles or (env.hit_v >= float(L["hit_speed"]) and env.reach >= 1.0)) \
-            and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0)))
+            and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0))) \
+            and (not loco or getattr(env, "step_scale", 1.0) >= 1.0)
         exam_cd = min(600, max(45, a.minutes * 10))
         if ready and time.time() - last_exam > exam_cd:   # up to 10 min of training between exams, scaled for shorter runs:
             ok, res = (field_exam(ppo, a.char, a.level, field) if field else arena_exam(ppo, a.char, a.level, opp)) if arena else exam(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
@@ -447,12 +491,49 @@ def main():
     (run / "meta.json").write_text(json.dumps(meta, indent=1))
     tele.close(); tb.close()
     if minutes >= 2:
-        from report import write_report
-        print("report:", write_report(run))
+        try:   # the HTML report needs matplotlib; a venv without it must not turn a finished run into a failed one
+            from report import write_report
+            print("report:", write_report(run))
+        except ImportError as e:
+            print(f"report skipped ({e}): uv pip install matplotlib")
     print(json.dumps(meta))
 
 
+def supervise():
+    """--supervise N: run this command as a child; when it dies with a non-zero code (a GPU fault kills the CUDA
+    context, so it cannot be caught in-process) and left a latest.pt, wait for the GPU to cool and resume it, up to
+    N times, inside the original --minutes. The child is the same command without --supervise."""
+    argv = sys.argv[1:]
+    i = argv.index("--supervise")
+    tries = int(argv[i + 1])
+    argv = argv[:i] + argv[i + 2:]
+    def opt(name, default=None):
+        return argv[argv.index(name) + 1] if name in argv else default
+    def put(name, value):
+        nonlocal argv
+        if name in argv:
+            argv[argv.index(name) + 1] = value
+        else:
+            argv += [name, value]
+    if opt("--run") is None:   # the child must write to a known run directory to be resumed from it
+        put("--run", f"{opt('--char', 'grandpa')}_{opt('--level', 'L0')}_{time.strftime('%y%m%d_%H%M')}")
+    run, end = RUNS / opt("--run"), time.time() + float(opt("--minutes", 5.0)) * 60
+    for attempt in range(tries + 1):
+        code = subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())] + argv, cwd=HERE).returncode
+        if code == 0 or not (run / "latest.pt").exists() or time.time() > end - 120 or attempt == tries:
+            return code
+        with open(run / "crash.log", "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} exit code {code}: resuming from latest.pt ({attempt + 1}/{tries})\n")
+        print(f"supervise: exit code {code}, resuming {run.name} from latest.pt ({attempt + 1}/{tries})", flush=True)
+        cooldown()
+        put("--resume", str(run / "latest.pt"))
+        put("--minutes", f"{(end - time.time()) / 60:.1f}")
+    return code
+
+
 if __name__ == "__main__":
+    if "--supervise" in sys.argv and int(sys.argv[sys.argv.index("--supervise") + 1]) > 0:
+        sys.exit(supervise())
     try:
         main()
     except (Exception, KeyboardInterrupt):   # housekeeping's "failed run" marker (AGENTS.md)
