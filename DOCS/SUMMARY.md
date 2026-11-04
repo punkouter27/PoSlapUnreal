@@ -26,8 +26,8 @@ The relay's publisher role is keyed: `Web/live.py --key <secret>` (or `SLAP_LIVE
 `ws://<host>:8765/ue?key=<secret>`. Without a key only viewers are served, so a page on the LAN cannot push text
 into every other viewer's page. `Web/serve.py` serves only `Web/` and `training/` (`.git`, `Saved/`, `Logs/`, the
 venv are refused) and takes `--host 0.0.0.0` for phones on the network. The browser page validates `?live=` (a
-`ws:`/`wss:` URL on localhost or `*.webpubsub.azure.com` only) and never parses wire text as HTML; the deployed
-bundle ships a CSP (`Web/build.py`).
+`ws:`/`wss:` URL on localhost or `*.webpubsub.azure.com` only) and never parses wire text as HTML. The deployed
+bundle ships no CSP (removed 2026-11-03: it sat under `headers`, which Azure Static Web Apps never read).
 
 `Web/serve.py`'s refusal is checked on the **resolved** path, not the request path: `SimpleHTTPRequestHandler`
 drops `..` segments instead of resolving them, so `/Web/../AGENTS.md` would otherwise walk out of the allowed
@@ -48,8 +48,7 @@ strike over 12 m/s (1.0 on a knockdown), because the publisher ships no capture 
 
 **CORS and keys.** The API's reads answer with `Access-Control-Allow-Origin: *`: they are read-only, carry no
 credentials and show exactly what a WebSocket viewer already sees, so a scoreboard, a bot or an overlay on another
-origin can read them. The site's own CSP (`Web/build.py`) is untouched (`connect-src 'self' ws: wss:`), so the
-deployed site does not loosen its policy and the page keeps using the WebSocket. The publisher role always needs
+origin can read them. The page itself keeps using the WebSocket. The publisher role always needs
 the shared key; the API's reads need it too when one is configured (`--api-key`, or the publisher's `--key`): pass
 it as `?key=...` or in the `X-Slap-Key` header, compared with `hmac.compare_digest`. `--api-public` opens the reads
 on purpose. Writes are refused (405), no request path is ever turned into a file, and a token bucket answers 429
@@ -144,3 +143,10 @@ Adding an athlete (roster, 16 slots): rigged FBX -> `blender -b --python Scripts
 `MSYS2_ENV_CONV_EXCL=SLAP_` or "/Game/..." values get rewritten to C:/Program Files/Git/...). Open a level: `UnrealEditor … /Game/Levels/L_Arena_<red>_vs_<blue> -game`.
 UI check: `-SlapUiTest` (synthetic clicks through the menu sheet + one match loop, logs PASS/FAIL); `-SlapMenu=<0-2>` opens the sheet for screenshots.
 Live check: `-SlapRecord=Saved/URLab/live_ue.json`, then `replay_check.py live models/brains/<brain>.onnx Saved/URLab/live_ue.json`.
+
+**Physics versions (2026-11-03).** `build_body.py --physics 2` writes `training/models/v2/` (stiff palm-head pairs,
+the welded pairs collide, rigid floor/podium, asymmetric torque limits, the strike impulse from the part that touched).
+The game ships physics 1 (`training/models/`); `SLAP_PHYSICS` / `--physics` pick the version in training and
+`match.py`, the fingerprint's `"physics"` field in Unreal and `Web/sim.js`. Physics-2 brains are named `*_v2`.
+Unreal's controller and HUD are split into `SlapController*.cpp` / `SlapHUD*.cpp` (shared numbers in
+`SlapControllerInternal.h`, the feint rule in `SlapSwingRead.h`). Match events: `DOCS/20261103/events.md`.
