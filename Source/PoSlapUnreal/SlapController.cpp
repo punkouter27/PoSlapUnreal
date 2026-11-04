@@ -238,9 +238,13 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		for (int32 j = 0; j < A.Act.Num(); ++j) d->ctrl[A.Act[j]] = A.Goal[j];
 		FMemory::Memzero(d->xfrc_applied + 6 * A.HeadBody, 6 * sizeof(mjtNum));
 	}
-	if (Athletes.Num() == 2 && bInTurn && Turn.TouchStep >= 0 && Turn.Step - Turn.TouchStep < KickSteps)
-		FMemory::Memcpy(d->xfrc_applied + 6 * Athletes[1 - Turn.Striker].HeadBody, Turn.Kick, sizeof(Turn.Kick));
-	if (Physics >= 2 && bInTurn && Turn.TouchStep < 0) GeomPrev = TArray<mjtNum>(d->geom_xpos, 3 * m->ngeom);	// match.py gprev: just before the step
+	const bool bKickOn = Athletes.Num() == 2 && bInTurn && Turn.TouchStep >= 0 && Turn.Step - Turn.TouchStep < KickSteps;
+	if (bKickOn) FMemory::Memcpy(d->xfrc_applied + 6 * Athletes[1 - Turn.Striker].HeadBody, Turn.Kick, sizeof(Turn.Kick));
+	for (const TPair<int32, double>& X : Turn.React)	// physics 3: -share x the kick's force on the striker's arm (match.py)
+		for (int32 i = 0; i < 3; ++i) d->xfrc_applied[6 * X.Key + i] = bKickOn ? -X.Value * Turn.Kick[i] : 0.0;
+	// match.py gprev = glast: where the LAST step left every geom (a copy taken here would be wrong on a brain step:
+	// the decision's mj_kinematics has already moved geom_xpos to this step's pose, so the touching part read 0 m/s)
+	if (Physics >= 2 && bInTurn && Turn.TouchStep < 0) GeomPrev = GeomLast;
 	if (RecordFile.IsEmpty()) SetPace(m);
 }
 

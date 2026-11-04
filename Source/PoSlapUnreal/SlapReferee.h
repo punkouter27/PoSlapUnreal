@@ -33,6 +33,8 @@ namespace Slap
 		double LastSpeed = 0.0, FeintPeak = 0.0, FeintAt = 0.0;
 		bool bFeintSwing = false, bFeintTagged = false;
 		int32 Feints = 0;
+		// physics 3: the kick's reaction on the striker's arm (match.py reaction_chain): (body, mass share)
+		TArray<TPair<int32, double>> React;
 	};
 
 	/** The three judges and the round they are scoring. */

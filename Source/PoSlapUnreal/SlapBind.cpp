@@ -146,6 +146,9 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		A.Feet = { Geom(TEXT("foot_l")), Geom(TEXT("foot_r")) };	// the foot box is the sole (Blueprint 2.1)
 		A.Head = Geom(TEXT("head"));
 		A.HeadBody = m->geom_bodyid[A.Head];
+		A.Face = { A.Head };	// physics 3 adds the jaw capsules (build_body.face_parts); v1/v2 have none
+		for (const TCHAR* J : { TEXT("jaw_l"), TEXT("jaw_r") }) if (Geom(J) >= 0) A.Face.Add(Geom(J));
+		A.FaceZone = mj_name2id(m, mjOBJ_SITE, TCHAR_TO_UTF8(*(A.Prefix + TEXT("face_zone"))));
 		A.Hand = Geom(TEXT("hand_r"));
 		A.Palms = { Geom(TEXT("hand_l")), A.Hand };
 	}

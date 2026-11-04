@@ -141,6 +141,7 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 	const FAthlete& D = Athletes[1 - Turn.Striker];
 	FMemory::Memcpy(Turn.HandPrev, d->geom_xpos + 3 * S.Hand, sizeof(Turn.HandPrev));
 	FMemory::Memcpy(Turn.HeadPrev, d->geom_xpos + 3 * D.Head, sizeof(Turn.HeadPrev));
+	if (Physics >= 2) GeomLast = TArray<mjtNum>(d->geom_xpos, 3 * m->ngeom);	// match.py glast at the turn start
 	bInTurn = true;
 	Emit(FString::Printf(TEXT("{\"type\": \"turn_start\", \"round\": %d, \"striker\": %s, \"defender\": %s}"), Round, *Str(S.Name), *Str(D.Name)));
 	const FString Toss = (Round == 1 && TurnInRound == 0) ? (Athletes[First].Name + TEXT(" wins the toss")) : FString();
@@ -228,6 +229,7 @@ bool USlapController::PreStep(const mjModel* m, mjData* d)
 void USlapController::PostStep(const mjModel* m, const mjData* d)
 {
 	++Turn.Step;
+	if (Physics >= 2) GeomLast = TArray<mjtNum>(d->geom_xpos, 3 * m->ngeom);	// match.py glast: kept right after each step
 	const double T = Turn.Step * m->opt.timestep;
 	bool Finite = true;
 	double MaxV = 0.0;
@@ -261,9 +263,10 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 	for (int32 c = 0; c < d->ncon; ++c)
 	{
 		const mjContact& C = d->contact[c];
-		if (C.geom[0] != D.Head && C.geom[1] != D.Head) continue;
-		const int32 Other = C.geom[1] == D.Head ? C.geom[0] : C.geom[1];
+		if (!D.Face.Contains(C.geom[0]) && !D.Face.Contains(C.geom[1])) continue;
+		const int32 Other = D.Face.Contains(C.geom[0]) ? C.geom[1] : C.geom[0];	// match.py: geom[1] if geom[0] in D.face
 		if (m->body_rootid[m->geom_bodyid[Other]] != S.Pelvis) continue;
+		if (Physics >= 3 && !InFaceZone(m, d, D.FaceZone, C.pos)) continue;	// outside the cheek/jaw box: no strike, the turn goes on
 		const double Sign = C.geom[0] == Other ? 1.0 : -1.0;	// normal from the striker's part to the head
 		const double* Z = d->geom_xmat + 9 * S.Hand;			// palm = the hand box's -z axis (column 2)
 		Turn.bPalm = Other == S.Hand && -Sign * (C.frame[0] * Z[2] + C.frame[1] * Z[5] + C.frame[2] * Z[8]) > 0.5;
@@ -287,6 +290,22 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		double* K = Turn.Kick;
 		for (int32 i = 0; i < 3; ++i) K[i] = Vel[i] / m->opt.timestep * (S.StrikeMass / (KickSteps * m->opt.timestep));
 		mju_cross(K + 3, R, K);	// torque = R x force (same expression order as before: bit-identical)
+		Turn.React.Reset();
+		if (Physics >= 3 && KickReaction())	// the reaction on the striker's arm: momentum conserved (DOCS/20261104/physics3.md)
+		{
+			int32 B = m->geom_bodyid[Other];
+			while (B > 0)
+			{
+				const FString N = Part(Slap::Name(m, mjOBJ_BODY, B));
+				if (!N.StartsWith(TEXT("hand")) && !N.StartsWith(TEXT("forearm")) && !N.StartsWith(TEXT("upperarm"))) break;
+				Turn.React.Emplace(B, m->body_mass[B]);
+				B = m->body_parentid[B];
+			}
+			if (Turn.React.Num() == 0) Turn.React.Emplace(m->geom_bodyid[Other], m->body_mass[m->geom_bodyid[Other]]);
+			double Sum = 0.0;
+			for (const TPair<int32, double>& X : Turn.React) Sum += X.Value;	// numpy w.sum(): left to right for <= 3 terms
+			for (TPair<int32, double>& X : Turn.React) X.Value /= Sum;
+		}
 		// hand_speed (hand_r's speed this step), feint, feints: the additive fields (DOCS/20261103/events.md, match.ADDITIVE)
 		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s, \"hand_speed\": %s, \"feint\": %s, \"feints\": %d}"),
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(RoundTo(Speed, 2), 2), *Bool(Turn.Feints > 0), Turn.Feints));
@@ -300,6 +319,25 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		});
 		break;
 	}
+}
+
+bool USlapController::InFaceZone(const mjModel* m, const mjData* d, int32 Site, const mjtNum* P)
+{
+	// match.py in_face_zone: the contact point in the site's frame (local = R^T r) inside its half-sizes
+	if (Site < 0) return true;
+	const mjtNum* X = d->site_xpos + 3 * Site;
+	const mjtNum* R = d->site_xmat + 9 * Site;
+	const mjtNum* H = m->site_size + 3 * Site;
+	const double r[3] = { P[0] - X[0], P[1] - X[1], P[2] - X[2] };
+	for (int32 k = 0; k < 3; ++k)
+		if (FMath::Abs(R[k] * r[0] + R[3 + k] * r[1] + R[6 + k] * r[2]) > H[k]) return false;
+	return true;
+}
+
+bool USlapController::KickReaction()
+{
+	static const bool bOn = FPlatformMisc::GetEnvironmentVariable(TEXT("SLAP_KICK_REACTION")) != TEXT("0");	// match.py KICK_REACTION (A/B)
+	return bOn;
 }
 
 void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)

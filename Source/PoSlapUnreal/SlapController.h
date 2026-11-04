@@ -175,6 +175,8 @@ private:
 		FString Prefix, Name;	// "Arena_red_", "red"
 		int32 Pelvis = -1, Chest = -1, RootQ = -1, RootV = -1, Head = -1, Hand = -1, HeadBody = -1;
 		TArray<int32> Act, Qadr, Vadr, Feet, NeckAct, Palms;	// Palms: hand_l, hand_r (the defender's brace)
+		TArray<int32> Face;		// the geoms a strike lands on: head, and on physics 3 jaw_l / jaw_r (match.py face)
+		int32 FaceZone = -1;	// physics 3: the head's face_zone site (match.py in_face_zone)
 		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
 		TSharedPtr<UE::NNE::IModelInstanceCPU> Net;
@@ -264,6 +266,8 @@ private:
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
+	static bool InFaceZone(const mjModel* m, const mjData* d, int32 Site, const mjtNum* P);	// physics 3's face rule (match.py in_face_zone)
+	static bool KickReaction();	// SLAP_KICK_REACTION=0 turns physics 3's arm reaction off (match.py A/B)
 	void EndMatch(int32 Winner);	// series tally, HUD, post-match hold; -1 = draw / no contest
 	void Emit(FStringView Json);
 	void Decide(const mjModel* m, mjData* d);
@@ -324,7 +328,8 @@ private:
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
 	int32 Physics = 1;			// the fingerprint's physics version: 2 takes the strike impulse from the part that touched (match.py)
-	TArray<mjtNum> GeomPrev;	// physics 2: every geom's position as the last step began (match.py gprev)
+	TArray<mjtNum> GeomPrev;	// physics 2: every geom's position before the step about to run (match.py gprev)
+	TArray<mjtNum> GeomLast;	// physics 2: every geom where the last step left it (match.py glast)
 	bool Infer(FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into A.Action, its critic into Value
 	bool RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out);
 
