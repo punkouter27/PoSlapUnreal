@@ -1,0 +1,1238 @@
+{
+ "assets": {
+  "grandpa": {
+   "kind": "athlete",
+   "source": "Content/Art/Raw/Grandpa_rigged.blend",
+   "clean": {
+    "before": {
+     "verts": 10686,
+     "faces": 21289,
+     "nonmanifold_edges": 0,
+     "boundary_edges": 0,
+     "loose_verts": 0,
+     "loose_edges": 0
+    },
+    "after": {
+     "verts": 10686,
+     "faces": 21289,
+     "nonmanifold_edges": 0,
+     "boundary_edges": 0,
+     "loose_verts": 0,
+     "loose_edges": 0
+    },
+    "ops": {
+     "loose_deleted": 0,
+     "duplicate_faces_deleted": 0,
+     "crack_verts_welded": 0,
+     "degenerate_removed": 0,
+     "holes_filled_faces": 0
+    },
+    "max_move_mm": 0.0,
+    "changed": false
+   },
+   "rig": {
+    "bones": 17,
+    "unchanged": true
+   },
+   "mesh": {
+    "verts": 10686,
+    "tris": 21388,
+    "shape_keys": [
+     "Basis",
+     "CheekDent_L",
+     "CheekDent_R"
+    ],
+    "textures": {
+     "texture_pbr_20250901": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_normal": [
+      4096,
+      4096
+     ]
+    }
+   },
+   "exports": {
+    "Content/Art/Exports/Grandpa_rigged.fbx": {
+     "bytes": 1140684,
+     "tris": 21388,
+     "textures": {
+      "texture_pbr_20250901": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_normal": [
+       4096,
+       4096
+      ]
+     }
+    },
+    "Content/Art/Exports/Grandpa_rigged.glb": {
+     "bytes": 38725572,
+     "tris": 21388,
+     "textures": [
+      [
+       4096,
+       4096,
+       "image/png"
+      ],
+      [
+       4096,
+       4096,
+       "image/png"
+      ],
+      [
+       4096,
+       4096,
+       "image/png"
+      ]
+     ]
+    },
+    "Web/assets/grandpa.glb": {
+     "bytes": 623384,
+     "tris": 21388,
+     "textures": [
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ]
+     ]
+    }
+   },
+   "lods": {
+    "Content/Art/Exports/Grandpa_LOD1.fbx": {
+     "bytes": 616300,
+     "tris": 10688,
+     "ratio": 0.5
+    },
+    "Content/Art/Exports/Grandpa_LOD2.fbx": {
+     "bytes": 349420,
+     "tris": 5345,
+     "ratio": 0.25
+    }
+   },
+   "bakes": {
+    "T_Grandpa_AO.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 20.3,
+     "mean": 0.896,
+     "bytes": 1485137
+    },
+    "T_Grandpa_Cavity.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 9.2,
+     "bytes": 1203522
+    },
+    "normal_scan_alignment": {
+     "source": "Content/Art/Raw/Grandpa_raw.blend",
+     "hires_faces": 50000,
+     "regions": {
+      "head": {
+       "rms_mm": 3.36,
+       "scale": 1.0042,
+       "kept": true,
+       "faces_kept": 3832
+      },
+      "trunk": {
+       "rms_mm": 6.99,
+       "scale": 0.9984,
+       "kept": true,
+       "faces_kept": 7032
+      },
+      "thigh_l": {
+       "rms_mm": 4.49,
+       "scale": 1.0105,
+       "kept": true,
+       "faces_kept": 5742
+      },
+      "thigh_r": {
+       "rms_mm": 5.14,
+       "scale": 1.0028,
+       "kept": true,
+       "faces_kept": 4892
+      },
+      "shin_l": {
+       "rms_mm": 5.83,
+       "scale": 1.0153,
+       "kept": true,
+       "faces_kept": 2723
+      },
+      "shin_r": {
+       "rms_mm": 8.29,
+       "scale": 1.0028,
+       "kept": true,
+       "faces_kept": 2806
+      },
+      "foot_l": {
+       "rms_mm": 5.65,
+       "scale": 1.0169,
+       "kept": true,
+       "faces_kept": 1785
+      },
+      "foot_r": {
+       "rms_mm": 10.68,
+       "scale": 1.1463,
+       "kept": false
+      }
+     }
+    },
+    "normal_scan_texels_flattened": 0.0112,
+    "T_Grandpa_NormalScan.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 14.7,
+     "flat_texels": 0.581,
+     "bytes": 2649903
+    }
+   }
+  },
+  "kim": {
+   "kind": "athlete",
+   "source": "Content/Art/Raw/Kim_rigged.blend",
+   "clean": {
+    "before": {
+     "verts": 4195,
+     "faces": 4310,
+     "nonmanifold_edges": 2,
+     "boundary_edges": 0,
+     "loose_verts": 0,
+     "loose_edges": 0
+    },
+    "after": {
+     "verts": 4195,
+     "faces": 4310,
+     "nonmanifold_edges": 2,
+     "boundary_edges": 0,
+     "loose_verts": 0,
+     "loose_edges": 0
+    },
+    "ops": {
+     "loose_deleted": 0,
+     "duplicate_faces_deleted": 0,
+     "crack_verts_welded": 0,
+     "degenerate_removed": 0,
+     "holes_filled_faces": 0
+    },
+    "max_move_mm": 0.0,
+    "changed": false
+   },
+   "rig": {
+    "bones": 17,
+    "unchanged": true
+   },
+   "mesh": {
+    "verts": 4195,
+    "tris": 8394,
+    "shape_keys": [
+     "Basis",
+     "CheekDent_L",
+     "CheekDent_R"
+    ],
+    "textures": {
+     "texture_pbr_20250901.png": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_normal.png": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_roughness.png": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_metallic.png": [
+      4096,
+      4096
+     ]
+    }
+   },
+   "exports": {
+    "Content/Art/Exports/Kim_rigged.fbx": {
+     "bytes": 20155484,
+     "tris": 8394,
+     "textures": {
+      "texture_pbr_20250901.png": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_normal.png": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_roughness.png": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_metallic.png": [
+       4096,
+       4096
+      ]
+     }
+    },
+    "Content/Art/Exports/Kim_rigged.glb": {
+     "bytes": 21711364,
+     "tris": 8394,
+     "textures": [
+      [
+       4096,
+       4096,
+       "image/png"
+      ],
+      [
+       4096,
+       4096,
+       "image/png"
+      ],
+      [
+       4096,
+       4096,
+       "image/png"
+      ]
+     ]
+    },
+    "Web/assets/kim.glb": {
+     "bytes": 296132,
+     "tris": 8394,
+     "textures": [
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ]
+     ]
+    }
+   },
+   "lods": {
+    "Content/Art/Exports/Kim_LOD1.fbx": {
+     "bytes": 309340,
+     "tris": 3045,
+     "ratio": 0.363
+    },
+    "Content/Art/Exports/Kim_LOD2.fbx": {
+     "bytes": 184300,
+     "tris": 1795,
+     "ratio": 0.214
+    }
+   },
+   "bakes": {
+    "T_Kim_AO.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 22.7,
+     "mean": 0.842,
+     "bytes": 1257471
+    },
+    "T_Kim_Cavity.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 5.0,
+     "bytes": 738610
+    },
+    "normal_scan": "skipped: no raw scan with >= 1.5x the rigged faces (the generator's normal map is the detail)"
+   }
+  },
+  "matt": {
+   "kind": "athlete",
+   "source": "Content/Art/Raw/Matt_rigged.blend",
+   "clean": {
+    "before": {
+     "verts": 14007,
+     "faces": 27630,
+     "nonmanifold_edges": 0,
+     "boundary_edges": 534,
+     "loose_verts": 1,
+     "loose_edges": 0
+    },
+    "after": {
+     "verts": 14006,
+     "faces": 27692,
+     "nonmanifold_edges": 0,
+     "boundary_edges": 298,
+     "loose_verts": 0,
+     "loose_edges": 0
+    },
+    "ops": {
+     "loose_deleted": 1,
+     "duplicate_faces_deleted": 0,
+     "crack_verts_welded": 0,
+     "degenerate_removed": 0,
+     "holes_filled_faces": 62
+    },
+    "max_move_mm": 0.0,
+    "changed": true
+   },
+   "rig": {
+    "bones": 17,
+    "unchanged": true
+   },
+   "mesh": {
+    "verts": 14006,
+    "tris": 27742,
+    "shape_keys": [
+     "Basis",
+     "CheekDent_L",
+     "CheekDent_R"
+    ],
+    "textures": {
+     "texture_pbr_20250901": [
+      4096,
+      4096
+     ],
+     "texture_pbr_20250901_normal": [
+      4096,
+      4096
+     ]
+    }
+   },
+   "exports": {
+    "Content/Art/Exports/Matt_rigged.fbx": {
+     "bytes": 23200860,
+     "tris": 27742,
+     "textures": {
+      "texture_pbr_20250901": [
+       4096,
+       4096
+      ],
+      "texture_pbr_20250901_normal": [
+       4096,
+       4096
+      ]
+     }
+    },
+    "Web/assets/matt.glb": {
+     "bytes": 432104,
+     "tris": 27742,
+     "textures": [
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ]
+     ]
+    }
+   },
+   "lods": {
+    "Content/Art/Exports/Matt_LOD1.fbx": {
+     "bytes": 741484,
+     "tris": 13846,
+     "ratio": 0.499
+    },
+    "Content/Art/Exports/Matt_LOD2.fbx": {
+     "bytes": 412508,
+     "tris": 6926,
+     "ratio": 0.25
+    }
+   },
+   "bakes": {
+    "T_Matt_AO.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 12.9,
+     "mean": 0.958,
+     "bytes": 712436
+    },
+    "T_Matt_Cavity.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 9.8,
+     "bytes": 734768
+    },
+    "normal_scan_alignment": {
+     "source": "Content/Art/Raw/Matt.glb",
+     "hires_faces": 50000,
+     "regions": {
+      "head": {
+       "rms_mm": 1.57,
+       "scale": 0.9968,
+       "kept": true,
+       "faces_kept": 2606
+      },
+      "trunk": {
+       "rms_mm": 14.53,
+       "scale": 0.9928,
+       "kept": false
+      },
+      "thigh_l": {
+       "rms_mm": 2.83,
+       "scale": 0.9979,
+       "kept": true,
+       "faces_kept": 2940
+      },
+      "thigh_r": {
+       "rms_mm": 3.38,
+       "scale": 0.9988,
+       "kept": true,
+       "faces_kept": 3361
+      },
+      "shin_l": {
+       "rms_mm": 2.1,
+       "scale": 0.9965,
+       "kept": true,
+       "faces_kept": 1396
+      },
+      "shin_r": {
+       "rms_mm": 2.21,
+       "scale": 0.9971,
+       "kept": true,
+       "faces_kept": 1308
+      },
+      "foot_l": {
+       "rms_mm": 0.0,
+       "scale": 0.9958,
+       "kept": true,
+       "faces_kept": 1324
+      },
+      "foot_r": {
+       "rms_mm": 0.0,
+       "scale": 0.9958,
+       "kept": true,
+       "faces_kept": 1366
+      }
+     }
+    },
+    "normal_scan_texels_flattened": 0.004,
+    "T_Matt_NormalScan.png": {
+     "size": [
+      2048,
+      2048
+     ],
+     "seconds": 8.1,
+     "flat_texels": 0.898,
+     "bytes": 784143
+    }
+   }
+  },
+  "arena": {
+   "kind": "arena",
+   "source": "Content/Art/Raw/Arena_v2.blend",
+   "clean": {
+    "meshes": 27,
+    "changed": {},
+    "max_move_mm": 0.0,
+    "bake_uv_added": 27,
+    "totals": {
+     "verts": [
+      94712,
+      94712
+     ],
+     "faces": [
+      120058,
+      120058
+     ],
+     "nonmanifold_edges": [
+      0,
+      0
+     ],
+     "boundary_edges": [
+      1784,
+      1784
+     ],
+     "loose_verts": [
+      0,
+      0
+     ],
+     "loose_edges": [
+      0,
+      0
+     ]
+    }
+   },
+   "mesh": {
+    "objects": 27,
+    "tris": 162360,
+    "textures": {
+     "T_Crowd_Palette": [
+      128,
+      128
+     ],
+     "T_Tape_D.png": [
+      512,
+      64
+     ],
+     "T_Tape_ORM.png": [
+      512,
+      64
+     ],
+     "T_LED_E.png": [
+      2048,
+      256
+     ],
+     "T_Podium_D.png": [
+      1024,
+      1024
+     ],
+     "T_Podium_ORM.png": [
+      1024,
+      1024
+     ],
+     "T_SafetyMat_D.png": [
+      2048,
+      2048
+     ],
+     "T_SafetyMat_ORM.png": [
+      2048,
+      2048
+     ],
+     "T_SafetyMat_N.png": [
+      2048,
+      2048
+     ],
+     "T_StageDeck_D.png": [
+      1024,
+      1024
+     ],
+     "T_StageDeck_ORM.png": [
+      1024,
+      1024
+     ]
+    }
+   },
+   "exports": {
+    "Content/Art/Exports/Arena.glb": {
+     "bytes": 22486300,
+     "tris": 166200,
+     "textures": [
+      [
+       128,
+       128,
+       "image/png"
+      ],
+      [
+       512,
+       64,
+       "image/png"
+      ],
+      [
+       512,
+       64,
+       "image/png"
+      ],
+      [
+       2048,
+       256,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ]
+     ]
+    },
+    "Content/Art/Exports/Arena.fbx": {
+     "bytes": 7424236,
+     "tris": 162360,
+     "textures": {
+      "T_Crowd_Palette": [
+       128,
+       128
+      ],
+      "T_Tape_D.png": [
+       512,
+       64
+      ],
+      "T_Tape_ORM.png": [
+       512,
+       64
+      ],
+      "T_LED_E.png": [
+       2048,
+       256
+      ],
+      "T_Podium_D.png": [
+       1024,
+       1024
+      ],
+      "T_Podium_ORM.png": [
+       1024,
+       1024
+      ],
+      "T_SafetyMat_D.png": [
+       2048,
+       2048
+      ],
+      "T_SafetyMat_ORM.png": [
+       2048,
+       2048
+      ],
+      "T_SafetyMat_N.png": [
+       2048,
+       2048
+      ],
+      "T_StageDeck_D.png": [
+       1024,
+       1024
+      ],
+      "T_StageDeck_ORM.png": [
+       1024,
+       1024
+      ]
+     }
+    },
+    "Web/assets/arena.glb": {
+     "bytes": 2553244,
+     "tris": 166200,
+     "textures": [
+      [
+       128,
+       128,
+       "image/webp"
+      ],
+      [
+       512,
+       64,
+       "image/webp"
+      ],
+      [
+       512,
+       64,
+       "image/webp"
+      ],
+      [
+       2048,
+       256,
+       "image/webp"
+      ],
+      [
+       1024,
+       1024,
+       "image/webp"
+      ],
+      [
+       1024,
+       1024,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       2048,
+       2048,
+       "image/webp"
+      ],
+      [
+       1024,
+       1024,
+       "image/webp"
+      ],
+      [
+       128,
+       4,
+       "image/webp"
+      ],
+      [
+       128,
+       4,
+       "image/webp"
+      ],
+      [
+       128,
+       4,
+       "image/webp"
+      ]
+     ]
+    },
+    "Content/Art/Exports/Arena_Mobile.glb": {
+     "bytes": 7813496,
+     "tris": 76250,
+     "textures": [
+      [
+       128,
+       128,
+       "image/png"
+      ],
+      [
+       128,
+       128,
+       "image/png"
+      ],
+      [
+       128,
+       128,
+       "image/png"
+      ],
+      [
+       128,
+       128,
+       "image/png"
+      ],
+      [
+       512,
+       64,
+       "image/png"
+      ],
+      [
+       512,
+       64,
+       "image/png"
+      ],
+      [
+       2048,
+       256,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       2048,
+       2048,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ],
+      [
+       1024,
+       1024,
+       "image/png"
+      ]
+     ]
+    }
+   },
+   "bakes": {
+    "AisleStairs": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 5.8,
+     "ao_mean": 0.464,
+     "bytes": 681332
+    },
+    "ApronBand": {
+     "size": [
+      256,
+      256
+     ],
+     "seconds": 0.5,
+     "ao_mean": 0.878,
+     "bytes": 10424
+    },
+    "ApronText0": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.7,
+     "ao_mean": 0.312,
+     "bytes": 5187
+    },
+    "ApronText1": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.6,
+     "ao_mean": 0.313,
+     "bytes": 5253
+    },
+    "ApronText2": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.6,
+     "ao_mean": 0.303,
+     "bytes": 5175
+    },
+    "ApronText3": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.7,
+     "ao_mean": 0.302,
+     "bytes": 5327
+    },
+    "ArenaFloor": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 3.3,
+     "ao_mean": 0.992,
+     "bytes": 52014
+    },
+    "CameraJibs": {
+     "size": [
+      256,
+      256
+     ],
+     "seconds": 0.8,
+     "ao_mean": 0.753,
+     "bytes": 30522
+    },
+    "Catwalk": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 6.7,
+     "ao_mean": 0.834,
+     "bytes": 486264
+    },
+    "Crowd": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 30.6,
+     "ao_mean": 0.959,
+     "bytes": 97629
+    },
+    "FootBox_blue": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.3,
+     "ao_mean": 1.0,
+     "bytes": 196
+    },
+    "FootBox_red": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.3,
+     "ao_mean": 1.0,
+     "bytes": 196
+    },
+    "JudgesTable": {
+     "size": [
+      256,
+      256
+     ],
+     "seconds": 0.9,
+     "ao_mean": 0.526,
+     "bytes": 33078
+    },
+    "LEDFrame": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 6.0,
+     "ao_mean": 0.998,
+     "bytes": 17289
+    },
+    "LEDRing": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 1.2,
+     "ao_mean": 0.99,
+     "bytes": 7776
+    },
+    "MatEdge": {
+     "size": [
+      128,
+      128
+     ],
+     "seconds": 0.6,
+     "ao_mean": 0.771,
+     "bytes": 12298
+    },
+    "Podium": {
+     "size": [
+      128,
+      128
+     ],
+     "seconds": 0.4,
+     "ao_mean": 0.715,
+     "bytes": 4073
+    },
+    "PodiumTrim": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.3,
+     "ao_mean": 0.542,
+     "bytes": 1067
+    },
+    "PressTables": {
+     "size": [
+      256,
+      256
+     ],
+     "seconds": 0.9,
+     "ao_mean": 0.678,
+     "bytes": 24199
+    },
+    "Roof": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 4.6,
+     "ao_mean": 0.998,
+     "bytes": 49242
+    },
+    "SafetyMat": {
+     "size": [
+      512,
+      512
+     ],
+     "seconds": 1.8,
+     "ao_mean": 0.884,
+     "bytes": 62596
+    },
+    "SeatLips": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 5.0,
+     "ao_mean": 0.905,
+     "bytes": 329151
+    },
+    "SeatingBowl": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 5.7,
+     "ao_mean": 0.834,
+     "bytes": 379156
+    },
+    "SpotCans": {
+     "size": [
+      256,
+      256
+     ],
+     "seconds": 1.2,
+     "ao_mean": 0.81,
+     "bytes": 42548
+    },
+    "SpotLenses": {
+     "size": [
+      64,
+      64
+     ],
+     "seconds": 0.4,
+     "ao_mean": 0.031,
+     "bytes": 4178
+    },
+    "StageDeck": {
+     "size": [
+      1024,
+      1024
+     ],
+     "seconds": 7.2,
+     "ao_mean": 0.664,
+     "bytes": 149534
+    },
+    "Truss": {
+     "size": [
+      512,
+      512
+     ],
+     "seconds": 2.0,
+     "ao_mean": 0.916,
+     "bytes": 86040
+    }
+   }
+  },
+  "arena_v1": {
+   "kind": "arena",
+   "source": "Content/Art/Raw/Arena.blend",
+   "clean": {
+    "meshes": 76,
+    "changed": {
+     "ApronText2": {
+      "loose_deleted": 0,
+      "duplicate_faces_deleted": 0,
+      "crack_verts_welded": 1060,
+      "degenerate_removed": 0,
+      "holes_filled_faces": 0
+     },
+     "ApronText1": {
+      "loose_deleted": 0,
+      "duplicate_faces_deleted": 0,
+      "crack_verts_welded": 1060,
+      "degenerate_removed": 0,
+      "holes_filled_faces": 0
+     },
+     "ApronText3": {
+      "loose_deleted": 0,
+      "duplicate_faces_deleted": 0,
+      "crack_verts_welded": 1060,
+      "degenerate_removed": 0,
+      "holes_filled_faces": 0
+     },
+     "ApronText0": {
+      "loose_deleted": 0,
+      "duplicate_faces_deleted": 0,
+      "crack_verts_welded": 1060,
+      "degenerate_removed": 0,
+      "holes_filled_faces": 0
+     }
+    },
+    "max_move_mm": 0.0,
+    "bake_uv_added": 0,
+    "totals": {
+     "verts": [
+      109068,
+      104828
+     ],
+     "faces": [
+      98581,
+      98581
+     ],
+     "nonmanifold_edges": [
+      0,
+      0
+     ],
+     "boundary_edges": [
+      9772,
+      1292
+     ],
+     "loose_verts": [
+      0,
+      0
+     ],
+     "loose_edges": [
+      0,
+      0
+     ]
+    }
+   },
+   "mesh": {
+    "objects": 76,
+    "tris": 180466,
+    "textures": {}
+   },
+   "exports": "none: the first arena is kept for reference; Arena_v2.blend is the live one"
+  }
+ },
+ "generated": "2026-11-04T09:28:28",
+ "blender": "5.2.3 LTS",
+ "command": "blender -b --factory-startup --python Scripts/blender_batch.py -- matt --report C:\\Users\\punko\\Downloads\\PoSlapUnreal\\SCREENSHOTS\\261104_grandpa_hands\\batch",
+ "steps": [
+  "bake",
+  "clean",
+  "export",
+  "lods"
+ ],
+ "seconds": 59,
+ "runs": [
+  {
+   "at": "2026-11-04T09:28:28",
+   "command": "blender -b --factory-startup --python Scripts/blender_batch.py -- matt --report C:\\Users\\punko\\Downloads\\PoSlapUnreal\\SCREENSHOTS\\261104_grandpa_hands\\batch",
+   "seconds": 59,
+   "failed": []
+  }
+ ]
+}
