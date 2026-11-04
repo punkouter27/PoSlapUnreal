@@ -226,3 +226,20 @@ training, assets); reports in `DOCS/20261103/` and `SCREENSHOTS/261103_{web_pass
 - [ ] K15 Build machine: no .NET Framework 4.8 SDK; the editor built with `UE_SDKS_ROOT` pointing at a stub folder. Install the VS Build Tools ".NET Framework 4.8 SDK" component (admin)
 - [ ] K16 Unreal's match log lacks the new `hand_speed`/`feint`/`strike_result` fields (additive; compare still passes)
 - Checks: editor build Succeeded; `-SlapUiTest` 17/17; replay parity 0.000 mm / 1000 steps; `verify_constants` / `verify_cards` / naming PASS; `node Web/check.mjs` gg/kk/gk/kg PASS; live and API checks PASS
+
+## Phase L — Physics 3, max tier, open hands, phone (2026-11-04)
+
+- [x] L1 Physics 2 retrain finished (K7): `grandpa_L4_v2`, `kim_L4_vs_grandpa_v2` and (after a 30-min polish) `grandpa_L4_vs_kim_v2` graduated; report `DOCS/20261104/retrain_v2_report.html`. Kim's self-play L4 did not (KO 6 %)
+- [x] L2 Physics 3 (`models/v3`, `DOCS/20261104/physics3.md`): jaw capsules + face-zone referee, Kim's head sphere 9.8 cm behind her face fixed, stiff limb pairs (body-body max 29 -> 4.7 mm), per-foot friction (K11), the kick's reaction on the striker's arm (momentum), KO reward fix; audit: no CCD in MuJoCo 3.10 and no tunnelling, mass ratios exact, head speed 3.3 m/s after 9.4 m/s
+- [x] L3 Physics 2/3 strike velocity read 0 on ~1/4 of strikes in match.py and sim.js (snapshot after a brain step's mj_kinematics); fixed in both and in Unreal; training envs were always right
+- [x] L4 sim.js and Unreal mirror physics 3; `SLAP_PHYSICS=3 node Web/check.mjs <pair>` runs the v3 models
+- [x] L5 Browser `max` tier (SSGI, SSR, contact shadows, skin-profile SSS, refracting GPU spray, contact-driven wear decals) and synthesised audio (material-pair modal impacts by collision energy, shear-driven friction, HRTF, image-source reflections); GTAO removed (its second scene render made ultra/cinema slow)
+- [x] L6 Grandpa's drawn hands are open palms on the MuJoCo hand boxes (30 deg/85 deg -> 2-4.5 deg); headless batch pipeline `Scripts/blender_batch.py` (cleanup, LODs, AO/cavity/normal bakes, manifest)
+- [x] L7 .NET Framework 4.8 SDK installed (K15); GitHub signed in; deploy pulls the LFS audio/texture assets
+- [ ] L8 Physics 3 retrain running (`runs/retrain_v3_queue.json`, PID 43704, from 09:31, ETA ~23:40; report `DOCS/20261104/retrain_v3_report.html` written by a hidden watcher)
+- [ ] L9 Re-run `node Web/fps_ladder.mjs` (and Unreal's ladder) on an idle GPU after L8, then set `DEFAULT_TIER.maxMpx` (2.1 -> 3.7 if max holds >= 45 fps at 1440x2560). Today's numbers were under the retrain + `spirula.exe`; last night's ran on the Intel iGPU
+- [ ] L10 After L8: v3 parity (URLab .mjb replay, `match.py compare`), then decide which physics ships
+- [ ] L11 Two non-physical web tunings to confirm: droplet dispersion 6x water, SSR gain 2x
+- [ ] L12 Kim/Matt open hands, AO/cavity wired into GLBs and Unreal materials, `Scripts/check_rigs.py` CI gate (assets stream; see its commits)
+- [ ] L13 Matt's hand box (`matt_solo.xml` 13.6 x 5.6 x 2 cm on 1.905 m) is ~26 % shorter than the card rule (10.8 % of height = 20.6 cm): fix in build_body before drawing his open palms
+- Note: `Scripts/blender_open_hands.py` is generalised to all athletes but unrun and uncommitted (assets stream stopped at the user's 15-min wrap-up)
