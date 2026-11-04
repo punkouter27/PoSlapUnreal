@@ -49,7 +49,7 @@ export const TIER_FX = {
 // (2.6 Mpx) high drew 54 and ultra 7-19. So: ultra up to 1 Mpx of drawing buffer, high above it (>= 45 fps both ways);
 // cinema is opt-in. max: only on a desktop (fine pointer) whose GPU names a high-end part (maxGpu) and only up to
 // maxMpx of drawing buffer (SCREENSHOTS/261104_web_max); the 30 fps step-down still walks it back down a tier at a time.
-export const DEFAULT_TIER = { smallMpx: 1.0, small: "ultra", large: "high", maxMpx: 4.0,
+export const DEFAULT_TIER = { smallMpx: 1.0, small: "ultra", large: "high", maxMpx: 2.1,
   maxGpu: /RTX\s*(20[6-8]0|30[6-9]0|40[6-9]0|50[6-9]0|A[2-6]000|PRO)|RX\s*(6[7-9]|7[7-9]|9[07])\d\d|Radeon Pro W|Apple M\d+ (Pro|Max|Ultra)|Arc\(TM\) A7/i };
 
 function parseFx(s) {   // "sss:0,vol:48" -> { sss: 0, vol: 48 }
@@ -108,7 +108,8 @@ class DepthCopyPass extends Pass {
   constructor(camera) {
     super();
     this.camera = camera; this.needsSwap = false;
-    this.target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
+    // 32-bit: half floats step ~2 mm at 4 m, enough to tilt the normals rebuilt from it on a grazing floor (SSR, GI)
+    this.target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
     this.quad = new FullScreenQuad(new THREE.ShaderMaterial({
       uniforms: { tDepth: { value: null }, cameraNear: { value: 0.05 }, cameraFar: { value: 50 } },
       vertexShader: QUAD_VS,
@@ -632,7 +633,7 @@ const COPY_FS = "uniform sampler2D tDiffuse; varying vec2 vUv; void main() { gl_
 
 const quadMat = (fs, uniforms, defines = {}) => new THREE.ShaderMaterial({ uniforms, defines, vertexShader: QUAD_VS, fragmentShader: fs, depthTest: false, depthWrite: false });
 const halfRT = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
-const nearRT = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
+const nearRT = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
 
 class MaxPass extends Pass {
   constructor(camera, depthTarget) {
@@ -651,7 +652,7 @@ class MaxPass extends Pass {
       thick: { value: 0.25 }, maxDist: { value: 8 }, pScale: P() }, { STEPS: 32 });
     this.mComp = quadMat(COMP_FS, { tDiffuse: { value: null }, tNorm: { value: null }, tGI: { value: null }, tSSR: { value: this.ssrRT.texture },
       res: P(), hres: P(), camWorld: { value: new THREE.Matrix4() }, lPosV: { value: new THREE.Vector3() }, giK: { value: 0.5 }, aoK: { value: 0.8 },
-      csK: { value: 0.55 }, csLen: { value: 0.14 }, ssrK: { value: 1.0 }, frame: { value: 0 }, pScale: P() }, { CSTEPS: 16, GI_ON: 1, SSR_ON: 1 });
+      csK: { value: 0.55 }, csLen: { value: 0.14 }, ssrK: { value: 2.0 }, frame: { value: 0 }, pScale: P() }, { CSTEPS: 16, GI_ON: 1, SSR_ON: 1 });
     this.mCopy = quadMat(COPY_FS, { tDiffuse: { value: null } });
     this.quad = new FullScreenQuad(this.mNorm);
     this.set({ gi: 4, gis: 12, ssr: 32, csh: 16 });
@@ -751,7 +752,8 @@ const BURST_VS = `
   float hs(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
   bool flight(out vec3 pos, out float age, out float life, out float rnd) {
     int s = int(mod(pid, ${SLOTS}.0)); float j = floor(pid / ${SLOTS}.0);
-    vec4 a = b0[s], b = b1[s], c = b2[s];
+    vec4 a = vec4(0.0), b = vec4(0.0), c = vec4(0.0);
+    for (int k = 0; k < ${SLOTS}; k++) if (k == s) { a = b0[k]; b = b1[k]; c = b2[k]; }   // (constant indices: no HLSL dynamic-index helper)
     float cnt = pool < 0.5 ? c.x : c.y;
     age = time - a.w; life = (0.55 + 0.7 * hs(j * 1.7 + c.z)) * (pool < 0.5 ? 1.0 : 0.6); rnd = hs(j * 9.1 + c.z * 2.3);
     pos = vec3(0.0);
@@ -947,14 +949,14 @@ export function surface(std, kind) {
           diffuseColor.rgb *= (1.0 - 0.6 * gWear.r) * (1.0 - 0.3 * gWear.g);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.7, 0.66), 0.45 * gWear.b);
         }
-        if (microOn > 0.5) { gMicro = surfH(vSW); diffuseColor.rgb *= 0.93 + 0.14 * gMicro; }`)
+        float gNear = 1.0 - smoothstep(0.8, 3.0, length(vViewPosition));       // the grain only where a pixel resolves it (no moire)
+        if (microOn > 0.5 && gNear > 0.0) { gMicro = mix(0.5, surfH(vSW), gNear); diffuseColor.rgb *= 0.93 + 0.14 * gMicro; }`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.5, gWear.r); roughnessFactor *= 1.0 - 0.5 * gWear.g; roughnessFactor = mix(roughnessFactor, 1.0, gWear.b);
         if (microOn > 0.5) roughnessFactor = clamp(roughnessFactor * (0.8 + 0.4 * gMicro), 0.04, 1.0);`)
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
         if (microOn > 0.5) {
-          float near = 1.0 - smoothstep(2.0, 7.0, length(vViewPosition));
-          normal = surfBump(-vViewPosition, normal, gMicro * 0.006 * near * (surfKind < 0.5 ? 1.0 : 0.6), faceDirection);
+          normal = surfBump(-vViewPosition, normal, gMicro * 0.006 * gNear * (surfKind < 0.5 ? 1.0 : 0.6), faceDirection);
         }`);
   };
   m.customProgramCacheKey = () => `poslap-surface-${kind}`;
