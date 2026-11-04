@@ -9,6 +9,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "SlapControllerInternal.h"
+#include "SlapSwingRead.h"
 
 using namespace SlapCtl;
 
@@ -204,6 +205,23 @@ bool USlapController::PreStep(const mjModel* m, mjData* d)
 		EndTurn(m, d, TEXT("recovered"));
 		return false;
 	}
+	if (Turn.Step % ControlEvery == 0 && Turn.TouchStep < 0)	// the feint read (match.py feint_read), every brain step until the touch
+	{
+		using R = FSlapSwingRead;	// the HUD's thresholds = training/constants.py FEINT_*
+		const double V = Turn.LastSpeed;
+		if (V > Turn.FeintPeak) { Turn.FeintPeak = V; Turn.FeintAt = T; Turn.bFeintSwing = true; }
+		if (Turn.bFeintSwing && !Turn.bFeintTagged && T - Turn.FeintAt > R::FeintAfter && V < R::FeintPullBack * Turn.FeintPeak && Turn.FeintPeak > R::FeintMinPeak)
+		{
+			Turn.bFeintTagged = true;
+			++Turn.Feints;
+			Emit(FString::Printf(TEXT("{\"type\": \"feint\", \"t\": %s, \"striker\": %s, \"peak\": %s, \"n\": %d}"), *Num(T, 3), *Str(S.Name), *Num(Turn.FeintPeak, 2), Turn.Feints));
+		}
+		if (Turn.bFeintTagged && V > R::RearmShare * Turn.FeintPeak && T - Turn.FeintAt > R::RearmAfter)
+		{
+			Turn.bFeintSwing = Turn.bFeintTagged = false;
+			Turn.FeintPeak = 0.0;
+		}
+	}
 	return true;
 }
 
@@ -232,6 +250,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 	const double Speed = Dist(Hand, Turn.HandPrev, 3) / m->opt.timestep;
 	const double Travel[3] = { Hand[0] - Turn.HandPrev[0], Hand[1] - Turn.HandPrev[1], Hand[2] - Turn.HandPrev[2] };	// broadcast cue only
 	FMemory::Memcpy(Turn.HandPrev, Hand, sizeof(Turn.HandPrev));
+	Turn.LastSpeed = Speed;	// the feint read's sample at the next brain step (match.py `speed`)
 	Telemetry(m, d, Speed);
 	Impact(m, d);
 	if (Turn.TouchStep < 0) ChainSample(d, Speed);
@@ -268,8 +287,9 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 		double* K = Turn.Kick;
 		for (int32 i = 0; i < 3; ++i) K[i] = Vel[i] / m->opt.timestep * (S.StrikeMass / (KickSteps * m->opt.timestep));
 		mju_cross(K + 3, R, K);	// torque = R x force (same expression order as before: bit-identical)
-		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s}"),
-			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2)));
+		// hand_speed (hand_r's speed this step), feint, feints: the additive fields (DOCS/20261103/events.md, match.ADDITIVE)
+		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s, \"hand_speed\": %s, \"feint\": %s, \"feints\": %d}"),
+			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(RoundTo(Speed, 2), 2), *Bool(Turn.Feints > 0), Turn.Feints));
 		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm)"));
 		const FVector Pos = MjUtils::MjToUEPosition(C.pos);
 		const FVector Dir = MjUtils::MjToUEPosition(Travel).GetSafeNormal();
@@ -291,6 +311,12 @@ void USlapController::EndTurn(const mjModel* m, mjData* d, const FString& End)
 	Turn.HeadPeak = RoundTo(Turn.HeadPeak, 2);
 	FString Fouls;
 	for (const TPair<int32, FString>& F : Turn.Fouls) Fouls += (Fouls.IsEmpty() ? TEXT("") : TEXT(", ")) + Str(Athletes[F.Key].Name + TEXT(": ") + F.Value);
+	if (Touched)	// the strike's outcome once the recovery window has measured it (match.py finish, events.md)
+	{
+		Emit(FString::Printf(TEXT("{\"type\": \"strike_result\", \"t\": %s, \"striker\": %s, \"defender\": %s, \"part\": %s, \"speed\": %s, \"head_peak\": %s, \"feint\": %s, \"stagger\": %s, \"ko\": %s}"),
+			*Num(Turn.TouchStep * m->opt.timestep, 3), *Str(S.Name), *Str(D.Name), *Str(Turn.Part), *Num(Turn.Speed, 2), *Num(Turn.HeadPeak, 2),
+			*Bool(Turn.Feints > 0), *Bool(Turn.bStagger), *Bool(Turn.bKO)));
+	}
 	Emit(FString::Printf(TEXT("{\"type\": \"turn_end\", \"round\": %d, \"striker\": %s, \"touch\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s, \"head_peak\": %s, \"stagger\": %s, \"ko\": %s, \"end\": %s, \"fouls\": [%s]}"),
 		Round, *Str(S.Name), Touched ? *Num(Turn.TouchStep * m->opt.timestep, 3) : TEXT("null"), Touched ? *Str(Turn.Part) : TEXT("null"),
 		*Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(Turn.HeadPeak, 2), *Bool(Turn.bStagger), *Bool(Turn.bKO), *Str(End), *Fouls));

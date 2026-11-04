@@ -28,6 +28,11 @@ namespace Slap
 		int32 ChainOrder = -1;
 		int64 SlowSteps = 0;	// steps of pre-touch slow motion spent (capped: a slap that never lands)
 		int64 FaintAt[2] = { -1, -1 }, FaintEnd[2] = { -1, -1 };	// per athlete: the steps a faint starts and ends, -1 = none
+		// the match log's feint read (match.py feint_read, DOCS/20261103/events.md): the palm's speed after the last step,
+		// its peak this swing and when, the swing and tag flags, and the feints read before the touch
+		double LastSpeed = 0.0, FeintPeak = 0.0, FeintAt = 0.0;
+		bool bFeintSwing = false, bFeintTagged = false;
+		int32 Feints = 0;
 	};
 
 	/** The three judges and the round they are scoring. */
