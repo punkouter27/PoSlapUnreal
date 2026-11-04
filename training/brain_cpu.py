@@ -72,7 +72,7 @@ def summarise(obs):
         o[:, 133], o[:, 134], o[:, 135],
     ], -1)
     assert out.shape[-1] == len(SUMMARY_FIELDS) == 31, (out.shape, len(SUMMARY_FIELDS))
-    assert n >= 136, f"the observation is {n} floats, expected 136"
+    assert n >= OBS, f"the observation is {n} floats, expected {OBS}"
     return out
 
 

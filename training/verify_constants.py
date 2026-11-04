@@ -138,11 +138,26 @@ def check_rates():
           f"({constants.CONTROL_HZ} Hz)")
 
 
+def check_feint():
+    """The feint read: match.py's thresholds (constants.FEINT_*) are the ones Unreal's HUD classifies a swing with
+    (SlapHUD.cpp F10, literals there). The browser has no feint read yet."""
+    print("\n=== The feint read (match.py events vs SlapHUD.cpp) ===")
+    hud = read("Source/PoSlapUnreal/SlapHUD.cpp")
+    for want in (f"Now - PeakHandAt > {constants.FEINT_AFTER_S:g}", f"H.HandSpeed < {constants.FEINT_PULLBACK:g} * PeakHand",
+                 f"PeakHand > {constants.FEINT_MIN_PEAK:g}", f"PeakHand * {constants.FEINT_REARM:g}",
+                 f"Now - PeakHandAt > {constants.FEINT_REARM_S:g}"):
+        if want not in hud:
+            fail(f"SlapHUD.cpp no longer reads a feint with '{want}' (constants.FEINT_*)")
+        else:
+            print(f"  [PASS] SlapHUD.cpp: '{want}'")
+
+
 def main():
     print("=== PoSlap constant parity (the three engines) ===")
     check_mirrors()
     check_observation_sizes()
     check_rates()
+    check_feint()
     if FAILURES:
         print(f"\n{FAILURES} CHECK(S) FAILED - the engines do not agree.")
         return 1

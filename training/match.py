@@ -32,7 +32,8 @@ import mujoco
 import numpy as np
 
 from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, muscle_step, muscle_vmax, onnx_policy, settle_muscles
-from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, WATCH_MAX_STEP
+from constants import (FEINT_AFTER_S, FEINT_MIN_PEAK, FEINT_PULLBACK, FEINT_REARM, FEINT_REARM_S, GAZE_GAIN, GAZE_MAX_STEP,
+                       GAZE_ON, WATCH_MAX_STEP, models_dir)
 
 HERE = Path(__file__).parent
 ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
@@ -81,9 +82,11 @@ def dist(a, b):   # spelled out so Unreal's C++ rounds identically (np.linalg.no
 
 
 def load(mjb=None, character="grandpa", blue_character=None):
-    """The arena model plus both corners' fingerprints: (model, (red_fp, blue_fp), prefixes)."""
+    """The arena model plus both corners' fingerprints: (model, (red_fp, blue_fp), prefixes), from the physics version
+    SLAP_PHYSICS names (constants.models_dir: models/ = the shipped physics 1, models/v2/ = the realism batch)."""
     bc = blue_character or character
-    fps = {ch: json.loads((HERE / "models" / f"{ch}_fingerprint.json").read_text()) for ch in {character, bc}}
+    md = models_dir()
+    fps = {ch: json.loads((md / f"{ch}_fingerprint.json").read_text()) for ch in {character, bc}}
     fp = fps[character]
     if mjb:   # the model Unreal runs (URLab's compiled .mjb), with our options (URLab drops a child model's <option>)
         m = mujoco.MjModel.from_binary_path(str(mjb))
@@ -91,7 +94,7 @@ def load(mjb=None, character="grandpa", blue_character=None):
         m.opt.timestep, m.opt.integrator, m.opt.solver, m.opt.iterations = o["timestep"], o["integrator"], o["solver"], o["iterations"]
         m.opt.gravity[:] = o["gravity"]
     else:
-        m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_vs_{bc}_arena.xml"))
+        m = mujoco.MjModel.from_xml_path(str(md / f"{character}_vs_{bc}_arena.xml"))
     pre = next(re.sub(r"red_pelvis$", "", m.body(i).name) for i in range(m.nbody) if m.body(i).name.endswith("red_pelvis"))
     return m, (fp, fps[bc]), (pre + "red_", pre + "blue_")
 
@@ -145,6 +148,8 @@ class Match:
         self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
         self.blowup = False
         self.vmax = muscle_vmax(m, [x.a for x in self.sides])
+        # physics 2 (build_body.py): the strike impulse and speed come from the part that touched, not hand_r's
+        self.physics = int(fps[0].get("physics", 1))
 
     def emit(self, **k):
         if self.log:
@@ -244,6 +249,9 @@ class Match:
         pa = {id(x): [x.a.prev.copy()] * 2 for x in self.sides}
         iw, ish = S.a.va[S.a.order.index("waist_twist")], S.a.va[S.a.order.index("shoulder_swing_r")]
         kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
+        # the feint read (constants.py FEINT_*, Unreal's SlapHUD F10): the striker's palm peaked and pulled back untouched
+        fe = dict(peak=0.0, at=0.0, swing=False, tagged=False, n=0)
+        speed = 0.0
         self.emit(type="turn_start", round=rnd, striker=S.name, defender=D.name)
         faints = [(x, k0, k0 + int(round(x.card.get("faint_seconds", 2.0) / m.opt.timestep)))
                   for i, x in enumerate(self.sides) if (k0 := faint_step(x.card, self.seed, rnd, s, i, m.opt.timestep)) is not None]
@@ -283,6 +291,8 @@ class Match:
             if touch_k is not None and (k - touch_k) * m.opt.timestep >= RECOVERY:
                 rec["end"] = "recovered"
                 return self.finish(rec, S, D, com0)
+            if k % 4 == 0 and touch_k is None:   # the feint read, every brain step until the touch
+                self.feint_read(fe, speed, t, S)
             if k % 4 == 0:
                 mujoco.mj_kinematics(m, d)
                 clock = 1.0 - t / STRIKE_CLOCK
@@ -310,6 +320,7 @@ class Match:
             for x in self.sides:
                 d.ctrl[x.a.act] = x.a.goal
             d.xfrc_applied[D.head_body] = kick if touch_k is not None and k - touch_k < KICK_STEPS else 0.0
+            gprev = d.geom_xpos.copy() if self.physics >= 2 and touch_k is None else None
             muscle_step(m, d, self.vmax)
             k += 1
             if not np.isfinite(d.qpos).all() or np.abs(d.qvel).max() > 1e3:
@@ -340,19 +351,41 @@ class Match:
                             z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
                             palm = bool(other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
                             touch_k, com0 = k, d.subtree_com[D.a.pelvis][:2].copy()
+                            hand_speed = speed
+                            if gprev is not None:   # physics 2: the velocity of the part that touched (v1: hand_r's)
+                                vel = (d.geom_xpos[other] - gprev[other]) / m.opt.timestep
+                                speed = dist(d.geom_xpos[other], gprev[other]) / m.opt.timestep
                             # the body behind the palm: the arm's motors are too soft to pass on more than the hand's
                             # own mass, so the rest of the striker's mass driving through it comes as an impulse
                             f = vel * (S.card["strike_mass"] / (KICK_STEPS * m.opt.timestep))
                             kick = np.concatenate([f, np.cross(c.pos - d.xipos[D.head_body], f)])
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
-                                       palm=palm, speed=round(speed, 2))
-                            self.emit(type="strike", t=rec["touch"], striker=S.name, part=rec["part"], palm=palm, speed=rec["speed"])
+                                       palm=palm, speed=round(speed, 2), feint=fe["n"] > 0)
+                            # hand_speed (striker's right palm, m/s) and the feint read are additive fields (DOCS/20261103/
+                            # events.md): compare() ignores them when the other engine does not log them yet
+                            self.emit(type="strike", t=rec["touch"], striker=S.name, part=rec["part"], palm=palm, speed=rec["speed"],
+                                      hand_speed=round(hand_speed, 2), feint=fe["n"] > 0, feints=fe["n"])
                             break
+
+    def feint_read(self, fe, speed, t, S):
+        """Unreal's HUD feint classifier (SlapHUD.cpp F10) on the striker's palm speed, once per brain step before the
+        touch: the palm peaked above FEINT_MIN_PEAK and FEINT_AFTER_S later is under FEINT_PULLBACK x the peak."""
+        if speed > fe["peak"]:
+            fe.update(peak=speed, at=t, swing=True)
+        if (fe["swing"] and not fe["tagged"] and t - fe["at"] > FEINT_AFTER_S and speed < FEINT_PULLBACK * fe["peak"]
+                and fe["peak"] > FEINT_MIN_PEAK):
+            fe["tagged"], fe["n"] = True, fe["n"] + 1
+            self.emit(type="feint", t=round(t, 3), striker=S.name, peak=round(fe["peak"], 2), n=fe["n"])
+        if fe["tagged"] and speed > FEINT_REARM * fe["peak"] and t - fe["at"] > FEINT_REARM_S:
+            fe.update(swing=False, tagged=False, peak=0.0)
 
     def finish(self, rec, S, D, com0):
         if com0 is not None:
             rec["stagger"] = dist(self.d.subtree_com[D.a.pelvis][:2], com0) > 0.05
         rec["head_peak"] = round(rec["head_peak"], 2)
+        if rec["touch"] is not None:   # the strike's outcome, once the recovery window has measured it (events.md)
+            self.emit(type="strike_result", t=rec["touch"], striker=S.name, defender=D.name, part=rec["part"], speed=rec["speed"],
+                      head_peak=rec["head_peak"], feint=rec.get("feint", False), stagger=rec["stagger"], ko=rec["ko"])
         if "_head" in rec:   # readout only (Python): peak linear g and rotational rad/s^2 after the touch, 5 ms differences.
             g, al = rec.pop("_head")   # concussion is usually put at ~70-100 g / ~4500-6000 rad/s^2 (football studies)
             self.emit(type="head", t=rec["touch"], athlete=D.name, peak_g=round(g, 1), peak_rad_s2=round(al))
@@ -361,7 +394,7 @@ class Match:
                   chain_ms=round((max(rz["swing"], key=lambda r: r[2])[0] - max(rz["swing"], key=lambda r: r[1])[0])
                                  * self.m.opt.timestep * 1000) if rec["touch"] is not None and rz["swing"] else None,
                   slide_m=round(rz["slide"], 3))
-        self.emit(type="turn_end", **{k: v for k, v in rec.items() if k != "fouls"}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
+        self.emit(type="turn_end", **{k: v for k, v in rec.items() if k not in ("fouls", "feint")}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
         S.a.stamina = max(MIN_STAMINA, S.a.stamina - S.card["stamina_per_strike"])
         if rec["touch"] is not None:
             D.a.mem = (rec["touch"] / 30.0, rec["speed"] / 10.0)
@@ -432,6 +465,9 @@ def tiebreak(cards, turns, names, first):
     return "decision: struck second", names[1 - first]
 
 
+ADDITIVE = {"strike": ("hand_speed", "feint", "feints")}   # strike fields added 2026-11-03 (events.md)
+
+
 def log_path(first):
     day = time.strftime("%y%m%d")
     p = HERE.parent / "Logs" / "Gameplay" / day
@@ -490,6 +526,10 @@ def compare(onnx, ue_log, mjb, blue=None, character="grandpa", blue_character=No
     keys = ("strike", "faint", "knockdown", "foul", "turn_end", "condition", "round", "result")
     a = [e for e in py if e["type"] in keys]
     b = [e for e in ue if e["type"] in keys]
+    for x, y in zip(a, b):   # the additive fields (DOCS/20261103/events.md) count only once the other engine logs them
+        for k in ADDITIVE.get(x["type"], ()):
+            if k not in y:
+                x.pop(k, None)
     bad = [(x, y) for x, y in zip(a, b) if x != y]
     ok = len(a) == len(b) and not bad
     print(f"python {len(a)} events, unreal {len(b)}; first mismatch: {bad[0] if bad else '-'}  ->  {'PASS' if ok else 'FAIL'}")
@@ -508,7 +548,10 @@ if __name__ == "__main__":
     ap.add_argument("--char", default="grandpa", help="red's character (<char>_vs_<char>_arena.xml)")
     ap.add_argument("--blue-char", default=None, help="blue's own character for a mixed pairing (default: the same as red's)")
     ap.add_argument("--defender-role", type=float, default=DEFENDER_ROLE, help="-1 absorb (brains from L3), 0 guard (Unreal's DefenderRole)")
+    ap.add_argument("--physics", type=int, default=None, help="the physics version's models (1 shipped, 2 = models/v2); default SLAP_PHYSICS or 1")
     x = ap.parse_args()
+    if x.physics is not None:   # before the exam's worker processes start: they read it from the environment
+        os.environ["SLAP_PHYSICS"] = str(x.physics)
     DEFENDER_ROLE = x.defender_role
     if x.cmd == "play":
         res, turns, path = play(x.onnx, x.first, x.mjb, blue=x.blue, character=x.char, blue_character=x.blue_char)
