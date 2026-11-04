@@ -1,0 +1,146 @@
+{
+ "menu_360x800": {
+  "scrollH": 800,
+  "innerH": 800,
+  "scrollW": 360,
+  "innerW": 360,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "menu_412x915": {
+  "scrollH": 915,
+  "innerH": 915,
+  "scrollW": 412,
+  "innerW": 412,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "menu_1080x2400": {
+  "scrollH": 2400,
+  "innerH": 2400,
+  "scrollW": 1080,
+  "innerW": 1080,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "menu_21x9": {
+  "scrollH": 720,
+  "innerH": 720,
+  "scrollW": 1680,
+  "innerW": 1680,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "gameplay_360x800": {
+  "scrollH": 800,
+  "innerH": 800,
+  "scrollW": 360,
+  "innerW": 360,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "gameplay_412x915": {
+  "scrollH": 915,
+  "innerH": 915,
+  "scrollW": 412,
+  "innerW": 412,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "gameplay_1080x2400": {
+  "scrollH": 2400,
+  "innerH": 2400,
+  "scrollW": 1080,
+  "innerW": 1080,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 50% · MOMENTUM · 50% BLUE"
+ },
+ "gameplay_21x9": {
+  "scrollH": 720,
+  "innerH": 720,
+  "scrollW": 1680,
+  "innerW": 1680,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 31% · MOMENTUM · 69% BLUE"
+ },
+ "stats_360x800": {
+  "scrollH": 800,
+  "innerH": 800,
+  "scrollW": 360,
+  "innerW": 360,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 31% · MOMENTUM · 69% BLUE"
+ },
+ "stats_412x915": {
+  "scrollH": 915,
+  "innerH": 915,
+  "scrollW": 412,
+  "innerW": 412,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 31% · MOMENTUM · 69% BLUE"
+ },
+ "stats_1080x2400": {
+  "scrollH": 2400,
+  "innerH": 2400,
+  "scrollW": 1080,
+  "innerW": 1080,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 31% · MOMENTUM · 69% BLUE"
+ },
+ "stats_21x9": {
+  "scrollH": 720,
+  "innerH": 720,
+  "scrollW": 1680,
+  "innerW": 1680,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 31% · MOMENTUM · 69% BLUE"
+ },
+ "result_360x800": {
+  "scrollH": 800,
+  "innerH": 800,
+  "scrollW": 360,
+  "innerW": 360,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 100% · MOMENTUM · 0% BLUE"
+ },
+ "result_412x915": {
+  "scrollH": 915,
+  "innerH": 915,
+  "scrollW": 412,
+  "innerW": 412,
+  "noScroll": true,
+  "minFont": 8,
+  "minAt": "momentumLabel: RED 100% · MOMENTUM · 0% BLUE"
+ },
+ "result_1080x2400": {
+  "scrollH": 2400,
+  "innerH": 2400,
+  "scrollW": 1080,
+  "innerW": 1080,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 100% · MOMENTUM · 0% BLUE"
+ },
+ "result_21x9": {
+  "scrollH": 720,
+  "innerH": 720,
+  "scrollW": 1680,
+  "innerW": 1680,
+  "noScroll": true,
+  "minFont": 9,
+  "minAt": "momentumLabel: RED 100% · MOMENTUM · 0% BLUE"
+ }
+}
