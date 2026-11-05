@@ -24,6 +24,7 @@
 #include "SlapAthleteVisual.h"
 #include "SlapHUDInternal.h"
 #include "SlapNames.h"
+#include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 #include "UnrealClient.h"
 
@@ -56,13 +57,14 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		{
 		case FSlapSwingRead::EEvent::Feint:
 			if (CrowdNear) UGameplayStatics::PlaySound2D(this, CrowdNear, 0.7f, 1.05f);
-			UE_LOG(LogSlap, Log, TEXT("SlapHUD: FEINT: the palm peaked at %.1f m/s and pulled back"), Read.Peak);
+			SLAP_HUD_LOG(1, TEXT("SlapHUD: FEINT: the palm peaked at %.1f m/s and pulled back"), Read.Peak);
+			if (bPass) Ticker(FString::Printf(TEXT("FEINT: %s's palm peaked at %.1f m/s and pulled back"), *H.Striker.ToUpper(), Read.Peak), Gold);
 			break;
 		case FSlapSwingRead::EEvent::Read:
-			UE_LOG(LogSlap, Log, TEXT("SlapHUD: AI read: %s winds up (shoulder %.1f rad/s, palm %.1f m/s, %.0f cm out)"), *H.Striker, Read.PeakShoulder, H.HandSpeed, 100.0 * Read.PeakDist);
+			SLAP_HUD_LOG(1, TEXT("SlapHUD: AI read: %s winds up (shoulder %.1f rad/s, palm %.1f m/s, %.0f cm out)"), *H.Striker, Read.PeakShoulder, H.HandSpeed, 100.0 * Read.PeakDist);
 			break;
 		case FSlapSwingRead::EEvent::ReadWrong:
-			UE_LOG(LogSlap, Log, TEXT("SlapHUD: AI read: no strike within %.1f s (reads %d of %d right)"), FSlapSwingRead::ReadWindow, Read.ReadsRight, Read.Reads);
+			SLAP_HUD_LOG(1, TEXT("SlapHUD: AI read: no strike within %.1f s (reads %d of %d right)"), FSlapSwingRead::ReadWindow, Read.ReadsRight, Read.Reads);
 			break;
 		default: break;
 		}
@@ -79,12 +81,17 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
 			if (V.IsValid()) V->Replay(Now - 0.45, Now, 0.25);
 		ReplayEnd = Now + 0.45 / 0.25;
-		UE_LOG(LogSlap, Log, TEXT("SlapHUD: the kinetic chain at a quarter speed for %.1f s"), ReplayEnd - Now);
+		bAutoReplay = false;
+		SLAP_HUD_LOG(1, TEXT("SlapHUD: the kinetic chain at a quarter speed for %.1f s"), ReplayEnd - Now);
 	}
 	if (H.TurnSeq != SeenTurn)	// the referee called the turn: his verdict on the stagger is the last word
 	{
 		SeenTurn = H.TurnSeq;
 		if (H.bStruck) bNearMiss = !H.bStagger;
+		// the per-strike instant replay, in the referee's hold (a KO has its own, longer one; a replay already running stays)
+		const bool bDue = bPass && bStrikeReplays && H.bStruck && StrikeAt > 0.0 && KOAt < StrikeAt && H.KOd < 0 && Now - StrikeAt < 7.5;
+		ReplayDue += bDue;
+		if (bDue && ReplayAt < 0.0 && Now >= ReplayEnd) StrikeReplay(Now);
 	}
 	if (SweatAt >= 0.0 && Now >= SweatAt && Body[Struck].IsValid())	// sweat off the far side, as hard as the head snapped
 	{
@@ -106,7 +113,7 @@ void ASlapHUD::Cues(const FSlapHud& H)
 			if (CrowdNear) UGameplayStatics::PlaySound2D(this, CrowdNear, RoarVolume * 0.9f);
 			else if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, RoarVolume * 0.6f, 0.85f);
 		}
-		else if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, RoarVolume);
+		else if (CrowdReact) UGameplayStatics::PlaySound2D(this, CrowdReact, RoarVolume, bPass ? FMath::Clamp(0.92f + 0.08f * (float)ImpulseK, 0.92f, 1.08f) : 1.f);
 	}
 	Wear(H, Now);
 	Dent(Now);
@@ -118,6 +125,7 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
 			if (V.IsValid()) V->Replay(KOAt - Window, KOAt, Window / Dur);
 		ReplayEnd = Now + Dur;
+		bAutoReplay = false;
 	}
 	if (H.Round != SeenTurnRound || H.Striker != SeenTurnStriker)	// a new turn: the last turn's commentary is stale
 	{
@@ -150,6 +158,17 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 	PeakSpeed[Striker] = FMath::Max(PeakSpeed[Striker], (double)H.Speed);
 	Snap.Reset();
 	Read.OnStrike(Now);	// a landed slap is REAL; a pending read was right
+	// the impulse delivered: the card's strike mass x the palm's speed (N s; 3 kg at a clean 8 m/s = 24): the crowd answers it
+	Impulse = FMath::Max(H.StrikeMass[Striker], 0.0) * H.Speed;
+	ImpulseK = FMath::Clamp(Impulse / (3.0 * CleanSpeed), 0.2, 2.0);
+	if (bPass)
+	{
+		if (H.Part.EndsWith(TEXT("_l"))) ++SideHits[Striker][0];
+		else if (H.Part.EndsWith(TEXT("_r"))) ++SideHits[Striker][1];
+		const FString Part = H.Part.Replace(TEXT("_r"), TEXT(" (R)")).Replace(TEXT("_l"), TEXT(" (L)")).ToUpper();
+		Ticker(FString::Printf(TEXT("STRIKE: %s lands %.1f m/s with the %s, impulse %.0f N s%s"), *H.Striker.ToUpper(), H.Speed, *Part, Impulse,
+			bFlinched ? TEXT(", on a flinch") : TEXT("")), H.Speed >= CleanSpeed ? Gold : FColor::White);
+	}
 	// The card's strike mass: the body behind the palm. A heavy athlete's slap lands harder, so the burst, the sound and the
 	// shake all scale with it (the card's 3 kg is the reference).
 	MassK = FMath::Clamp(FMath::Sqrt(FMath::Max(H.StrikeMass[Striker], 0.5) / 3.0), 0.6, 1.6);
@@ -168,6 +187,19 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 		{
 			A->SetLowPassFilterEnabled(true);
 			A->SetLowPassFilterFrequency(2500.f + 17500.f * FMath::Min(StrikeK, 1.0));
+		}
+	}
+	// the synthesised layer (MetaSound): the skin's crack brighter for a faster palm, the body's thump lower behind a heavier
+	// arm and longer for a bigger impulse; it rides the same spatialisation as the recorded take
+	if (bPass && ImpactSynth)
+	{
+		if (UAudioComponent* A = UGameplayStatics::SpawnSoundAtLocation(this, ImpactSynth, H.StrikePos, FRotator::ZeroRotator, 1.f, 1.f, 0.f, Ringside))
+		{
+			A->SetFloatParameter(TEXT("Energy"), 0.35f * FMath::Min((float)ImpulseK, 1.8f));
+			A->SetFloatParameter(TEXT("Pitch"), FMath::Clamp(170.f * FMath::Sqrt(3.f / FMath::Max((float)H.StrikeMass[Striker], 0.5f)), 110.f, 260.f));
+			A->SetFloatParameter(TEXT("Bright"), 2500.f + 5000.f * FMath::Min((float)StrikeK, 1.3f));
+			A->SetFloatParameter(TEXT("SkinDecay"), 0.05f + 0.03f * (float)StrikeK);
+			A->SetFloatParameter(TEXT("BodyDecay"), 0.15f + 0.12f * FMath::Min((float)ImpulseK, 1.5f));
 		}
 	}
 	// the striker's grunt as it lands, in his own voice (Web/audio.js strike: above 4 m/s, louder with the speed)
@@ -202,7 +234,7 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 	StrikeCom0 = H.Com[Struck];
 	bNearMiss = false;
 	RoarAt = Now + 0.35;
-	RoarVolume = 0.3f + 0.5f * K;
+	RoarVolume = bPass ? 0.2f + 0.55f * FMath::Min((float)ImpulseK, 1.8f) : 0.3f + 0.5f * K;	// the roar follows the impulse delivered
 	if (Skin.IsValidIndex(Struck) && Skin[Struck])
 	{
 		Skin[Struck]->SetVectorParameterValue(PRipplePoint, FLinearColor(H.StrikePos));
@@ -210,7 +242,8 @@ void ASlapHUD::OnStrike(const FSlapHud& H, double Now)
 		Skin[Struck]->SetVectorParameterValue(PRippleDir, FLinearColor(H.StrikeDir));	// the cheek is pushed along the slap
 	}
 	// a good strike (clean speed, the chain ran hips to hand) is revealed at a quarter speed from the recorded poses
-	if (H.Speed >= CleanSpeed && H.ChainOrder >= 3 && ReplayEnd < Now && ReplayAt < 0.0) ChainRevealAt = Now + 0.7;
+	// (the display pass replays every landed strike at the turn's end instead: StrikeReplay)
+	if (!bPass && H.Speed >= CleanSpeed && H.ChainOrder >= 3 && ReplayEnd < Now && ReplayAt < 0.0) ChainRevealAt = Now + 0.7;
 }
 
 void ASlapHUD::OnKO(double Now)
@@ -422,7 +455,7 @@ void ASlapHUD::Dust(const FSlapHud& H)
 	DownAt = GetWorld()->GetTimeSeconds();
 	if (!DustPuff || H.Match <= 0) return;
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DustPuff, H.DownPos, FRotator::ZeroRotator, FVector(TierLive == 0 ? 0.35f : 0.5f));
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: dust at %s"), *H.DownPos.ToCompactString());
+	SLAP_HUD_LOG(1, TEXT("SlapHUD: dust at %s"), *H.DownPos.ToCompactString());
 }
 
 int32 ASlapHUD::DetectTier() const
@@ -467,6 +500,39 @@ void ASlapHUD::ApplyTier(int32 Live)
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: quality tier %d (%s), crowd cut %d %%, scalability shadows %d post %d effects %d"), TierLive, Tier >= 0 ? TEXT("pinned") : TEXT("auto"), CrowdKeep,
 		Q.ShadowQuality, Q.PostProcessQuality, Q.EffectsQuality);
 	ApplyCinema(TierLive == 3);
+	RenderAudit();
+}
+
+void ASlapHUD::RenderAudit()
+{
+	// 23/28 (2026-11-04): HIGH and up keep contact shadows on the key and the rims (the palm on the cheek, the soles) and
+	// screen-space reflections (the SSR pass itself when the reflection method is SSR, Lumen's screen traces when it is Lumen);
+	// the one-shots stay spatialised (HRTF on desktop). CINEMA's "contact" word lengthens the ray (ApplyCinema).
+	if (bMobile) return;
+	auto Set = [](const TCHAR* Name, int32 V)
+	{
+		if (IConsoleVariable* C = IConsoleManager::Get().FindConsoleVariable(Name)) C->Set(V, ECVF_SetByCode);
+	};
+	auto Get = [](const TCHAR* Name) { IConsoleVariable* C = IConsoleManager::Get().FindConsoleVariable(Name); return C ? C->GetInt() : -1; };
+	const bool bHigh = TierLive >= 2;
+	const bool bCineContact = TierLive == 3 && CineFeatures.Contains(TEXT("contact"));
+	if (!bCineContact)
+	{
+		const float Contact = bHigh ? 0.04f : 0.f;
+		for (const FStageLight* L : { &Key, &Rim[0], &Rim[1] })
+			if (ULightComponent* C = L->Light.Get()) { C->ContactShadowLength = Contact; C->MarkRenderStateDirty(); }
+	}
+	if (bHigh)
+	{
+		Set(TEXT("r.ContactShadows"), 1);
+		Set(TEXT("r.SSR.Quality"), FMath::Max(3, Get(TEXT("r.SSR.Quality"))));
+		Set(TEXT("r.Lumen.Reflections.ScreenTraces"), 1);
+	}
+	const ULightComponent* K = Key.Light.Get();
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: render audit tier %d: contact shadows %d (key %.2f), reflections method %d (Lumen screen traces %d, SSR quality %d), GI %d; audio spatialised %d (%s)"),
+		TierLive, Get(TEXT("r.ContactShadows")), K ? K->ContactShadowLength : -1.f, Get(TEXT("r.ReflectionMethod")), Get(TEXT("r.Lumen.Reflections.ScreenTraces")), Get(TEXT("r.SSR.Quality")),
+		Get(TEXT("r.DynamicGlobalIlluminationMethod")), Ringside ? (int32)Ringside->Attenuation.bSpatialize : -1,
+		Ringside && Ringside->Attenuation.SpatializationAlgorithm == ESoundSpatializationAlgorithm::SPATIALIZATION_HRTF ? TEXT("HRTF") : TEXT("panning"));
 }
 
 void ASlapHUD::ApplyCinema(bool bOn)

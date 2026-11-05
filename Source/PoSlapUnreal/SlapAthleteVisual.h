@@ -69,6 +69,8 @@ private:
 	TArray<int32> RefToDriven;	// reference-skeleton index -> driven-bone index, or INDEX_NONE
 	TArray<FTransform> LastPose;	// world pose set last frame, kept only until the self-check runs
 	TArray<FTransform> Pose, CompSpace;	// per-frame scratch (world pose, component space), kept to skip the allocations
-	TArray<TPair<double, TArray<FTransform>>> History;	// world poses of the last 3 s of game time (replay)
+	/** Game time the replay history keeps: the strike replay plays the touch back at the turn's end, the 5 s recovery later. */
+	static constexpr double HistorySeconds = 8.0;
+	TArray<TPair<double, TArray<FTransform>>> History;	// world poses of the last HistorySeconds of game time (replay)
 	double ReplayFrom = 0.0, ReplayTo = 0.0, ReplayRate = 0.0, ReplayStart = 0.0;	// rate 0 = live
 };

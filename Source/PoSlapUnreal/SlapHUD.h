@@ -71,12 +71,17 @@ private:
 	void Keys();							// TAB: the stats panel; C: the camera mode
 	bool Curtain();							// the loading curtain until the shaders are compiled; true while it is up
 	void Screenshot();						// -SlapShot / -SlapShotResult
+	void EventShots(const FSlapHud& H);		// -SlapShotEvents: one shot per new widget as it first shows (the report)
+	bool bEventShots = false;
+	double EventShotAt = -100.0;
+	TSet<FString> EventShotsTaken;
 	void CacheAthletes();					// Skin and Body, until both athletes are found
 
 	// ---- canvas (SlapHUDDraw.cpp)
 	void DrawMatch(const FSlapHud& H);		// the scoreboard: round pips, the clock, the last call, judges and series
 	void DrawMomentum(const FSlapHud& H);	// who is winning, always on
 	void DrawNamePlates(const FSlapHud& H);	// each athlete: name (shrinks to fit), KD / KO badges, stamina, neck, danger
+	void DrawPlates(const FSlapHud& H);		// the display pass's plates: the clock ring, the health chips, danger x neck, mirrored
 	void DrawTelemetry(const FSlapHud& H);	// TAB: balance rings, palm-speed gauge, head g trace, the swing census
 	void DrawOverlays(const FSlapHud& H);	// flash, shockwave, FEINT / REAL, tale of the tape, coin toss, 10-count, chat, commentary
 	void DrawImpactCard(const FSlapHud& H);	// the strike's numbers and the 2 s head-snap sparkline after it
@@ -89,6 +94,67 @@ private:
 	// ---- (SlapHUDScience.cpp)
 	void DrawScience(const FSlapHud& H);	// KO danger on the floor, head impact, kinetic chain, the palm's trail
 	void DrawXRay(const FSlapHud& H);		// each brain's target pose (ghost) and a glow on what it reacts to
+
+	// ---- the display pass of 2026-11-04 (SlapHUDPanels.cpp). Display only: it reads MuJoCo's render snapshot (positions,
+	// actuator forces) and the HUD copy, and writes nothing back. -SlapDisplayPass=0 (or slap.DisplayPass 0) turns it all off
+	// (the parity proof: a match log with it on and off has identical events).
+	void Sense(const FSlapHud& H);			// the snapshot: heads (the flinch), arm actuator strain, per-strike side and impulse
+	void BindSense();						// body and actuator ids, once the model is up
+	double DangerOf(const FSlapHud& H, int32 a) const;	// KO danger: the capture point combined with the neck damage taken
+	static double CombineDanger(double Capture, double NeckLeftShare);	// 1 - (1 - capture)(1 - NeckWeight x neck damage)
+	void DrawStrain(const FSlapHud& H);		// TAB: shoulder / elbow / wrist |torque| / cap as heat on the joints
+	void DrawTicker(const FSlapHud& H);		// one line above the bottom row: the latest event
+	void DrawScouting(const FSlapHud& H);	// between rounds: Elo, KO rate, favourite slap side per corner
+	void DrawFlinch(const FSlapHud& H);		// FLINCH over the defender whose head moved before the contact
+	void DrawStrikeReplayCaption(const FSlapHud& H);
+	void Ticker(const FString& Line, FColor C);	// a ticker line (and the log, at slap.HudLog 1)
+	void StrikeReplay(double Now);			// the per-strike instant replay at the turn's end (skippable)
+	void SkipReplay();						// back to live (a tap on the arena, SPACE)
+	void LoadScoutLogs();					// Logs/Gameplay/*/*_ue.jsonl: each character's slap side and KO rate
+	FString ScoutLine(int32 a) const;
+	bool bPass = true;						// the display pass is on
+	// the snapshot's ids per athlete (red, blue): head, pelvis, and the arm joints (shoulder, elbow, wrist) x (left, right)
+	enum EJoint : int32 { JShoulderL, JElbowL, JWristL, JShoulderR, JElbowR, JWristR, NumJoints };
+	bool bSenseBound = false;
+	int32 HeadBody[2] = { -1, -1 }, PelvisBody[2] = { -1, -1 }, JointBody[2][NumJoints];
+	TArray<TPair<int32, double>> JointActs[2][NumJoints];	// actuator id and its force cap (N m)
+	int32 SenseActs = 0;					// arm actuators found (12 per athlete)
+	uint64 SenseFrame = 0;
+	FVector HeadNow[2], PelvisNow[2], JointNow[2][NumJoints];	// Unreal cm, live (a replay draws older poses)
+	float Strain[2][NumJoints] = {};		// |force| / cap, eased; PeakStrain: the most this turn
+	float PeakStrain[2][NumJoints] = {};
+	// the flinch (training/envs/arena.py's own rule: the defender's head > 5 cm off where it stood, before the contact)
+	int32 FlinchTurnKey = -1;
+	double FlinchTurnAt = -100.0, FlinchAt = -100.0;
+	FVector Head0 = FVector::ZeroVector;
+	bool bHead0 = false, bFlinched = false, bFlinchFeint = false;
+	float FlinchCm = 0.f;
+	int32 Flinches[2] = {}, FlinchArmed = 0;
+	// the strike replay
+	bool bStrikeReplays = true, bAutoReplay = false;
+	int32 StrikeReplays = 0, ReplayDue = 0;
+	double ReplayTouch = -100.0, SkippedAt = -100.0;
+	double ReplayPeak = 0.0, ReplaySnap = 0.0;
+	bool bReplayChain = false;
+	bool bSpaceDown = false;
+	// the crowd's impulse (strike mass x palm speed, N s) and the side tally
+	double Impulse = 0.0, ImpulseK = 1.0;
+	int32 SideHits[2][2] = {};				// this session, per corner: left, right
+	TMap<FString, FIntPoint> LogSides;		// per character card, from the logs: (left, right) touches
+	TMap<FString, FIntPoint> LogKOs;		// per character card: (KOs, strikes landed)
+	// the ticker
+	FString TickerLine;
+	FColor TickerColor = FColor::White;
+	double TickerAt = -100.0;
+	int32 TickerDowns[2] = {}, TickerCount = 0, TickerSeenDown = 0, TickerSeenTurn = 0, TickerSeenRound = 0, TickerSeenKO = 0;
+	FString TickerSeenEvent, TickerSeenResult;
+	// what the UI test checks
+	int32 ScoutShown = 0, RingDrawn = 0, ChipsDrawn = 0, StrainDrawn = 0;
+	double ScoutAt = -100.0;
+	int32 ScoutRound = 0, ScoutLogged = 0, ScoutRoundsSeen = 0;
+	TMap<FString, double> LeagueElo, LeagueKO;	// training/models/league.json per brain
+	float TickerY = 0.f;					// canvas y of the ticker row (Layout reserves it above the bottom anchors)
+	int32 WidgetChecks(FString& Out) const;	// -SlapUiTest: the display pass's assertions; returns the fails
 
 	// ---- effects (SlapHUDFx.cpp)
 	void Cues(const FSlapHud& H);			// one-shot effects when the controller's counters move on
@@ -105,6 +171,7 @@ private:
 	void Burst(double Now);					// the 120 fps burst capture at the impact (render side only)
 	int32 DetectTier() const;				// the quality tier this device can afford (0 low, 1 medium, 2 high)
 	void ApplyTier(int32 Live);
+	void RenderAudit();						// HIGH and up: contact shadows and screen-space reflections on; logs what is in force
 	void ApplyCinema(bool bOn);	// tier 3 CINEMA (desktop): epic scalability, Lumen GI and reflections, contact shadows, SSS, a denser spray
 	FString CineFeatures = TEXT("epic+gi+refl+contact+sss+spray");	// -SlapCine=: the features tier 3 turns on (the fps ladder)
 	float SprayMul = 1.f;				// a tier in force: the spray rate, the crowd, the shadows, the engine's scalability
@@ -381,6 +448,7 @@ private:
 	// impulse response as a convolution reverb (/Game/Audio/RV_ArenaIR, desktop: a phone keeps the two reverbs)
 	UPROPERTY(Transient) TObjectPtr<USoundBase> StepDeck;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> PAChime;
+	UPROPERTY(Transient) TObjectPtr<USoundBase> ImpactSynth;	// MS_ImpactSynth (Scripts/broadcast_metasound.py): Energy, Pitch, Bright, SkinDecay, BodyDecay
 	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> Voices;	// "Grunt_<card>" / "Breath_<card>" -> sound (null: none)
 	UPROPERTY(Transient) TObjectPtr<USoundSubmixBase> ArenaIR;
 	FString BreathCard[2];	// the card each breathing loop is voiced for

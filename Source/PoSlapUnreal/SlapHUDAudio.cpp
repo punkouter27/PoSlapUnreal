@@ -23,7 +23,9 @@ void ASlapHUD::Crowd(const FSlapHud& H, double Now)
 	{
 		for (int32 a = 0; a < 2; ++a) Want = FMath::Max(Want, 0.9f * (float)H.Danger[a]);
 	}
-	if (Now - StrikeAt < 3.0) Want = FMath::Max(Want, 0.6f * (float)StrikeK * FMath::Exp((StrikeAt - Now) / 1.2) * (bNearMiss ? 0.6f : 1.f));
+	// the last strike: by the impulse it delivered (strike mass x palm speed) with the display pass, else by the palm's speed
+	const float StrikeLift = bPass ? 0.5f * FMath::Min((float)ImpulseK, 1.8f) : 0.6f * (float)StrikeK;
+	if (Now - StrikeAt < 3.0) Want = FMath::Max(Want, StrikeLift * FMath::Exp((StrikeAt - Now) / 1.2) * (bNearMiss ? 0.6f : 1.f));
 	if (Now - KOAt < KOShot) Want = 1.f;
 	if (Shot == EShot::Tension) Want = FMath::Max(Want, 0.35f);
 	Want = FMath::Max(Want, 0.6f * Hype);
@@ -96,7 +98,7 @@ USoundBase* ASlapHUD::Voice(const FString& Kind, const FString& Card)
 	USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Audio"), *(TEXT("S_") + VoiceKey));
 	if (!Snd && Kind == TEXT("Breath")) Snd = BreathLoop;
 	Voices.Add(VoiceKey, Snd);
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: voice %s -> %s"), *VoiceKey, Snd ? *Snd->GetName() : TEXT("none"));
+	SLAP_HUD_LOG(1, TEXT("SlapHUD: voice %s -> %s"), *VoiceKey, Snd ? *Snd->GetName() : TEXT("none"));
 	return Snd;
 }
 

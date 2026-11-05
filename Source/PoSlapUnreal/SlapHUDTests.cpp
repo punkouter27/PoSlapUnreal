@@ -287,7 +287,10 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 			const bool bFlow = FlowTrail.Contains(TEXT("Menu > Gameplay")) && FlowTrail.Contains(TEXT("Gameplay > Result > Menu > Reset"));
 			const bool bMirror = HereCard[0] == HereCard[1];
 			const bool bElo = bMirror || IFileManager::Get().FileExists(*RatingsPath());
-			Quit(UiFails == 0 && bFlow && bElo, FString::Printf(TEXT("match %d began after the rematch; Elo %s (%s)"), H.Match, bMirror ? TEXT("unchanged, mirror match") : *EloLine, bElo ? TEXT("saved") : TEXT("NOT saved")));
+			FString Widgets;	// the display pass: every new widget did its job in the match just played (off: not checked)
+			const int32 WidgetFails = bPass ? WidgetChecks(Widgets) : 0;
+			UE_LOG(LogSlap, Log, TEXT("SlapHUD: UI test %s"), bPass ? *Widgets : TEXT("widgets: the display pass is off, not checked"));
+			Quit(UiFails == 0 && bFlow && bElo && WidgetFails == 0, FString::Printf(TEXT("match %d began after the rematch; Elo %s (%s); widget fails %d"), H.Match, bMirror ? TEXT("unchanged, mirror match") : *EloLine, bElo ? TEXT("saved") : TEXT("NOT saved"), WidgetFails));
 		}
 		else if (Now - RtAt > 15.0) Quit(false, TEXT("START from the menu did not start the next match within 15 s"));
 		break;

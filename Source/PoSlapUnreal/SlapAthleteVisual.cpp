@@ -13,6 +13,7 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "SlapHUDInternal.h"
 #include "SlapNames.h"
 
 ASlapAthleteVisual::ASlapAthleteVisual()
@@ -139,7 +140,7 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 	if (ReplayRate == 0.0)	// live: record (the replay plays from a frozen history)
 	{
 		History.Emplace(Now, Pose);
-		const int32 Old = Algo::LowerBoundBy(History, Now - 3.0, [](const TPair<double, TArray<FTransform>>& F) { return F.Key; });
+		const int32 Old = Algo::LowerBoundBy(History, Now - HistorySeconds, [](const TPair<double, TArray<FTransform>>& F) { return F.Key; });
 		if (Old > 0) History.RemoveAt(0, Old);
 	}
 
@@ -340,7 +341,7 @@ void ASlapAthleteVisual::ClampHands(const FMjRenderSnapshot& S)
 	}
 	else if (ClipFrames > 0 && Now - ClipLastAt > 0.3)
 	{
-		UE_LOG(LogTemp, Log, TEXT("SlapAthleteVisual %s: drawn hand held out of the drawn face for %d frames, up to %.1f cm"), *BodyPrefix, ClipFrames, ClipEpisodeMax);
+		if (SlapUi::HudLogLevel() >= 1) UE_LOG(LogTemp, Log, TEXT("SlapAthleteVisual %s: drawn hand held out of the drawn face for %d frames, up to %.1f cm"), *BodyPrefix, ClipFrames, ClipEpisodeMax);
 		ClipFrames = 0;
 		ClipEpisodeMax = 0.0;
 	}

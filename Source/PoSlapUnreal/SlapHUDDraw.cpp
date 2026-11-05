@@ -147,6 +147,7 @@ void ASlapHUD::DrawMomentum(const FSlapHud& H)
 
 void ASlapHUD::DrawNamePlates(const FSlapHud& H)
 {
+	if (bPass) { DrawPlates(H); return; }
 	// One plate per athlete, red left, blue right: the name (a long one shrinks to fit), the KD / KO badges, and three bars -
 	// stamina (joint speed) and neck strength from fresh down to their floors (the card's stamina_per_strike and
 	// neck_damage_per_snap, tracked by the controller), and the KO danger right now (the capture point outside the soles).
@@ -203,6 +204,121 @@ void ASlapHUD::DrawNamePlates(const FSlapHud& H)
 	PanelBottom = Y + Hh + 6.f * S;
 }
 
+void ASlapHUD::DrawPlates(const FSlapHud& H)
+{
+	// The display pass's plates (2026-11-04), red left and blue its exact mirror (laid out for red, then reflected about the
+	// plate's centre for blue: the corner stripe, the name, the badges, the chips and the meter all start from the outside edge).
+	// - the turn clock as a ring round the striker's name: the share of the shot clock left (the recovery once struck, amber)
+	// - health chips under the name: five each for stamina (STM) and neck strength (NECK), above their floors
+	// - the danger meter (DNG): the capture point combined with the neck damage taken; the neck's own share drawn violet
+	const double Now = GetWorld()->GetTimeSeconds();
+	const float Gap = 6.f * S, W = (Canvas->ClipX - 16.f * S - Gap) * 0.5f, Hh = PlateH * S, Y = PanelBottom;
+	UFont* Small = GEngine->GetSmallFont();
+	for (int32 a = 0; a < 2; ++a)
+	{
+		const float D = (float)DangerOf(H, a);
+		DangerShown[a] = FMath::FInterpTo(DangerShown[a], D, GetWorld()->GetDeltaSeconds(), 8.f);
+		if (D > 0.8f) bDangerHigh[a] = true;
+		else if (D < 0.7f) bDangerHigh[a] = false;
+		const float X0 = 8.f * S + a * (W + Gap);
+		auto Mx = [&](float X, float Wd) { return a ? 2.f * X0 + W - X - Wd : X; };	// red's layout -> this corner's
+		auto Rect = [&](const FLinearColor& C, float X, float Yr, float Wd, float Ht) { DrawRect(C, Mx(X, Wd), Yr, Wd, Ht); };
+		Rect(FLinearColor(0.f, 0.f, 0.f, 0.6f), X0, Y, W, Hh);
+		Rect(FLinearColor(TeamColor[a]), X0, Y, 3.f * S, Hh);	// the corner's colour on the outside edge
+		// badges, from the inside edge in
+		TArray<TPair<FString, FColor>> Badges;
+		if (H.KOd == a) Badges.Emplace(TEXT("KO"), Red);
+		else if (H.Downs[a] > 0) Badges.Emplace(FString::Printf(TEXT("KD %d"), H.Downs[a]), Amber);
+		if (!H.Result.IsEmpty() && H.Winner == a) Badges.Emplace(TEXT("WIN"), Gold);
+		const bool bStriker = Team(H.Striker) == a && H.Result.IsEmpty() && !H.bWalkIn;
+		if (bStriker) Badges.Emplace(TEXT("STRIKES"), FColor::White);
+		float Bx = X0 + W - 8.f * S;
+		for (const TPair<FString, FColor>& B : Badges)
+		{
+			float Tw = 0.f, Th = 0.f;
+			Canvas->StrLen(Small, B.Key, Tw, Th);
+			const float Pw = Tw * 0.85f * S + 8.f * S;
+			Bx -= Pw;
+			Rect(FLinearColor(B.Value).CopyWithNewOpacity(0.85f), Bx, Y + 4.f * S, Pw, 14.f * S);
+			Text(B.Key, Mx(Bx, Pw) + 4.f * S, Y + 4.f * S, FColor::Black, 0.85f * S);
+			Bx -= 3.f * S;
+		}
+		// the name, from the outside edge in (shrinks to fit the room the badges leave)
+		const FString Name = H.Name[a].IsEmpty() ? (a ? TEXT("BLUE") : TEXT("RED")) : H.Name[a].ToUpper();
+		const float NameX = X0 + 10.f * S, NameMax = FMath::Max(Bx - NameX - 6.f * S, 40.f * S);
+		float Tw = 0.f, Th = 0.f;
+		Canvas->StrLen(Small, Name, Tw, Th);
+		const float Sc = Tw * 1.1f * S > NameMax ? FMath::Max(NameMax / FMath::Max(Tw, 1.f), 1.1f * S * MinTextScale) : 1.1f * S;
+		const float NameW = FMath::Min(Tw * Sc, NameMax);
+		TextBox(Name, Mx(NameX, NameW), Y + 3.f * S, NameMax, TeamColor[a], 1.1f * S);
+		if (bStriker)	// the turn clock as a ring round the name: drains clockwise from the top centre
+		{
+			const bool bRec = H.bStruck;
+			const float Left = FMath::Clamp((float)(bRec ? H.Clock / Recovery : H.Clock / StrikeClock), 0.f, 1.f);
+			const FLinearColor Col = bRec ? FLinearColor(Amber) : H.Clock < 5.0 ? FLinearColor(1.f, 0.27f, 0.27f) : H.Clock < 10.0 ? FLinearColor(1.f, 0.82f, 0.24f) : FLinearColor(TeamColor[a]);
+			const float Rw = NameW + 8.f * S, Rx = Mx(NameX - 4.f * S, Rw), Ry = Y + 2.f * S, Rh = Th * Sc + 2.f * S;
+			const float Per = 2.f * (Rw + Rh);
+			const FVector2D Pts[5] = { { Rx + Rw * 0.5f, Ry }, { Rx + Rw, Ry }, { Rx + Rw, Ry + Rh }, { Rx, Ry + Rh }, { Rx, Ry } };
+			auto Walk = [&](float Len, const FLinearColor& C, float Thick)	// Len of the perimeter from the top centre, clockwise
+			{
+				FVector2D P = Pts[0];
+				float Rest = Len;
+				for (int32 k = 1; k < 6 && Rest > 0.f; ++k)
+				{
+					const FVector2D Q = k < 5 ? Pts[k] : Pts[0];
+					const float Seg = FVector2D::Distance(P, Q);
+					const FVector2D E = Seg <= Rest ? Q : P + (Q - P) * (Rest / FMath::Max(Seg, 1e-3f));
+					DrawLine(P.X, P.Y, E.X, E.Y, C, Thick);
+					Rest -= Seg;
+					P = Q;
+				}
+			};
+			Walk(Per, FLinearColor(1.f, 1.f, 1.f, 0.15f), 2.f * S);
+			Walk(Per * Left, !bRec && H.Clock < 5.0 ? Col.CopyWithNewOpacity(0.7f + 0.3f * FMath::Sin(Now * 10.0)) : Col, 2.5f * S);
+			TrackBox(TEXT("OverlayClockRing"), Rx, Ry, Rw, Rh);
+			++RingDrawn;
+		}
+		// the chips: STM then NECK, five each, from the outside edge in; a chip half spent is drawn half lit
+		const double Share[2] = { StaminaLeft(H.Stamina[a]), NeckLeft(H.Neck[a]) };
+		static const TCHAR* Labels[2] = { TEXT("STM"), TEXT("NECK") };
+		const float ChipW = 9.f * S, ChipH = 7.f * S, ChipGap = 2.f * S, Cy = Y + 22.f * S, Lw = 30.f * S;
+		float Cx = X0 + 8.f * S;
+		for (int32 b = 0; b < 2; ++b)
+		{
+			float Lt = 0.f, Lh = 0.f;
+			Canvas->StrLen(Small, Labels[b], Lt, Lh);
+			Text(Labels[b], Mx(Cx, Lt * 0.6f * S), Cy - 2.f * S, Grey, 0.6f * S);
+			Cx += Lw - 4.f * S;
+			for (int32 k = 0; k < 5; ++k)
+			{
+				const float Fill = FMath::Clamp((float)Share[b] * 5.f - k, 0.f, 1.f);
+				Rect(FLinearColor(1.f, 1.f, 1.f, 0.14f), Cx, Cy, ChipW, ChipH);
+				if (Fill > 0.f) Rect(FLinearColor(TeamColor[a]).CopyWithNewOpacity(0.35f + 0.65f * Fill), Cx, Cy, ChipW * (Fill > 0.99f ? 1.f : FMath::Max(Fill, 0.15f)), ChipH);
+				Cx += ChipW + ChipGap;
+			}
+			Cx += 8.f * S;
+		}
+		++ChipsDrawn;
+		// the danger meter: balance and neck damage together; the neck's own part violet under the traffic colour
+		const float By = Y + 35.f * S, Bw = W - 16.f * S - Lw;
+		const float Bx0 = X0 + 8.f * S + Lw;
+		{
+			float Lt = 0.f, Lh = 0.f;
+			Canvas->StrLen(Small, TEXT("DNG"), Lt, Lh);
+			Text(TEXT("DNG"), Mx(X0 + 8.f * S, Lt * 0.6f * S), By - 3.f * S, Grey, 0.6f * S);
+		}
+		Rect(FLinearColor(1.f, 1.f, 1.f, 0.15f), Bx0, By, Bw, 5.f * S);
+		const float Dv = DangerShown[a];
+		FLinearColor Col = Dv < 0.35f ? FLinearColor(0.25f, 0.85f, 0.35f) : Dv < 0.8f ? FLinearColor(1.f, 0.75f, 0.2f) : FLinearColor(1.f, 0.25f, 0.2f);
+		if (bDangerHigh[a]) Col.A = 0.75f + 0.25f * FMath::Sin(Now * 12.f);
+		Rect(Col, Bx0, By, Bw * FMath::Clamp(Dv, 0.f, 1.f), 5.f * S);
+		const float NeckPart = (float)CombineDanger(0.0, NeckLeft(H.Neck[a]));
+		if (NeckPart > 0.01f) Rect(FLinearColor(0.75f, 0.47f, 1.f, 0.95f), Bx0, By + 3.f * S, Bw * FMath::Min(NeckPart, Dv), 2.f * S);
+		TrackBox(a ? TEXT("PlateBlue") : TEXT("PlateRed"), X0, Y, W, Hh);
+	}
+	PanelBottom = Y + Hh + 6.f * S;
+}
+
 void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 {
 	const int32 Sk = Team(H.Striker);
@@ -249,7 +365,8 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	const float FX = 290.f * S, FY = Bot - 34.f * S, FW = Canvas->ClipX - FX - 10.f * S;
 	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), FX - 6.f * S, FY - 18.f * S, FW, 48.f * S);
 	Text(TEXT("SWINGS"), FX, FY - 17.f * S, Grey, 0.85f * S);
-	Text(FString::Printf(TEXT("FEINT %d   REAL %d"), Read.Feints, Read.Reals), FX, FY - 3.f * S, Read.Feints ? Gold : FColor::White, 0.95f * S);
+	Text(bPass ? FString::Printf(TEXT("FEINT %d   REAL %d   FLINCH %d"), Read.Feints, Read.Reals, Flinches[0] + Flinches[1]) : FString::Printf(TEXT("FEINT %d   REAL %d"), Read.Feints, Read.Reals),
+		FX, FY - 3.f * S, Read.Feints ? Gold : FColor::White, 0.95f * S);
 	Text(FString::Printf(TEXT("AI READ %d / %d right   now %d%%"), Read.ReadsRight, Read.Reads, FMath::RoundToInt(100.f * Read.Score)), FX, FY + 12.f * S, Read.bReading ? Amber : Grey, 0.85f * S);
 	TrackBox(TEXT("Swings"), FX - 6.f * S, FY - 18.f * S, FW, 48.f * S);
 }
@@ -278,7 +395,8 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		FVector At = StrikePos;
 		const int32 Who = Team(H.Striker);
 		if (bFeint && Body[Who].IsValid()) At = Body[Who]->GetBoneLocation(BoneHead);
-		const FString Tag = !bFeint && bNearMiss ? TEXT("REAL - NEAR MISS") : Read.Tag;
+		FString Tag = !bFeint && bNearMiss ? TEXT("REAL - NEAR MISS") : Read.Tag;
+		if (bPass && !bFeint && bFlinched) Tag += TEXT(" - ON A FLINCH");	// the touch found a defender who had already moved (arena.py's feint bonus)
 		const FVector P = Canvas->Project(At + FVector(0.f, 0.f, 26.f));
 		if (P.Z > 0) Text(Tag, P.X, P.Y, bFeint ? Gold : (bNearMiss ? Amber : Green), 1.1f * S, true, GEngine->GetMediumFont());
 	}

@@ -20,6 +20,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "InputCoreTypes.h"
 #include "IWebSocket.h"
 #include "Kismet/GameplayStatics.h"
@@ -31,6 +32,7 @@
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "NiagaraSystem.h"
 #include "RHI.h"
+#include "Scalability.h"
 #include "SceneView.h"
 #include "ShaderCompiler.h"
 #include "SlapAthleteVisual.h"
@@ -84,12 +86,18 @@ void ASlapHUD::BeginPlay()
 	bShotOnResult = FParse::Param(Cmd, TEXT("SlapShotResult"));
 	FParse::Value(Cmd, TEXT("SlapShotStrike="), ShotAfterStrike);
 	FParse::Value(Cmd, TEXT("SlapFxTest="), FxTestAt);
+	bEventShots = FParse::Param(Cmd, TEXT("SlapShotEvents"));	// the report's screenshots: one per new widget as it first shows, then the result
 	bMenu = FParse::Value(Cmd, TEXT("SlapMenu="), Tab);
 	Tab = FMath::Clamp(Tab, 0, NumTabs - 1);
 	bUiTest = FParse::Param(Cmd, TEXT("SlapUiTest"));
 	bRoundTripTest = FParse::Param(Cmd, TEXT("SlapRoundTripTest"));
 	bPairTest = FParse::Param(Cmd, TEXT("SlapPairTest"));
 	bLayoutTest = FParse::Param(Cmd, TEXT("SlapLayoutTest"));
+	int32 Cv = 0;	// the display pass's switches: -SlapDisplayPass=0 (the parity proof), -SlapHudLog=0|1|2
+	if (FParse::Value(Cmd, TEXT("SlapDisplayPass="), Cv)) IConsoleManager::Get().FindConsoleVariable(TEXT("slap.DisplayPass"))->Set(Cv, ECVF_SetByCommandline);
+	if (FParse::Value(Cmd, TEXT("SlapHudLog="), Cv)) IConsoleManager::Get().FindConsoleVariable(TEXT("slap.HudLog"))->Set(Cv, ECVF_SetByCommandline);
+	bPass = DisplayPassOn();
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: display pass %s, HUD log level %d"), bPass ? TEXT("on") : TEXT("OFF"), HudLogLevel());
 	FString View;	// overlays on from the start (screenshots, checks; '+', not commas)
 	if (FParse::Value(Cmd, TEXT("SlapView="), View))
 	{
@@ -145,6 +153,8 @@ void ASlapHUD::LoadAssets()
 	Bell = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Bell"));
 	StepDeck = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_StepDeck"));
 	PAChime = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_PAChime"));
+	// the impact synthesis (Scripts/broadcast_metasound.py: a MetaSound built headlessly) layered on the recorded takes, desktop only
+	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ImpactSynth = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("MS_ImpactSynth"));
 	// the arena's impulse response (broadcast_audio.py ArenaIR.wav -> broadcast_fx.py RV_ArenaIR, a convolution reverb
 	// submix): every spatialised one-shot sends to it on desktop; a phone keeps the two algorithmic reverbs (CPU)
 	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ArenaIR = LoadNamed<USoundSubmixBase>(TEXT("/Game/Audio"), TEXT("RV_ArenaIR"));
@@ -225,9 +235,9 @@ void ASlapHUD::LoadAssets()
 		L->RegisterComponent();
 		Spot = L;
 	}
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: spray %s dust %s, sounds slap %d squeak %d thud %d scrape %d step %d breath %d crowd %d/%d/%d bell %d deck %d chime %d IR %d, scuff %d decals %d, reverbs %d/%d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"),
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: spray %s dust %s, sounds slap %d squeak %d thud %d scrape %d step %d breath %d crowd %d/%d/%d bell %d deck %d chime %d IR %d synth %d, scuff %d decals %d, reverbs %d/%d, lights key %d rims %d/%d truss %d, crowd materials %d, league %d brains"),
 		Spray ? TEXT("yes") : TEXT("MISSING"), DustPuff ? TEXT("yes") : TEXT("MISSING"),
-		SlapTakes.Num(), Squeaks.Num(), Thud != nullptr, Scrape != nullptr, Step != nullptr, BreathLoop != nullptr, CrowdReact != nullptr, CrowdNear != nullptr, CrowdLoop != nullptr, Bell != nullptr, StepDeck != nullptr, PAChime != nullptr, ArenaIR != nullptr,
+		SlapTakes.Num(), Squeaks.Num(), Thud != nullptr, Scrape != nullptr, Step != nullptr, BreathLoop != nullptr, CrowdReact != nullptr, CrowdNear != nullptr, CrowdLoop != nullptr, Bell != nullptr, StepDeck != nullptr, PAChime != nullptr, ArenaIR != nullptr, ImpactSynth != nullptr,
 		ScuffMat != nullptr, DecalMat != nullptr, HallVerb != nullptr, CloseVerb != nullptr, Key.Light.IsValid(), Rim[0].Light.IsValid(), Rim[1].Light.IsValid(), Truss.Num(), CrowdSkin.Num(), Scout.Num());
 }
 
@@ -268,6 +278,8 @@ void ASlapHUD::Layout()
 	const FIntRect R = Canvas->SceneView ? Canvas->SceneView->UnscaledViewRect : FIntRect(0, 0, View.X, View.Y);
 	Top = FMath::Max(0.f, Safe.Top + TopBar * Dpi - FMath::Max<float>(R.Min.Y, Safe.Top));
 	Bot = Canvas->ClipY - FMath::Max(0.f, Safe.Bottom + BottomBar * Dpi - FMath::Max<float>(View.Y - R.Max.Y, Safe.Bottom));
+	TickerY = Bot - 18.f * S;	// the event ticker's row, right above the bottom anchors: what hangs low starts above it
+	if (bPass) Bot = TickerY - 2.f * S;
 
 	// The menu sheet's height budget, in Slate units. The layer's own height is measured, so the budget follows the safe
 	// zone and any resize; the sheet's content is clipped inside it, so no tab can run off the screen and nothing scrolls.
@@ -292,6 +304,9 @@ void ASlapHUD::Keys()
 	const bool bCam = PC->IsInputKeyDown(EKeys::C);	// C: the camera mode (AUTO -> WIDE -> SIDE -> CLOSE)
 	if (bCam && !bCamDown) SetCam((ECam)(((int32)CamMode + 1) % UE_ARRAY_COUNT(CamName)));
 	bCamDown = bCam;
+	const bool bSpace = PC->IsInputKeyDown(EKeys::SpaceBar);	// SPACE: skip a replay, back to live
+	if (bSpace && !bSpaceDown) SkipReplay();
+	bSpaceDown = bSpace;
 }
 
 void ASlapHUD::DrawHUD()
@@ -350,7 +365,9 @@ void ASlapHUD::DrawHUD()
 		H.Stamina[0] = H.Stamina[1] = 0.75;
 		if (Now >= FxTestAt + 1.5f) H.KOSeq = -1;
 	}
+	bPass = DisplayPassOn();	// slap.DisplayPass can flip it live
 	Keys();
+	if (H.Match > 0) Sense(H);	// before the cues: the strike reads the flinch
 	if (H.Match > 0) Cues(H);
 	Spotlight(H);
 	Scuffs(H);
@@ -366,7 +383,7 @@ void ASlapHUD::DrawHUD()
 	{
 		Dilation = H.SlowMo;
 		UGameplayStatics::SetGlobalTimeDilation(this, Dilation);
-		UE_LOG(LogSlap, Log, TEXT("SlapHUD: slow motion %.2f at %.2f s"), Dilation, Now);
+		SLAP_HUD_LOG(1, TEXT("SlapHUD: slow motion %.2f at %.2f s"), Dilation, Now);
 	}
 	Crowd(H, Now);
 	ReverbMix(Now);
@@ -382,14 +399,19 @@ void ASlapHUD::DrawHUD()
 		DrawMomentum(H);	// who is winning
 		DrawNamePlates(H);	// names, badges, stamina, neck, danger
 		if (bShowTelemetry) DrawTelemetry(H);
+		if (bShowTelemetry) DrawStrain(H);
 		if (bShowScience) DrawScience(H);
 		if (bShowXRay) DrawXRay(H);
 		DrawOverlays(H);
+		DrawFlinch(H);
 		DrawImpactCard(H);
+		DrawScouting(H);
+		DrawTicker(H);
 		DrawTell(H);
 		DrawJudges(H);
 		DrawWinner(H);
-		if (Now < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + 6.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
+		if (Now < ReplayEnd && bAutoReplay) DrawStrikeReplayCaption(H);
+		else if (Now < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + 6.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
 
 	if (bUiTest) UiTest(H);
@@ -425,8 +447,34 @@ bool ASlapHUD::Curtain()
 	return true;
 }
 
+void ASlapHUD::EventShots(const FSlapHud& H)
+{
+	// -SlapShotEvents: Saved/Screenshots/pass/<name>.png the first time each moment comes round (one request at a time),
+	// then -SlapShotResult's shot and quit. Works with the display pass off too (the "before" set: plates, tab, result).
+	if (!bEventShots || !bSceneReady || H.Match == 0 || bShotTaken) return;
+	const double Now = GetWorld()->GetTimeSeconds(), Real = FPlatformTime::Seconds();
+	if (Real - EventShotAt < 0.6) return;
+	auto Shoot = [&](const TCHAR* Name)
+	{
+		if (EventShotsTaken.Contains(Name)) return false;
+		EventShotsTaken.Add(Name);
+		EventShotAt = Real;
+		FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/pass") / FString(Name) + TEXT(".png"), true, false);
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: event shot %s at %.2f s"), Name, Now);
+		return true;
+	};
+	if (!H.bWalkIn && !H.bStruck && H.Result.IsEmpty() && H.Clock < StrikeClock - 3.0 && !bShowTelemetry && Shoot(TEXT("plates"))) return;
+	if (bAutoReplay && Now < ReplayEnd && Now > ReplayEnd - 0.7 && Shoot(TEXT("replay"))) return;
+	if (ScoutAt > 0.0 && Now - ScoutAt > 0.8 && Now - ScoutAt < 4.0 && Shoot(TEXT("scouting"))) return;
+	if (FlinchAt > 0.0 && Now - FlinchAt > 0.1 && Now - FlinchAt < 1.0 && Shoot(TEXT("flinch"))) return;
+	if (EventShotsTaken.Contains(TEXT("plates")) && Now - StrikeAt > 0.1 && Now - StrikeAt < 1.5 && StrikeAt > 0.0 && Shoot(TEXT("strike"))) return;
+	if (EventShotsTaken.Contains(TEXT("strike")) && !bShowTelemetry && !EventShotsTaken.Contains(TEXT("tab")) && Now >= ReplayEnd) { bShowTelemetry = true; return; }	// TAB on for the strain heat
+	if (bShowTelemetry && !H.bStruck && (Read.bReading || H.HandSpeed > 3.0) && Now >= ReplayEnd && Shoot(TEXT("tab"))) return;
+}
+
 void ASlapHUD::Screenshot()
 {
+	EventShots(Last);
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (bShotOnResult && ShotAt < 0.f && !Last.Result.IsEmpty()) ShotAt = Now + 0.5f;
 	if (ShotAt < 0.f || Now < ShotAt) return;
@@ -457,6 +505,15 @@ void ASlapHUD::Screenshot()
 
 void ASlapHUD::EndPlay(const EEndPlayReason::Type Reason)
 {
+	// a tier changes the engine's scalability for this session only: put the launch levels back, or the engine saves the
+	// AUTO step-down (a slow shader warm-up) into GameUserSettings.ini and every later launch starts at LOW (2026-11-04)
+	if (BaseQuality[0] >= 0)
+	{
+		Scalability::FQualityLevels Q = Scalability::GetQualityLevels();
+		Q.ShadowQuality = BaseQuality[0]; Q.PostProcessQuality = BaseQuality[1]; Q.EffectsQuality = BaseQuality[2];
+		Q.FoliageQuality = BaseQuality[3]; Q.ShadingQuality = BaseQuality[4];
+		Scalability::SetQualityLevels(Q);
+	}
 	UGameViewportClient* VC = GetWorld()->GetGameViewport();
 	if (VC && Ui.IsValid()) VC->RemoveViewportWidgetContent(Ui.ToSharedRef());
 	Ui.Reset();

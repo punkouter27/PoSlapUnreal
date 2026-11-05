@@ -9,7 +9,12 @@
 
 namespace SlapUi
 {
-	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck, Slap::CleanSpeed;
+	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck, Slap::CleanSpeed, Slap::StrikeClock, Slap::Recovery;
+
+	/** slap.HudLog (SlapHUDPanels.cpp): 0 warnings only, 1 one line per event (default), 2 + per-frame diagnostics. */
+	int32 HudLogLevel();
+	/** slap.DisplayPass (SlapHUDPanels.cpp; -SlapDisplayPass=0): the 2026-11-04 display pass on (1) or off (0). */
+	bool DisplayPassOn();
 
 	inline const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandL("hand_l"), BoneHandR("hand_r");
 	// the athletes' material parameters (Scripts/broadcast_fx.py add_wear / add_crowd)
@@ -51,3 +56,6 @@ namespace SlapUi
 		}
 	}
 }
+
+/** A HUD log line at slap.HudLog >= Level (1 = per event, 2 = per frame). Warnings and errors stay plain UE_LOGs. */
+#define SLAP_HUD_LOG(Level, Format, ...) do { if (SlapUi::HudLogLevel() >= (Level)) { UE_LOG(LogSlap, Log, Format, ##__VA_ARGS__); } } while (0)

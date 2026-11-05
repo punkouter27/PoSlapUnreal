@@ -259,4 +259,4 @@ Three streams, disjoint files: browser display (`Web/app.js` etc.), Unreal displ
 - [ ] M4 Brain interface: 41 foot heel/toe contact bits (appended, zero-init), 43 low-pass actions keyed on the interface tag, 46 CoM recovery reward, 47 oscillation penalty; `DOCS/20261104/policy_change_log.md`
 - [ ] M5 New envs: 44 get-up (from real knockdowns) + director table spec, 45 slope stage
 - [ ] M6 Checks: 29 tunnelling regression, 49 config-snapshot validation before policy init
-- [ ] M7 Training (50): the v3 retrain queue died at 12:29 on a Windows logoff (exit 0x40010004, then 0xC000026B); Grandpa v3 L2/L3/L4 ran, none graduated (L4 exam 0.49); relaunch as `retrain_v4_queue.json` after M4-M6, resumable after logoff
+- [ ] M7 Training (50): the v3 retrain queue died at 12:29 on a Windows logoff (exit 0x40010004, then 0xC000026B); Grandpa v3 L2/L3/L4 ran, none graduated (L4 exam 0.49); relaunch as `retrain_v4_queue.json` after M4-M6, resumable after logoff (user 2026-11-04: yes to a Task Scheduler "at logon" restart)

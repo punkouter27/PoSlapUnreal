@@ -10,7 +10,7 @@
 # each stage's run; a half-done stage carries on from its latest.pt for the minutes it has left), and its lock file
 # makes a second start (the trigger firing while a driver already runs) a no-op.
 #
-# Triggers: at logon of this user (default), and at start-up. -S4U registers it to run whether the user is logged on
+# Triggers: at logon of this user; -AtStartup adds start-up (admin). -S4U registers it to run whether the user is logged on
 # or not (Task Scheduler's "S4U" logon: no stored password, no network shares; CUDA works in that session on this
 # machine's driver - check `nvidia-smi` from a test run first). Without -S4U a logoff still kills the run, and the next
 # logon restarts it. Registering needs no admin rights for the logon trigger; the start-up trigger and -S4U may.
@@ -21,6 +21,7 @@ param(
     [string]$Queue = "retrain_v4_queue.json",
     [double]$Hours = 16,
     [switch]$S4U,
+    [switch]$AtStartup,
     [switch]$Remove,
     [string]$Name = "PoSlap training queue"
 )
@@ -36,11 +37,16 @@ if (-not (Test-Path (Join-Path $Here "runs\$Queue"))) { Write-Error "no training
 $Log = Join-Path $Here ("runs\" + [IO.Path]::GetFileNameWithoutExtension($Queue) + "_task.log")
 $Cmd = "/c `"`"$Py`" -u overnight.py --resume --hours $Hours --queue $Queue >> `"$Log`" 2>&1`""
 $Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $Cmd -WorkingDirectory $Here
-$Triggers = @((New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME), (New-ScheduledTaskTrigger -AtStartup))
+$Triggers = @(New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME)
+if ($AtStartup) { $Triggers += New-ScheduledTaskTrigger -AtStartup }   # needs admin, as does -S4U
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Hours ([math]::Ceiling($Hours) + 2)) -MultipleInstances IgnoreNew
 $Logon = if ($S4U) { "S4U" } else { "Interactive" }
 $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType $Logon -RunLevel Limited
-Register-ScheduledTask -TaskName $Name -Action $Action -Trigger $Triggers -Settings $Settings -Principal $Principal -Force | Out-Null
+try {
+    Register-ScheduledTask -TaskName $Name -Action $Action -Trigger $Triggers -Settings $Settings -Principal $Principal -Force -ErrorAction Stop | Out-Null
+} catch {
+    Write-Error "could not register '$Name': $($_.Exception.Message) (-S4U and -AtStartup need an elevated shell)"; exit 1
+}
 Write-Host "registered '$Name' ($Logon): overnight.py --resume --hours $Hours --queue $Queue -> $Log"
 Write-Host "start it now: Start-ScheduledTask -TaskName '$Name'   (or run the same command by hand)"

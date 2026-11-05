@@ -178,6 +178,7 @@ void ASlapHUD::BuildUi()
 				if (!Self.IsValid()) return FReply::Handled();
 				const FVector2D D = (E.GetScreenSpacePosition() - Self->PadDown) / FMath::Max(G.GetAccumulatedLayoutTransform().GetScale(), 0.01f);	// Slate units
 				if (FMath::Abs(D.X) > 80.f && FMath::Abs(D.X) > 2.f * FMath::Abs(D.Y)) Self->CyclePreset(D.X < 0.f ? 1 : -1);
+				else if (Self->bAutoReplay) Self->SkipReplay();	// a tap during a strike replay: back to live
 				return FReply::Handled();
 			})
 			.OnMouseDoubleClick_Lambda([Self](const FGeometry&, const FPointerEvent&)
@@ -548,14 +549,14 @@ TSharedRef<SWidget> ASlapHUD::BuildViewTab()
 	auto Legend = [](const TCHAR* Code, const TCHAR* Text)
 	{
 		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(52.f)[Label(FText::FromString(Code), 12, Hi)]]
+			+ SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(62.f)[Label(FText::FromString(Code), 12, Hi)]]
 			+ SHorizontalBox::Slot().FillWidth(1.f)[Label(FText::FromString(Text), 12, Dim, true)];
 	};
 	return SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()[Heading(TEXT("OVERLAYS (TAB: the stats panel)"))]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 8.f)
 		[PillRow({ Flag(TEXT("TEL"), &ASlapHUD::bShowTelemetry, &Hit[HitTelemetry]), Flag(TEXT("SCI"), &ASlapHUD::bShowScience), Flag(TEXT("XRAY"), &ASlapHUD::bShowXRay),
-			Flag(TEXT("SLOW"), &ASlapHUD::bSlowMo), Flag(TEXT("LIVE"), &ASlapHUD::bLive), Flag(TEXT("COM"), &ASlapHUD::bShowCommentary), Flag(TEXT("DBG"), &ASlapHUD::bShowDebug) })]
+			Flag(TEXT("SLOW"), &ASlapHUD::bSlowMo), Flag(TEXT("RPL"), &ASlapHUD::bStrikeReplays), Flag(TEXT("LIVE"), &ASlapHUD::bLive), Flag(TEXT("COM"), &ASlapHUD::bShowCommentary), Flag(TEXT("DBG"), &ASlapHUD::bShowDebug) })]
 		+ SVerticalBox::Slot().AutoHeight()[Heading(TEXT("CAMERA (C cycles; AUTO cuts on the wind-up and the impact)"))]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 8.f)
 		[PillRow({ Cam(ECam::Auto, &Hit[HitCamAuto]), Cam(ECam::Wide), Cam(ECam::Side, &Hit[HitCamSide]), Cam(ECam::Close) })]
@@ -568,12 +569,12 @@ TSharedRef<SWidget> ASlapHUD::BuildViewTab()
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 8.f)
 		[PillRow({ Quality(TEXT("AUTO"), -1), Quality(TEXT("LOW"), 0), Quality(TEXT("MED"), 1), Quality(TEXT("HIGH"), 2),
 			Pill(TEXT("120 FPS"), [Self] { return Self.IsValid() && Self->bBurst; }, [Self] { if (Self.IsValid() && !PLATFORM_ANDROID && !PLATFORM_IOS) Self->bBurst = !Self->bBurst; }, Targets) })]
-		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("TEL"), TEXT("balance rings, palm-speed gauge, head g, the swing census"))]
+		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("TEL"), TEXT("balance, palm gauge, head g, swings, joint strain heat"))]
 		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("SCI"), TEXT("KO danger cross, HIC / BrIC, kinetic chain, palm trail"))]
 		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("XRAY"), TEXT("each brain's target pose and what it reacts to"))]
-		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("PLATES"), TEXT("STM stamina, NECK neck strength, DNG KO danger; KD / KO badges"))]
-		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("AI READ"), TEXT("the wind-up seen from the shoulder before the palm is in reach"))]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)[Label(FText::FromString(FString(TEXT("Swipe the arena for views, double tap to replay.  Build ")) + TEXT(POSLAP_BUILD_VERSION)), 12, Dim, true)];
+		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("PLATES"), TEXT("clock ring, STM / NECK chips, DNG = balance + neck damage"))]
+		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("RPL"), TEXT("each landed strike again, slowed (tap / SPACE skips)"))]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)[Label(FText::FromString(TEXT("Swipe the arena for views, double tap to replay.")), 12, Dim, true)];	// the build stamp is the BR anchor's
 }
 
 bool ASlapHUD::IsRematch() const
@@ -659,13 +660,14 @@ void ASlapHUD::InstantReplay()
 	// the same machinery as the KO replay: each athlete plays back its last poses (3 s kept) at half speed while MuJoCo
 	// carries on unseen; the director cuts to the replay shot. Tapped again during a replay: back to live at once
 	const double Now = GetWorld()->GetTimeSeconds();
-	const bool bStop = Now < ReplayEnd;
+	const bool bStop = Now < ReplayEnd && !bAutoReplay;	// a strike replay running is replaced, not stopped: the tap asked for a replay
 	constexpr double Window = 2.5;
 	const double Rate = bQuarter ? 0.25 : 0.5;
 	for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
 		if (V.IsValid()) bStop ? V->Replay(0.0, 0.0, 0.0) : V->Replay(Now - Window, Now, Rate);
 	ReplayAt = -1.0;	// a pending KO replay would cut this one short
 	ReplayEnd = bStop ? Now : Now + Window / Rate;
+	bAutoReplay = false;
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: instant replay %s at %.2f s"), bStop ? TEXT("stopped") : TEXT("started"), Now);
 }
 

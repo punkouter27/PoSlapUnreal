@@ -64,6 +64,7 @@ void ASlapHUD::Live(const FSlapHud& H)
 void ASlapHUD::LoadLeague()
 {
 	// training/scouting.py: Elo and tendencies per brain from every logged match; a missing file = no scouting line
+	if (DisplayPassOn()) LoadScoutLogs();	// Unreal's own match logs: each character's slap side and KO rate
 	const TSharedPtr<FJsonObject> J = Slap::ReadJson(FPaths::ProjectDir() / TEXT("training/models/league.json"));
 	if (!J) return;
 	const TSharedPtr<FJsonObject>* League = nullptr;
@@ -73,6 +74,8 @@ void ASlapHUD::LoadLeague()
 	{
 		const TSharedPtr<FJsonObject> O = B.Value->AsObject();
 		if (!O) continue;
+		LeagueElo.Add(FString(*B.Key), O->GetNumberField(TEXT("elo")));	// the scouting card between rounds
+		LeagueKO.Add(FString(*B.Key), O->GetNumberField(TEXT("ko_rate")));
 		Scout.Add(FString(*B.Key), FString::Printf(TEXT("ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),
 			(int32)O->GetNumberField(TEXT("wins")), (int32)O->GetNumberField(TEXT("losses")), (int32)O->GetNumberField(TEXT("draws")),
 			100.0 * O->GetNumberField(TEXT("ko_rate")), 100.0 * O->GetNumberField(TEXT("clean_rate")), O->GetNumberField(TEXT("speed"))));
