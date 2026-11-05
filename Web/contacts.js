@@ -30,7 +30,7 @@ export class ContactProbe {
   }
   // dtWall: the frame's wall time, used only when the physics time does not move (the live second screen)
   read(d, dtWall = 0) {
-    const m = this.m, M = this.match, out = this.out, P = d.geom_xpos;
+    const M = this.match, out = this.out, P = d.geom_xpos;
     out.impacts.length = 0; out.marks.length = 0; out.slides[0] = out.slides[1] = null;
     M.sides.forEach((s, i) => { const h = out.heads[i]; h[0] = P[3 * s.head]; h[1] = P[3 * s.head + 1]; h[2] = P[3 * s.head + 2]; });
     let dt = d.time - this.prevTime;

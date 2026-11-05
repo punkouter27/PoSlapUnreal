@@ -107,3 +107,42 @@ export class Director {
     return this.shot;
   }
 }
+
+// ---- the flinch: the defender's head moving away from the incoming palm before it lands ---------------------------
+// A flinch is the head's velocity along the palm-to-head line (+ away from the palm) above FLINCH_SPEED while a swing
+// is on (the palm faster than FEINT_MIN_PEAK), before the touch. Measured 2026-11-04 on the shipped brains (node, one
+// match each, brain-step samples after the turn's first second): with no swing on the head drifts at most 3 cm/s
+// (Grandpa) to 16 cm/s (Kim) away from the palm; during Kim-vs-Grandpa swings the defender's head pulls away at up to
+// 0.55 m/s (p90 0.39). 0.15 m/s over FLINCH_MIN_S separates the two. One flinch per swing: a FEINT re-arms it.
+export const FLINCH_SPEED = 0.15, FLINCH_MIN_S = 0.03, FLINCH_DT = 0.018;
+export class Flinch {
+  constructor() { this.reset(); }
+  reset() { this.prev = null; this.over = 0; this.peak = 0; this.armed = true; this.n = 0; this.done = false; this.at = -1; }
+  rearm() { this.armed = true; this.over = 0; this.peak = 0; }
+  landed() { this.done = true; }
+  // t (s), hand / head [x, y, z], palm: the striker's palm speed (m/s). Returns the away speed when this sample tags one.
+  sample(t, hand, head, palm) {
+    if (this.done) return null;
+    const p = this.prev;
+    if (p && t - p[0] < FLINCH_DT) return null;   // a brain-step cadence at 200 Hz, a pose cadence live
+    this.prev = [t, head.slice()];
+    if (!p || t <= p[0]) return null;
+    const u = [head[0] - hand[0], head[1] - hand[1], head[2] - hand[2]], n = Math.hypot(u[0], u[1], u[2]) || 1;
+    const away = ((head[0] - p[1][0]) * u[0] + (head[1] - p[1][1]) * u[1] + (head[2] - p[1][2]) * u[2]) / n / (t - p[0]);
+    if (!this.armed || palm < FEINT_MIN_PEAK || !(away > FLINCH_SPEED) || away > 20) { this.over = 0; return null; }
+    this.over += t - p[0]; this.peak = Math.max(this.peak, away);
+    if (this.over < FLINCH_MIN_S) return null;
+    this.armed = false; this.n++; this.at = t;
+    return this.peak;
+  }
+}
+
+// ---- derived spectator numbers (the relay's /api/match uses the same rules: Web/live.py) ----------------------------
+// health: 1.0 at the start of a match, -0.5 per knockdown, -0.25 per faint, 0 on a knockout (a spectator estimate)
+export const health = (kd, faints, ko) => ko ? 0 : Math.max(0, 1 - 0.5 * kd - 0.25 * faints);
+// the KO danger: the balance danger now (the capture point outside the soles, or the last head snap live) combined
+// with the neck damage the defender has absorbed (sim.js: neck strength falls by neck_damage_per_snap x head snap per
+// strike, to MIN_NECK). A worn neck snaps further on the next slap: NECK_WEIGHT of the danger is already banked.
+export const NECK_WEIGHT = 0.6;
+export const neckDamage = (neck, minNeck) => Math.max(0, Math.min(1, (1 - neck) / (1 - minNeck)));
+export const koDanger = (balance, damage) => 1 - (1 - Math.max(0, Math.min(1, balance))) * (1 - NECK_WEIGHT * damage);

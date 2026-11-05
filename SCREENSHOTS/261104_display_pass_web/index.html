@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoSlap: browser display pass, 2026-11-04</title>
+<style>
+  :root { color-scheme: dark; --ink: #f2f0ea; --ink2: #b9b7ae; --rule: #33333b; --gold: #f1c24b; --red: #e5554c; --blue: #6b96f2; --green: #6fce8f; }
+  body { margin: 0; background: #0f0f12; color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 18px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 19px; margin: 34px 0 8px; border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+  h3 { font-size: 16px; margin: 20px 0 6px; color: var(--gold); }
+  p, li { color: var(--ink2); max-width: 80ch; } b, strong { color: var(--ink); }
+  code { font: 13px ui-monospace, monospace; background: #1b1b21; padding: 1px 4px; border-radius: 4px; color: var(--ink); }
+  table { border-collapse: collapse; font-size: 14px; margin: 6px 0; }
+  th, td { border-bottom: 1px solid var(--rule); padding: 5px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--ink2); font-weight: 600; }
+  .done { color: var(--green); font-weight: 700; } .part { color: var(--gold); font-weight: 700; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 18px; }
+  .pair.narrow { grid-template-columns: repeat(4, 1fr); }
+  figure { margin: 0; } figcaption { font-size: 13px; color: var(--ink2); margin-top: 3px; }
+  figure img { width: 100%; display: block; border: 1px solid var(--rule); border-radius: 6px; }
+  .note { border-left: 3px solid var(--gold); padding: 4px 12px; background: #17171c; }
+  pre { background: #15151a; border: 1px solid var(--rule); border-radius: 6px; padding: 10px; overflow-x: auto; font-size: 12.5px; color: var(--ink2); }
+</style>
+</head>
+<body>
+<main>
+<h1>Browser display pass</h1>
+<p>2026-11-04 · <code>Web/</code> HUD, broadcast and sound only. Nothing here moves a body, feeds a brain or changes an event:
+the four <code>node Web/check.mjs</code> pairings print the same events before and after (seed aside).
+Shots: headless Chromium, Grandpa vs Kim, low tier (the GPU was training), same match flow before and after
+(<code>shots.mjs</code>). The fps numbers in the shots are under the training load and mean nothing here.</p>
+
+<h2>What changed</h2>
+<table>
+<tr><th>#</th><th>Item</th><th>State</th><th>How</th></tr>
+<tr><td>2</td><td>KO danger meter from neck damage</td><td class="done">done</td><td>KO danger = 1 − (1 − balance)(1 − 0.6 × neck damage). Balance is the capture point outside the soles (local) or the last head snap (live). Neck damage = (1 − neck strength) / (1 − 0.5), the fatigue model's own number. The bar shows the banked neck part (dark red) under the total. It also drives the crowd's tension. In the TAB stats.</td></tr>
+<tr><td>3</td><td>FLINCH tag</td><td class="done">done</td><td><code>broadcast.js Flinch</code>: the defender's head moves away from the palm faster than 0.15 m/s for 30 ms while a swing is on (palm &gt; 2.5 m/s), before contact. It goes into the defender's cue row, which already holds the AI read: FLINCH overrides READ for 2.2 s. It ties into the FEINT/REAL tag: a feint that drew a flinch reads <i>FEINT x.x FLINCHED</i>, and a slap on a flinched defender reads <i>on a flinch</i> (Blueprint L4's feint bonus). One flinch per swing, and a feint re-arms it. The threshold was measured on the shipped brains (below).</td></tr>
+<tr><td>4</td><td>Per-strike instant replay</td><td class="done">done</td><td>Each step's qpos goes into a 1.28 s ring buffer. 0.2 s after a landed strike, the window from 0.3 s before the touch to 0.2 s after plays at 0.45× (~1.1 s) into a <b>second MjData</b> (<code>mj_kinematics</code> only) on the side shot. The caption shows palm speed and head snap. The match keeps stepping underneath on its own MjData. A tap, Esc or a tap on the caption skips it. The View tab has <i>Replays on/off</i>, and <code>?replay=0</code> turns it off. There was no KO replay in the browser to reuse (that one is Unreal's), so this is new. It is the only replay and also covers the KO strike.</td></tr>
+<tr><td>8</td><td>Scouting card between rounds</td><td class="done">done</td><td>Shown at the end of rounds 1 and 2 for 4 s; a tap or the next strike takes it down. It shows Elo and KO rate from <code>training/models/league.json</code> where that file has the corner's brain (marked "league"), otherwise this browser's Elo and its own record. The favourite slap side and strikes landed come from the matches watched here (<code>localStorage poslap.scout.v1</code>, per character). league.json has no slap-side field.</td></tr>
+<tr><td>9</td><td>Joint-strain heat</td><td class="done">done</td><td>TAB only. A dot sits on each shoulder, elbow and wrist anchor, coloured blue → red by |actuator_force| / the motor's force cap (worst axis). It reads the match's MjData and works in both the art view and the physics view. Live, the relay sends no forces, so the dots stay blue.</td></tr>
+<tr><td>10</td><td>Crowd scaled by impulse</td><td class="done">done</td><td>The crowd now reacts at the strike (<code>Sound.crowd</code>), sized by strike mass × palm speed over a 3 kg × 9 m/s clean slap: a murmur, then an "ooh", then a roar, and louder with it. The stagger roar at turn end uses the same impulse. The 3D crowd's bob (<code>fx.js excite</code>) moved its weight from a fixed per-event lift to the impulse.</td></tr>
+<tr><td>36</td><td>Turn clock as a ring</td><td class="done">done</td><td>A conic ring around the active name empties clockwise. It is gold on the striker's 30 s clock, red under 5 s, and green on the defender's 5 s recovery window. The TL line says <i>strike clock</i> or <i>recovery</i>, and the seconds moved to the TAB telemetry line.</td></tr>
+<tr><td>37</td><td>Health chips</td><td class="done">done</td><td>Four chips under each name, using the relay's derivation (<code>broadcast.js health</code> = live.py's rule): a knockdown takes 2 chips, a faint 1, and a KO all 4. The web HUD never had health bars. The STA/NECK bars are the fatigue model and stay.</td></tr>
+<tr><td>39</td><td>Ticker</td><td class="done">done</td><td>One line above the bottom sheet (above the dock when the sheet is closed). It carries the strike call with speed, impulse and part, plus feints, flinches, knockdowns, faints, fouls, recovery, round cards and the toss. Corner words are coloured, the line dims after 8 s, and it is text nodes only. The middle banner now carries only the toss, KNOCKOUT! and the result. The TL "call" line is gone.</td></tr>
+<tr><td>16/17</td><td>Dead code, logs</td><td class="done">done</td><td>ESLint (no-unused-vars, no-unreachable, no-undef) over app/fx/audio/contacts/broadcast found one dead variable, <code>contacts.js</code> <code>m</code>, now removed. <code>renderBadges2</code> was renamed, and the unused <code>S.decided</code> and the second <code>URLSearchParams</code> are gone. There was no per-frame console.log. The one diagnostic (a refused screen change) now logs only with <code>?debug</code>. The error logs (art load, start failure, a missing sound) stay.</td></tr>
+<tr><td>20</td><td>Mirror symmetry</td><td class="done">confirmed</td><td>Measured on the DOM (<code>metrics.json</code>), before and after. 360×800: gaps 10/10 px, widths equal, tops and heights equal. 1080×1920: gaps 220/220 px, equal. The momentum bar is centred. Nothing needed fixing.</td></tr>
+</table>
+
+<h3>The flinch threshold</h3>
+<p>One match per pairing in Node, sampled each brain step after the turn's first second, before contact, as head velocity along the palm→head line:</p>
+<table>
+<tr><th>pairing</th><th>no swing on: p99 / max</th><th>swing on: p90 / max</th></tr>
+<tr><td>gg</td><td>0.031 / 0.033 m/s</td><td>0.003 / 0.007 m/s (Grandpa's L4 brain does not flinch)</td></tr>
+<tr><td>gk</td><td>0.102 / 0.121</td><td>0.389 / 0.537</td></tr>
+<tr><td>kk</td><td>0.139 / 0.163</td><td>−0.078 / −0.069</td></tr>
+<tr><td>kg</td><td>0.101 / 0.114</td><td>0.387 / 0.546</td></tr>
+</table>
+<p>Kim's resting head drifts up to 16 cm/s, so a threshold of "a few cm/s" would tag Kim at rest. 0.15 m/s with the swing gate sits between resting drift and flinching. It is one constant, <code>FLINCH_SPEED</code>, in <code>broadcast.js</code>.</p>
+
+<h2>Checks</h2>
+<pre>node Web/check.mjs gg   exit 0  · swing tags: REAL, REAL                · events identical to before (seed aside)
+node Web/check.mjs kk   exit 0  · swing tags: FEINT, REAL, FEINT, REAL  · identical
+node Web/check.mjs gk   exit 0  · swing tags: FEINT, REAL, FEINT, REAL  · identical
+node Web/check.mjs kg   exit 0  · swing tags: FEINT, REAL, FEINT, REAL  · identical (kg re-run until the toss matched)
+node Web/live_check.mjs  viewer got pose, ev, big; late viewer got pose; keyless publisher refused -> PASS
+node Web/api_check.mjs   PASS
+node SCREENSHOTS/261104_display_pass_web/replay_check.mjs   PASS
+  ok   the replay ends by itself (~1.1 s): 1106 ms
+  ok   the match ran on underneath (physics steps per wall second): 199
+  ok   a tap skips the replay
+  ok   the scouting card comes up between rounds / a tap closes it
+  ok   no page errors
+shots.mjs: 0 console errors, 0 px vertical scroll at both sizes (before and after)</pre>
+<p>Full outputs: <a href="checks_after.txt">checks_after.txt</a>, <a href="replay_check.txt">replay_check.txt</a>, <a href="before/metrics.json">before/metrics.json</a>, <a href="after/metrics.json">after/metrics.json</a>.</p>
+
+<h2>Before / after</h2>
+<h3>Mid-turn: the clock ring around GRANDPA, the health chips, the ticker line</h3>
+<div class="pair narrow">
+  <figure><img src="before/gameplay_360x800.png" alt=""><figcaption>before 360×800</figcaption></figure>
+  <figure><img src="after/gameplay_360x800.png" alt=""><figcaption>after 360×800</figcaption></figure>
+  <figure><img src="before/gameplay_1080x1920.png" alt=""><figcaption>before 1080×1920</figcaption></figure>
+  <figure><img src="after/gameplay_1080x1920.png" alt=""><figcaption>after 1080×1920</figcaption></figure>
+</div>
+<h3>The first strike +0.35 s: the replay (caption, side shot), FLINCH on the defender, REAL … FLINCHED on the striker, the recovery ring</h3>
+<div class="pair narrow">
+  <figure><img src="before/strike_360x800.png" alt=""><figcaption>before: the floating "CLEAN HIT" banner</figcaption></figure>
+  <figure><img src="after/strike_360x800.png" alt=""><figcaption>after: the replay and the ticker</figcaption></figure>
+  <figure><img src="before/strike_1080x1920.png" alt=""><figcaption>before 1080×1920</figcaption></figure>
+  <figure><img src="after/strike_1080x1920.png" alt=""><figcaption>after 1080×1920</figcaption></figure>
+</div>
+<h3>TAB stats: KO danger (neck damage banked + balance), joint-strain dots, the clock's seconds</h3>
+<div class="pair narrow">
+  <figure><img src="before/stats_360x800.png" alt=""><figcaption>before 360×800</figcaption></figure>
+  <figure><img src="after/stats_360x800.png" alt=""><figcaption>after 360×800</figcaption></figure>
+  <figure><img src="before/stats_1080x1920.png" alt=""><figcaption>before 1080×1920</figcaption></figure>
+  <figure><img src="after/stats_1080x1920.png" alt=""><figcaption>after 1080×1920</figcaption></figure>
+</div>
+<h3>The break after round 1: the scouting card</h3>
+<div class="pair narrow">
+  <figure><img src="before/round_break_360x800.png" alt=""><figcaption>before 360×800</figcaption></figure>
+  <figure><img src="after/round_break_360x800.png" alt=""><figcaption>after 360×800</figcaption></figure>
+  <figure><img src="before/round_break_1080x1920.png" alt=""><figcaption>before 1080×1920</figcaption></figure>
+  <figure><img src="after/round_break_1080x1920.png" alt=""><figcaption>after 1080×1920</figcaption></figure>
+</div>
+<h3>Match sheet open at the round break: the ticker sits above the sheet; opening the sheet closes the scouting card (it would not fit beside it)</h3>
+<div class="pair narrow">
+  <figure><img src="before/sheet_match_360x800.png" alt=""><figcaption>before 360×800</figcaption></figure>
+  <figure><img src="after/sheet_match_360x800.png" alt=""><figcaption>after 360×800</figcaption></figure>
+  <figure><img src="before/sheet_match_1080x1920.png" alt=""><figcaption>before 1080×1920</figcaption></figure>
+  <figure><img src="after/sheet_match_1080x1920.png" alt=""><figcaption>after 1080×1920</figcaption></figure>
+</div>
+<h3>Menu (unchanged)</h3>
+<div class="pair narrow">
+  <figure><img src="before/menu_360x800.png" alt=""><figcaption>before</figcaption></figure>
+  <figure><img src="after/menu_360x800.png" alt=""><figcaption>after</figcaption></figure>
+  <figure><img src="before/menu_1080x1920.png" alt=""><figcaption>before</figcaption></figure>
+  <figure><img src="after/menu_1080x1920.png" alt=""><figcaption>after</figcaption></figure>
+</div>
+
+<h2>Open</h2>
+<ul>
+  <li>The relay's <code>/api/match</code> danger is still head snap / 12 m/s (<code>Web/live.py</code>, not part of this pass). Folding in neck damage there would need the publisher's neck values, or the same fatigue rule the page applies in <code>liveFatigue</code>.</li>
+  <li>In live mode the joint-strain dots stay blue: the pose feed carries qpos only, no actuator forces.</li>
+  <li>The replay's cheek dent and flush play at live time, not inside the replay (the skin wear is wall-clock driven).</li>
+</ul>
+</main>
+</body>
+</html>

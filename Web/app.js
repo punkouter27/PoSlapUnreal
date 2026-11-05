@@ -14,7 +14,7 @@ import { loadArena, loadAthlete, clipPush } from "./art.js";
 import { Look, TIERS } from "./fx.js";
 import { Sound } from "./audio.js";
 import { ContactProbe } from "./contacts.js";
-import { SwingTagger, Read, Snap, Director, SNAP_S } from "./broadcast.js";
+import { SwingTagger, Read, Snap, Director, SNAP_S, Flinch, health, neckDamage, koDanger } from "./broadcast.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
 ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
@@ -29,7 +29,15 @@ const CLEAN = 8;                           // m/s: a clean strike (Blueprint L2)
 const CLEAN_MOMENTUM = 3.0 * 9;            // kg m/s: a 3 kg strike mass at 9 m/s, the contact burst's size 1
 const NEAR_MISS_DIST = 0.15, NEAR_MISS_SPEED = 4;   // m, m/s: a palm this fast this close to the face, no touch: "ooooh"
 const TENSION_DIST = 0.55, TENSION_SPEED = 1.5;   // m, m/s: the palm closing on the face cuts the director to the close shot
-const RESULT_HOLD_S = +new URLSearchParams(location.search).get("hold") || 10;   // s the result stays up before the menu comes back (MENU or REMATCH sooner; ?hold= for the screenshot run)
+const RESULT_HOLD_S = +QS.get("hold") || 10;
+// ?debug: the page's diagnostics in the console (a refused screen change, ...); off by default, nothing logs per frame
+const DEBUG = QS.has("debug");
+const dbg = (...a) => { if (DEBUG) console.log("[poslap]", ...a); };
+// the per-strike replay: REPLAY_PRE s before the touch to REPLAY_POST s after it, played at REPLAY_RATE (~1.1 s on
+// screen) while the match runs on underneath (the HUD's clock and the physics never wait for it); a tap skips it
+const REPLAY_PRE = 0.3, REPLAY_POST = 0.2, REPLAY_RATE = 0.45;
+const SCOUT_S = 4;   // s the scouting card stays up between rounds (a tap or the next strike takes it down)
+const STRAIN_JOINTS = ["shoulder", "elbow", "wrist"];   // the joint-strain heat (TAB): |motor force| / its cap   // s the result stays up before the menu comes back (MENU or REMATCH sooner; ?hold= for the screenshot run)
 // ?live=ws://<host>:8765 (Web/live.py) or an Azure Web PubSub client URL: draw the match Unreal is playing instead of
 // running our own; the physics here only places the bodies where Unreal's MuJoCo put them.
 // Only a WebSocket URL we recognise is used: a ?live= parameter is attacker-controlled, and the relay it points at
@@ -55,9 +63,9 @@ const S = {
   round: 1, cards: [[0, 0], [0, 0], [0, 0]], series: [0, 0],
   strikes: 0, kos: 0, knockdowns: 0, fouls: 0, lastStrike: null, impact: null,
   danger: { red: 0, blue: 0, source: "local" },
-  kd: { red: 0, blue: 0 }, koed: null,            // the badges on the plates
+  kd: { red: 0, blue: 0 }, faints: { red: 0, blue: 0 }, koed: null,   // the badges and the health chips on the plates
   fatigue: { red: { stamina: 1, neck: 1 }, blue: { stamina: 1, neck: 1 } },
-  striker: null, strikeAt: -1, feints: 0, reals: 0, tag: null,
+  striker: null, strikeAt: -1, feints: 0, reals: 0, flinches: 0, tag: null, flinch: null,
   live: false, steps: 0, simTime: 0,
 };
 const NAMES = {};   // corner -> athlete (the card's display name), filled once the match loads
@@ -66,11 +74,11 @@ const NAMES = {};   // corner -> athlete (the card's display name), filled once 
 const FLOW = { menu: ["gameplay"], gameplay: ["result", "menu"], result: ["reset"], reset: ["menu", "gameplay"] };
 const flowLog = ["menu"];
 function go(next) {
-  if (!FLOW[S.phase]?.includes(next)) { console.warn(`flow: ${S.phase} -> ${next} refused`); return false; }
+  if (!FLOW[S.phase]?.includes(next)) { dbg(`flow: ${S.phase} -> ${next} refused`); return false; }
   S.phase = next; flowLog.push(next); document.body.dataset.phase = next;
   return true;
 }
-window.__poslap = { get phase() { return S.phase; }, flow: flowLog };   // read by the screenshot / flow check
+window.__poslap = { get phase() { return S.phase; }, flow: flowLog, get replaying() { return replay.on; }, get replay() { return replay; }, get state() { return S; } };   // read by the screenshot / flow check
 document.body.dataset.phase = "menu";
 
 // ---- the spectator's pick: who lands the next strike -------------------------------------------------------
@@ -140,6 +148,19 @@ function banner(big, small = "", seconds = 1.6, color = "") {
   $("banner").classList.add("on"); clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => $("banner").classList.remove("on"), seconds * 1000);
 }
+// ---- the ticker: one line of commentary above the bottom sheet (the strike calls, the falls, the fouls, the cards) ------
+// The banner keeps only the three big moments (the toss, KNOCKOUT!, the result); everything else is a ticker line.
+let tickerAt = 0;
+function tick(text, kind = "") {
+  const t = $("ticker"), host = $("tickerText");
+  host.textContent = "";   // the corner words in their colours (text nodes only: no string is parsed as HTML)
+  for (const part of String(text).split(/(RED|BLUE)/)) host.append(part === "RED" || part === "BLUE" ? el("span", part.toLowerCase(), part) : document.createTextNode(part));
+  t.className = `ticker ${kind}`;
+  void t.offsetWidth;   // restart the slide-in
+  t.classList.add("on");
+  tickerAt = performance.now() / 1000;
+}
+const sideName = side => isSide(side) ? side.toUpperCase() : String(side || "");   // the corner; the names are on the plates
 // "RED strikes": the corner word coloured; the name is on the plate
 function cornerLine(n, rest) {
   const t = $("turn");
@@ -193,29 +214,54 @@ function buildPlates() {
   for (const side of SIDES) {
     const host = $(side === "red" ? "plateRed" : "plateBlue");
     host.textContent = "";
-    const name = el("div", "pname"), nm = el("span", "nm", NAMES[side] || side.toUpperCase()), badges = el("span", "pbadges");
-    name.append(nm, badges);
+    // the name sits in the turn clock's ring (the striker's strike clock, the defender's recovery window)
+    const name = el("div", "pname"), ring = el("span", "ring"), nm = el("span", "nm", NAMES[side] || side.toUpperCase()), badges = el("span", "pbadges");
+    ring.append(nm); name.append(ring, badges);
+    // the health chips: four quarters of the derived health (a knockdown takes two, a faint one, a KO all)
+    const chips = el("div", "chips");
+    chips.setAttribute("role", "img");
+    for (let k = 0; k < 4; k++) chips.append(el("i"));
     const meter = label => {
       const m = el("div", "meter"), bar = el("span", "bar"), fill = el("i"), v = el("span", "v", "100%");
       bar.append(fill); m.append(el("span", "", label), bar, v); host.append(m);
       return { fill, v };
     };
-    host.append(name);
+    host.append(name, chips);
     const sta = meter("STA"), neck = meter("NECK");
     const cue = el("div", "cue"), rd = el("span", "rd"), rdFill = el("i"), cueText = el("span");
     rd.append(rdFill); cue.append(rd, cueText); host.append(cue);
-    plates[side] = { host, nm, badges, sta, neck, cue, rd, rdFill, cueText };
+    plates[side] = { host, ring, nm, chips, badges, sta, neck, cue, rd, rdFill, cueText };
   }
   fitNames();
 }
 function fitNames() { for (const side of SIDES) if (plates[side]) fit(plates[side].nm, innerWidth < 400 ? 16 : 18); }
-function renderBadges2() {
+function renderBadges() {
   for (const side of SIDES) {
     const b = plates[side]?.badges;
     if (!b) continue;
     b.textContent = "";
     if (S.kd[side]) b.append(el("span", "pbadge", S.kd[side] > 1 ? `KD×${S.kd[side]}` : "KD"));
     if (S.koed === side) b.append(el("span", "pbadge ko", "KO"));
+    const hp = health(S.kd[side], S.faints[side], S.koed === side), c = plates[side].chips;
+    [...c.children].forEach((i, k) => { const q = Math.max(0, Math.min(1, (hp - 0.25 * k) / 0.25)); i.className = q >= 1 ? "full" : q > 0 ? "half" : ""; });
+    c.setAttribute("aria-label", `health ${Math.round(100 * hp)}%`);
+    c.title = `health ${Math.round(100 * hp)}% (knockdown −0.5, faint −0.25, KO 0)`;
+  }
+}
+// the turn clock as a ring round the active athlete's name: the striker's 30 s strike clock, then the defender's 5 s
+// recovery window; the number itself is in the TAB stats
+function renderRings() {
+  const M = game.match, live = !LIVE && M.phase === "turn" && S.phase === "gameplay";
+  const strikeLeft = live && M.touchK === null ? Math.max(0, 1 - M.k * M.dt / 30) : null;
+  const recLeft = live && M.touchK !== null ? Math.max(0, 1 - (M.k - M.touchK) * M.dt / 5) : null;
+  for (const side of SIDES) {
+    const p = plates[side];
+    if (!p) continue;
+    const striker = S.striker === side, f = striker ? strikeLeft : S.striker ? recLeft : null;
+    p.ring.classList.toggle("on", f !== null);
+    p.ring.classList.toggle("rec", f !== null && !striker);
+    p.ring.classList.toggle("low", f !== null && striker && f < 1 / 6);
+    if (f !== null) p.ring.style.setProperty("--p", f.toFixed(4));
   }
 }
 const barColor = v => `hsl(${Math.round(120 * v)}, 70%, 52%)`;
@@ -232,9 +278,14 @@ function renderPlates() {
     p.host.classList.toggle("striking", S.striker === side && S.phase === "gameplay");
     // the striker's plate shows the swing tag; the defender's shows his brain's read of the striker
     const now = performance.now() / 1000;
+    // the defender's plate: FLINCH (his head pulled away before the touch) wins over the read for 2.2 s
     if (S.striker === side && S.tag && now - S.tag.at < 2.2) {
       p.cue.className = `cue ${S.tag.kind === "FEINT" ? "feint" : "real"}`;
-      p.rd.style.display = "none"; p.cueText.textContent = S.tag.kind === "FEINT" ? `FEINT · ${S.tag.peak.toFixed(1)} m/s` : `REAL · ${S.tag.peak.toFixed(1)} m/s`;
+      p.rd.style.display = "none";
+      p.cueText.textContent = S.tag.drew ? `${S.tag.kind} ${S.tag.peak.toFixed(1)} FLINCHED` : `${S.tag.kind} · ${S.tag.peak.toFixed(1)} m/s`;
+    } else if (S.striker && S.striker !== side && S.flinch && now - S.flinch.at < 2.2) {
+      p.cue.className = "cue flinch"; p.rd.style.display = "none";
+      p.cueText.textContent = `FLINCH · ${S.flinch.speed.toFixed(2)} m/s`;
     } else if (S.striker && S.striker !== side && read.value > 0.05 && S.phase === "gameplay") {
       p.cue.className = "cue"; p.rd.style.display = ""; p.rdFill.style.width = `${Math.round(100 * read.value)}%`;
       p.cueText.textContent = `READ ${read.kind || "…"}`;
@@ -243,7 +294,7 @@ function renderPlates() {
 }
 
 // ---- the broadcast's reading of the match (broadcast.js; display only) -------------------------------------------
-const tagger = new SwingTagger(), read = new Read(), snap = new Snap(), director = new Director();
+const tagger = new SwingTagger(), read = new Read(), snap = new Snap(), director = new Director(), flinch = new Flinch();
 let sparkOnUntil = 0;
 // one sample of the striker's palm and the defender's face: per physics step (the local sim) or per pose (live).
 // The swing tag reads on brain steps (tagStep), as match.py's feint read does.
@@ -258,14 +309,25 @@ function sampleBodies(t, striker, speed, tagStep = true) {
   if (S.strikeAt >= 0) return;   // the swing landed: the read and the tag are done for this turn
   read.sample(t, hand, head, shoulder);
   if (tagStep && !liveFeints && tagger.sample(t, speed) === "FEINT") feintTag(tagger.peak);
+  const away = flinch.sample(t, hand, head, speed);
+  if (away !== null) flinchTag(away);
   const gap = Math.hypot(hand[0] - head[0], hand[1] - head[1], hand[2] - head[2]);
   S.tension = gap < TENSION_DIST && speed > TENSION_SPEED;   // the director's tension cut (SlapHUD.cpp Direct), undelayed
   if (gap < NEAR_MISS_DIST && speed > NEAR_MISS_SPEED) sound.nearMiss(speed / CLEAN);   // (it waits 2.5 s between)
 }
 let liveFeints = false;   // the live feed writes its own "feint" events (match.py / Unreal): those win over our read
 function feintTag(peak) {
-  S.feints++; S.tag = { kind: "FEINT", peak, at: performance.now() / 1000 };
+  // a flinch inside this swing: the feint drew it (Blueprint L4: a touch on a defender who already flinched pays)
+  const drew = !!S.flinch && S.flinch.swing === S.feints + S.reals;
+  S.feints++; S.tag = { kind: "FEINT", peak, at: performance.now() / 1000, drew };
+  flinch.rearm();   // the next swing can draw another
+  tick(`${sideName(S.striker)} feints · ${peak.toFixed(1)} m/s${drew ? " · drew a flinch" : ""}`, "feint");
   sound.nearMiss(peak / CLEAN);
+}
+function flinchTag(away) {   // the defender's head pulled away before the palm arrived (display only)
+  S.flinches++;
+  S.flinch = { speed: away, at: performance.now() / 1000, swing: S.feints + S.reals };
+  tick(`${sideName(other(S.striker))} flinches · head away ${away.toFixed(2)} m/s`, "flinch");
 }
 function drawSpark() {
   const c = $("spark"), g = c.getContext("2d"), W = c.width, H = c.height, pad = 6;
@@ -295,12 +357,14 @@ function onEvent(e) {
       stopTenCount();
       renderPips(1, S.firstStriker, false, false);
       banner(e.match ? `MATCH ${e.match}` : "POWER SLAP BOUT", `${String(e.first || "red").toUpperCase()} WINS THE TOSS · STRIKES FIRST`, 3.5, "var(--gold)");
-      Object.assign(S, { cards: [[0, 0], [0, 0], [0, 0]], strikes: 0, kos: 0, knockdowns: 0, fouls: 0, turnsDone: 0, feints: 0, reals: 0,
-        kd: { red: 0, blue: 0 }, koed: null, tag: null, strikeAt: -1, decided: false });
+      Object.assign(S, { cards: [[0, 0], [0, 0], [0, 0]], strikes: 0, kos: 0, knockdowns: 0, fouls: 0, turnsDone: 0, feints: 0, reals: 0, flinches: 0,
+        kd: { red: 0, blue: 0 }, faints: { red: 0, blue: 0 }, koed: null, tag: null, flinch: null, strikeAt: -1 });
+      hideScout(); stopReplay();
+      tick(`${sideName(e.first || "red")} wins the toss and strikes first`);
       S.fatigue = { red: { stamina: 1, neck: 1 }, blue: { stamina: 1, neck: 1 } };
       clearTimeout(resultTimer);
       MOM.red = MOM.blue = 0; momentum();
-      renderCards(); renderBadges2();
+      renderCards(); renderBadges();
       sound.chime(); sound.bell();
       for (const w of wear) Object.assign(w, { local: null, at: -99, speed: 0 });
       break;
@@ -308,30 +372,35 @@ function onEvent(e) {
       stopTenCount();
       S.round = e.round || S.round;
       S.striker = isSide(e.striker) ? e.striker : null; S.strikeAt = -1; S.tag = null; S.tension = false;
-      tagger.reset(); read.reset();
+      tagger.reset(); read.reset(); flinch.reset(); S.flinch = null;
       renderPips(S.round, e.striker, false, false);
       cornerLine(e.striker, " strikes");
-      $("call").textContent = "";
+      tick(`Round ${S.round} · ${sideName(e.striker)} to strike`);
       setPickOpen(true);       // the next strike is up for grabs
       break;
     case "strike": {
       const palm = !!e.palm;
-      S.lastStrike = { striker: e.striker, part: e.part, palm, speed: e.speed, t: e.t };
+      const sx = game.match.sides, A = sx.find(x => x.name === e.striker), D = sx.find(x => x.name !== e.striker);
+      const impulse = (A?.card.strike_mass || 3) * e.speed;   // kg m/s: the body behind the palm x its speed (sim.js kick)
+      S.lastStrike = { striker: e.striker, part: e.part, palm, speed: e.speed, t: e.t, impulse };
+      const drew = !!S.flinch && S.flinch.swing === S.feints + S.reals;
       S.strikes++; S.reals++;
-      tagger.landed(); read.reset();   // the read is over once the palm lands
-      S.tag = { kind: "REAL", peak: e.speed, at: performance.now() / 1000 };
+      tagger.landed(); read.reset(); flinch.landed();   // the read is over once the palm lands
+      S.tag = { kind: "REAL", peak: e.speed, at: performance.now() / 1000, drew };
       S.strikeAt = performance.now() / 1000;
       snap.start(sampleClock());
       sparkOnUntil = S.strikeAt + SNAP_S + 2.5;
       renderPips(S.round, e.striker, true, false);
-      $("call").textContent = `${e.speed.toFixed(1)} m/s · ${String(e.part || "").replace("_r", "")}${palm ? " · palm" : ""}`;
-      banner(e.speed >= CLEAN ? (palm ? "Clean Palm Strike" : "Clean Hit") : (palm ? "Palm Strike" : "Hit"),
-        `${e.speed.toFixed(1)} m/s${palm ? "" : " · not the palm"}`, 1.4, palm ? "var(--gold)" : "");
+      const what = e.speed >= CLEAN ? (palm ? "Clean palm strike" : "Clean hit") : (palm ? "Palm strike" : "Hit");
+      const part = /^hand_/.test(e.part || "") ? "" : ` · ${String(e.part || "").replace(/_[lr]$/, "")}`;
+      tick(`${sideName(e.striker)} ${what.toLowerCase()} · ${e.speed.toFixed(1)} m/s · ${impulse.toFixed(0)} kg·m/s${part}${drew ? " · on a flinch" : ""}`, palm ? "gold" : "");
       {   // the synth engine voices the strike from its energy and where on the face it landed (display only)
-        const sx = game.match.sides, A = sx.find(x => x.name === e.striker), D = sx.find(x => x.name !== e.striker);
         const hz = D ? game.d.geom_xpos[3 * D.head + 2] : 0;
         sound.strike(e.speed, e.pos ? e.pos[0] : 0, e.striker, { pos: e.pos, mass: A?.card.strike_mass, palm, jaw: !!e.pos && e.pos[2] < hz - 0.03 });
       }
+      sound.crowd(impulse / CLEAN_MOMENTUM);   // the room answers the impulse, not the event: a tap murmurs, a 30 kg m/s slap roars
+      scoutStrike(e); hideScout();
+      replayQueue(e, impulse);
       if (window.__poslapLook?.pauseOnStrike) paused = true;   // the report's contact frame (display only)
       if (e.pos) struck(e.striker, e.pos, e.speed);   // (Unreal's strike line has no contact point)
       break;
@@ -343,15 +412,15 @@ function onEvent(e) {
       S.impact = { hic: e.hic, bric: e.bric, chain: e.chain, order: e.chain_order };
       break;
     case "faint":
-      $("call").textContent = `${e.athlete} passes out`;
-      banner("Out cold!", `${e.athlete} passes out`, 2, "var(--gold)");
+      if (isSide(e.athlete)) { S.faints[e.athlete]++; renderBadges(); }
+      tick(`Out cold! ${sideName(e.athlete)} passes out`, "gold");
       break;
     case "knockdown":
       S.knockdowns++;
       startTenCount();
-      $("call").textContent = `${e.athlete} down (${e.part})`;
+      tick(`${sideName(e.athlete)} down · ${e.part}`, "bad");
       if (isSide(e.athlete)) {
-        S.danger[e.athlete] = 1; S.kd[e.athlete]++; MOM[other(e.athlete)] += 15; momentum(); renderBadges2();
+        S.danger[e.athlete] = 1; S.kd[e.athlete]++; MOM[other(e.athlete)] += 15; momentum(); renderBadges();
         dust(e.athlete, e.part);
       }
       S.downAt = performance.now() / 1000;
@@ -359,7 +428,7 @@ function onEvent(e) {
       break;
     case "foul":
       S.fouls++;
-      $("call").textContent = `Foul: ${e.athlete} ${e.why}`;
+      tick(`Foul: ${sideName(e.athlete)} ${e.why}`, "bad");
       break;
     case "turn_end": {
       S.turnsDone = (S.turnsDone || 0) + 1;
@@ -367,13 +436,15 @@ function onEvent(e) {
       renderPips(S.round, e.striker, true, false);
       const call = e.ko ? "KO" : e.end === "recovered" ? `Recovered · head snap ${Number(e.head_peak).toFixed(1)} m/s`
         : (e.fouls && e.fouls.length) ? `Foul: ${foulText(e.fouls)}` : e.end;
-      $("call").textContent = call;
+      if (!e.ko) tick(call, e.end === "recovered" ? "" : "bad");
       const landed = landedOf(e);
       if (e.ko) sound.bell(true);
-      else sound.reaction(!!e.stagger, landed, Math.min(1, (e.speed || 0) / 10));
+      else if (e.stagger) sound.reaction(true, landed, Math.min(1, (S.lastStrike?.impulse || 0) / (1.5 * CLEAN_MOMENTUM)));   // the stagger's roar, sized by the impulse that caused it
+      scoutTurn(e);
       if (e.ko) {
-        S.kos++; if (isSide(e.striker)) { S.koed = other(e.striker); renderBadges2(); }
+        S.kos++; if (isSide(e.striker)) { S.koed = other(e.striker); renderBadges(); }
         banner("KNOCKOUT!", `${e.striker ? e.striker.toUpperCase() : "Striker"} wins by KO`, 2.2, "var(--gold)");
+        tick(`KNOCKOUT · ${sideName(e.striker)} wins`, "gold");
       }
       if (landed && isSide(e.striker)) {
         MOM[e.striker] += (e.speed || 0) + 5 * (e.head_peak || 0) + (e.stagger ? 10 : 0);
@@ -390,6 +461,8 @@ function onEvent(e) {
     case "round":
       S.cards = e.cards || S.cards;
       renderCards();
+      tick(`End of round ${e.round} · cards ${S.cards.map(c => `${c[0]}–${c[1]}`).join("  ")}`);
+      if ((e.round || 0) < 3) showScout(e.round);   // the break: the scouting card
       break;
     case "result":
       if (e.how !== "KO") stopTenCount();   // a KO's count runs out to 10 (turn_end)
@@ -458,28 +531,89 @@ function showResult(e) {
 }
 function hideResult() { clearTimeout(resultTimer); $("result").classList.remove("on"); }
 $("resMenu").onclick = () => showMenu();
+$("scout").onclick = () => hideScout();
+$("replayCap").onclick = () => stopReplay();
 $("resAgain").onclick = () => rematch();
 
-// ---- the danger meter (the Unreal F6 one, in the browser) ---------------------------------------------------
+// ---- the scouting card between rounds: Elo, KO rate, favourite slap side ------------------------------------------
+// From training/models/league.json (training/scouting.py: Elo and KO rate per brain) where it has the brain, else from
+// the matches watched in this browser (localStorage, per character: turns struck, strikes landed, KOs, the hand used)
+const SCOUT_KEY = "poslap.scout.v1";
+const scoutBook = (() => { try { return JSON.parse(localStorage.getItem(SCOUT_KEY)) || {}; } catch { return {}; } })();
+const charOf = side => game.matchup.corners[game.match.sides.findIndex(x => x.name === side)]?.char;
+const scoutRec = id => scoutBook[id] ??= { turns: 0, landed: 0, kos: 0, hands: { l: 0, r: 0, body: 0 }, speed: 0 };
+const saveScout = () => { try { localStorage.setItem(SCOUT_KEY, JSON.stringify(scoutBook)); } catch { } };
+function scoutStrike(e) {
+  const id = isSide(e.striker) && charOf(e.striker);
+  if (!id) return;
+  const r = scoutRec(id), hand = /^hand_([lr])$/.exec(e.part || "");
+  r.landed++; r.speed += +e.speed || 0; r.hands[hand ? hand[1] : "body"]++;
+  saveScout();
+}
+function scoutTurn(e) {
+  const id = isSide(e.striker) && charOf(e.striker);
+  if (!id) return;
+  const r = scoutRec(id);
+  r.turns++; if (e.ko) r.kos++;
+  saveScout();
+}
+let scoutTimer = 0;
+function scoutLines(side) {
+  const i = game.match.sides.findIndex(x => x.name === side), corner = game.matchup.corners[i], id = corner.char;
+  const lg = league[corner.brain], r = scoutBook[id], loc = ratings[id];
+  const elo = lg ? `${Math.round(lg.elo)} · league` : `${Math.round(loc?.elo ?? 1000)}${loc ? ` · ${loc.w}-${loc.l}` : ""}`;
+  const ko = lg ? `${Math.round(100 * lg.ko_rate)}% · league` : r?.landed ? `${Math.round(100 * r.kos / r.landed)}% of ${r.landed}` : "–";
+  let fav = "–";
+  if (r?.landed) {
+    const [k, n] = Object.entries(r.hands).sort((a, b) => b[1] - a[1])[0];
+    fav = `${k === "r" ? "RIGHT" : k === "l" ? "LEFT" : "BODY"} ${Math.round(100 * n / r.landed)}%`;
+  }
+  const landed = r?.turns ? `${r.landed}/${r.turns} · ${(r.speed / Math.max(1, r.landed)).toFixed(1)} m/s` : "–";
+  return { name: NAMES[side] || side.toUpperCase(), elo, ko, fav, landed };
+}
+function showScout(round) {
+  const host = $("scout");
+  host.textContent = "";
+  host.append(el("div", "sh", `SCOUTING · ROUND ${round + 1} NEXT`));
+  const g = el("div", "sg"), L = scoutLines("red"), R = scoutLines("blue");
+  g.append(el("span"), el("b", "red", L.name), el("b", "blue", R.name));
+  for (const [k, f] of [["Elo", "elo"], ["KO rate", "ko"], ["Fav. side", "fav"], ["Landed", "landed"]])
+    g.append(el("span", "k", k), el("span", "", L[f]), el("span", "", R[f]));
+  host.append(g, el("div", "sf", "tap to close"));
+  host.classList.add("on");
+  clearTimeout(scoutTimer);
+  scoutTimer = setTimeout(hideScout, SCOUT_S * 1000);
+}
+function hideScout() { clearTimeout(scoutTimer); $("scout").classList.remove("on"); }
+
+// ---- the KO danger meter (the Unreal F6 one, in the browser) --------------------------------------------------
+// balance (the capture point outside the soles; live: the last head snap) combined with the neck damage banked by the
+// strikes absorbed (broadcast.js koDanger). The bar shows the banked part (dark) under the total (the heat colour).
 const dmeters = {};
 const heat = v => `hsl(${Math.round(120 * (1 - v))}, 82%, 55%)`;
 function buildDangerMeters() {
   const host = $("dmeters");
   host.textContent = "";
   for (const side of SIDES) {
-    const r = el("div", "drow"), bar = el("span", "bar"), fill = el("i"), val = el("span", "val");
-    bar.appendChild(fill);
+    const r = el("div", "drow"), bar = el("span", "bar"), fill = el("i"), neck = el("b"), val = el("span", "val");
+    bar.append(fill, neck);
     r.append(el("span", `lbl ${side}`, side.toUpperCase()), bar, val);
     host.appendChild(r);
-    dmeters[side] = { fill, val };
+    dmeters[side] = { fill, neck, val, row: r };
   }
 }
-function updateDangerMeters(vals) {
+function dangerOf(side) {
+  const damage = neckDamage(S.fatigue[side].neck, MIN_NECK), balance = clamp01(S.danger[side] || 0);
+  return { balance, damage, total: koDanger(balance, damage) };
+}
+function updateDangerMeters() {
   for (const side of SIDES) {
-    const v = clamp01(vals[side] || 0);
-    dmeters[side].fill.style.width = `${Math.round(v * 100)}%`;
-    dmeters[side].fill.style.background = heat(v);
-    dmeters[side].val.textContent = `${Math.round(v * 100)}%`;
+    const v = dangerOf(side), m = dmeters[side];
+    m.fill.style.width = `${Math.round(v.total * 100)}%`;
+    m.fill.style.background = heat(v.total);
+    m.neck.style.width = `${Math.round(koDanger(0, v.damage) * 100)}%`;
+    m.val.textContent = `${Math.round(v.total * 100)}%`;
+    m.row.title = `KO danger ${Math.round(100 * v.total)}%: balance ${Math.round(100 * v.balance)}% (${S.danger.source === "live" ? "head snap" : "capture point"}), neck damage ${Math.round(100 * v.damage)}%`;
   }
 }
 const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
@@ -597,7 +731,7 @@ const TABS = {
     el("h3", "", "Picture and sound"),
     row(...["auto", ...TIERS.slice().reverse()].map(t => btn(t === "auto" ? `Auto (${look.tier})` : t[0].toUpperCase() + t.slice(1), "gfx", look.auto ? t === "auto" : t === look.tier, t)),
       btn("Shake", "shake", look.shakeOn), btn(sound.muted ? "Sound off" : "Sound on", "sound", !sound.muted),
-      btn(sound.synth ? "Audio: synth" : "Audio: samples", "audio", sound.synth)),
+      btn(sound.synth ? "Audio: synth" : "Audio: samples", "audio", sound.synth), btn(replay.enabled ? "Replays on" : "Replays off", "replay", replay.enabled)),
     el("div", "note", `${LIVE ? `Live: ${LIVE}. API on the same host: /api/match, /api/events.` : "Local match: the same rules as training/match.py."} Build ${BUILD} · OBS 136 · 200 Hz.`),
   ],
 };
@@ -618,6 +752,7 @@ function toggleSheet(force, t = tab) {
   tab = t;
   sheetOpen = force === undefined ? !sheetOpen : force;
   $("sheet").hidden = !sheetOpen;
+  if (sheetOpen) hideScout();   // the sheet takes the middle's height: the card would not fit beside it
   for (const b of $("tabs").children) b.setAttribute("aria-selected", String(sheetOpen && b.dataset.tab === tab));
   renderSheet();
   measureBottom();
@@ -638,13 +773,14 @@ $("panel").addEventListener("click", e => {
   else if (act === "reset") { showMenu(); return; }
   else if (act === "sound") { sound.unlock(); sound.setMuted(!sound.muted); }
   else if (act === "audio") sound.setMode(sound.synth ? "samples" : "synth");
+  else if (act === "replay") { replay.enabled = !replay.enabled; localStorage.setItem("poslap.replay", replay.enabled ? "on" : "off"); if (!replay.enabled) stopReplay(); }
   else if (act === "shake") { look.shakeOn = !look.shakeOn; localStorage.setItem("poslap.shake", look.shakeOn ? "on" : "off"); }
   else if (act === "gfx") { look.setTier(val); localStorage.setItem("poslap.gfx", val); }
   renderSheet();
 });
 addEventListener("keydown", e => {
   if (e.key === "Tab") { e.preventDefault(); toggleDetail(); }   // TAB: the detailed stats
-  else if (e.key === "Escape") { if (sheetOpen) toggleSheet(false); else if (S.phase !== "menu") showMenu(); }
+  else if (e.key === "Escape") { if (replay.on) stopReplay(); else if (sheetOpen) toggleSheet(false); else if (S.phase !== "menu") showMenu(); }
 });
 
 // ---- the menu: menu -> gameplay -> result -> reset ---------------------------------------------------------------
@@ -711,7 +847,7 @@ function showMenu() {
   if (S.phase === "result") go("reset");
   if (!go("menu")) return;
   started = false;
-  hideResult();
+  hideResult(); hideScout(); stopReplay();
   if (sheetOpen) toggleSheet(false);   // the menu, not the stats behind it
   $("menu").hidden = false;
   renderMenu();
@@ -949,7 +1085,7 @@ const headOf = (d, x) => new THREE.Vector3(d.geom_xpos[3 * x.head], d.geom_xpos[
 function directTick(d, dt) {
   const M = game.match, now = performance.now() / 1000;
   const si = M.sides.findIndex(x => x.name === S.striker), Sx = M.sides[si], Dx = M.sides[1 - si];
-  const shot = director.pick(now, S.strikeAt, S.striker ? Math.max(read.value, S.tension && S.strikeAt < 0 ? 1 : 0) : 0, now - (S.downAt || -99) < 2.5);
+  const shot = replay.on ? "side" : director.pick(now, S.strikeAt, S.striker ? Math.max(read.value, S.tension && S.strikeAt < 0 ? 1 : 0) : 0, now - (S.downAt || -99) < 2.5);
   if (director.mode !== "free") {
     if (shot === "wide" || !Sx) { camGoal.pos.copy(WIDE.pos); camGoal.at.copy(WIDE.at); }
     else {
@@ -962,7 +1098,8 @@ function directTick(d, dt) {
         camGoal.pos.set(hd.x + sx * 0.55, hd.y - 1.05, hd.z + 0.04);
       }
     }
-    const k = director.cut ? 1 : 1 - Math.exp(-dt * 3);
+    const k = director.cut || replay.cut ? 1 : 1 - Math.exp(-dt * 3);
+    replay.cut = false;
     camera.position.lerp(camGoal.pos, k); controls.target.lerp(camGoal.at, k);
   }
   // the follow spot finds the striker; the rim lights the defender from behind in his corner's colour
@@ -980,6 +1117,90 @@ function directTick(d, dt) {
     sound.setDistance(camera.position.distanceTo(WIDE.at));
   }
 }
+// ---- the per-strike instant replay (display only) -------------------------------------------------------------------
+// Every physics step (or every pose, live) the drawn state's qpos goes into a ring. REPLAY_POST s after a landed strike
+// the window round the touch is copied out and played at REPLAY_RATE into a second MjData (mj_kinematics only: no
+// physics step, no contact, nothing written to the match's MjData). The match keeps running underneath: its clock,
+// its brains and its events never wait for the replay, the HUD keeps reading the live match, and a tap skips it.
+const replay = { ring: null, times: null, n: 0, head: 0, nq: 0, rd: null, pending: null, clip: null, t: 0, on: false,
+  enabled: QS.get("replay") !== "0" && localStorage.getItem("poslap.replay") !== "off" };
+function replayInit(mj) {
+  replay.nq = game.m.nq; replay.n = 256;   // 1.28 s of 200 Hz steps: PRE + POST and a margin
+  replay.ring = new Float64Array(replay.n * replay.nq); replay.times = new Float64Array(replay.n).fill(-1e9);
+  replay.rd = new mj.MjData(game.m);
+  replay.kin = () => mj.mj_kinematics(game.m, replay.rd);
+}
+function replayRecord(t) {
+  if (!replay.ring) return;
+  const i = replay.head; replay.head = (i + 1) % replay.n;
+  replay.ring.set(game.d.qpos, i * replay.nq); replay.times[i] = t;
+}
+function replayQueue(e, impulse) {
+  if (!replay.enabled || !replay.ring) return;
+  replay.pending = { at: replayClock(), speed: +e.speed || 0, impulse, striker: e.striker };
+}
+function replayStart() {   // the window round the touch, oldest first
+  const p = replay.pending, idx = [];
+  replay.pending = null;
+  for (let k = 0; k < replay.n; k++) {
+    const i = (replay.head + k) % replay.n, t = replay.times[i];
+    if (t >= p.at - REPLAY_PRE && t <= p.at + REPLAY_POST) idx.push(i);
+  }
+  if (idx.length < 4) return;
+  const T = idx.map(i => replay.times[i]), Q = idx.map(i => replay.ring.slice(i * replay.nq, (i + 1) * replay.nq));
+  replay.clip = { T, Q, at: p.at, speed: p.speed, impulse: p.impulse, striker: p.striker };
+  replay.t = T[0]; replay.on = true; replay.cut = true;
+  document.body.classList.add("replaying");
+  $("replayCap").textContent = "";
+  $("replayCap").append(el("b", "", "REPLAY"), document.createTextNode(` palm ${p.speed.toFixed(1)} m/s · `), el("span", "snap", ""),
+    el("small", "", "tap to skip"));
+}
+function stopReplay() { replay.on = false; replay.clip = null; replay.pending = null; document.body.classList.remove("replaying"); }
+// one drawn frame of the replay: the recorded pose nearest the replay's clock, posed in the replay's MjData
+function replayFrame(dt) {
+  const c = replay.clip;
+  replay.t += dt * REPLAY_RATE;
+  if (replay.t > c.T[c.T.length - 1]) { stopReplay(); return null; }
+  let k = 0;
+  while (k + 1 < c.T.length && c.T[k + 1] <= replay.t) k++;
+  replay.rd.qpos.set(c.Q[k]);
+  replay.kin();
+  const snapNow = $("replayCap").querySelector(".snap");
+  if (snapNow) snapNow.textContent = `snap ${snap.peak.toFixed(1)} m/s`;   // the live trace's peak: the replay shows how it happened
+  return replay.rd;
+}
+canvas.addEventListener("pointerup", e => { if (replay.on && dragFrom && Math.hypot(e.clientX - dragFrom[0], e.clientY - dragFrom[1]) <= 6) stopReplay(); });
+
+// ---- the joint-strain heat (TAB only): shoulder / elbow / wrist, blue (idle) to red (at the motor's cap) -------------
+// |actuator force| / the motor's force cap (the card's strength, before Hill's speed limit), the joint's worst axis;
+// drawn as a dot at the joint (both the art and the physics view), read from the match's MjData, never written
+const strain = [];
+function buildStrain() {
+  const m = game.m, mat = () => new THREE.MeshBasicMaterial({ color: 0x3a7bff, depthTest: false, transparent: true, opacity: 0.95, toneMapped: false, fog: false });
+  for (const x of game.match.sides) for (const lr of ["l", "r"]) for (const j of STRAIN_JOINTS) {
+    const idx = x.order.map((n, i) => (n.startsWith(j) && n.endsWith(`_${lr}`) ? i : -1)).filter(i => i >= 0);
+    if (!idx.length) continue;
+    const acts = idx.map(i => x.act[i]), caps = idx.map(i => Math.max(Math.abs(x.frAll[i][0]), Math.abs(x.frAll[i][1]), 1e-6));
+    const body = m.jnt_bodyid[m.actuator_trnid[2 * acts[0]]];
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(j === "shoulder" ? 0.045 : 0.035, 16, 12), mat());
+    dot.renderOrder = 10; dot.visible = false; scene.add(dot);
+    strain.push({ dot, acts, caps, body, jnt: m.actuator_trnid[2 * acts[0]] });
+  }
+}
+function strainTick(d) {
+  const on = detail && !replay.on && !!d.actuator_force;
+  for (const s of strain) {
+    s.dot.visible = on;
+    if (!on) continue;
+    let k = 0;
+    s.acts.forEach((a, i) => { k = Math.max(k, Math.abs(d.actuator_force[a]) / s.caps[i]); });
+    k = clamp01(k);
+    s.dot.material.color.setHSL((220 - 220 * k) / 360, 0.9, 0.55);
+    const A = d.xanchor, j = s.jnt;
+    if (A) s.dot.position.set(A[3 * j], A[3 * j + 1], A[3 * j + 2]); else s.dot.position.set(d.xpos[3 * s.body], d.xpos[3 * s.body + 1], d.xpos[3 * s.body + 2]);
+  }
+}
+
 function resize() { const w = innerWidth, h = innerHeight; look.resize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); measureBottom(); fitNames(); }
 addEventListener("resize", resize); resize();
 
@@ -991,8 +1212,9 @@ try { league = (await get("training/models/league.json", "json")).brains || {}; 
 let probe = null;   // Web/contacts.js: MuJoCo's contacts for the wear decals and the synthesised sound
 let game, speed = 1, paused = false, busy = false, debt = 0, prevT = performance.now();
 let started = false;      // the menu gates the match: nothing runs until the spectator picks one
-let fpsNow = 0, frames = 0, fpsT = performance.now();
+let fpsNow = 0, frames = 0, fpsT = performance.now(), turnClock = "";
 const sampleClock = () => LIVE ? performance.now() / 1000 : game.match.k * game.match.dt;
+const replayClock = () => LIVE ? performance.now() / 1000 : S.steps * game.match.dt;   // monotonic across turns (k restarts each turn)
 
 try {
   $("loadmsg").textContent = "Loading MuJoCo…";
@@ -1001,11 +1223,12 @@ try {
   game = await loadMatch(mj, ort, get, onEvent, MATCHUP);
   buildShapes(game.m, game.match.sides); footBoxes(game.d, game.match.sides); buildPushers(game.m, game.match.sides); initSoles(game.d);
   probe = new ContactProbe(game.m, game.match);
+  replayInit(mj); buildStrain();
   game.match.autoNext = false;   // the round trip: after the result's hold, back to the menu (sim.js phase "over")
   loadArt(mj).catch(err => console.error("art:", err));   // the match starts on the shapes; the art swaps in when loaded
   for (const s of game.match.sides) NAMES[s.name] = s.card.display;
   sound.setVoices(Object.fromEntries(game.match.sides.map(s => [s.name, s.card.name])));   // grunts and breaths per athlete
-  buildDangerMeters(); buildPlates(); renderStreak(); initMenu(); renderTabBadges(); renderCards(); measureBottom();
+  buildDangerMeters(); buildPlates(); renderBadges(); renderStreak(); initMenu(); renderTabBadges(); renderCards(); measureBottom();
   if (LIVE) { $("watchlive").hidden = false; $("practice").hidden = true; connectLive(); }
   else if (QS.has("go")) startPractice();   // START picked this pairing on the last page
   if (game.match.phase === "turn") { S.striker = game.match.sides[game.match.s].name; cornerLine(S.striker, " strikes"); }   // ?nowalkin: the first turn began before the names were known
@@ -1021,6 +1244,7 @@ async function advance(n) {
   try {
     for (let i = 0; i < n; i++) {
       await M.step(); S.steps++;
+      replayRecord(replayClock());
       if (M.phase === "turn") sampleBodies(M.k * M.dt, M.sides[M.s].name, M.speedNow || 0, M.k % 4 === 0);
     }
   } finally { busy = false; }
@@ -1038,8 +1262,9 @@ function loop(now) {
     $("pipsTrack").textContent = "RING WALK-IN";
     $("turn").textContent = `To the podium ${Math.round((M.walkInProg || 0) * 100)}%`;
     $("clock").textContent = `walk-in ${Math.max(0, (M.walkInLeft || 0) * h).toFixed(1)} s`;
-  } else if (M.phase === "turn") {
-    $("clock").textContent = `${M.touchK === null ? "clock" : "recovery"} ${(M.touchK === null ? Math.max(0, 30 - M.k * h) : Math.max(0, 5 - (M.k - M.touchK) * h)).toFixed(1)} s`;
+  } else if (M.phase === "turn") {   // the clock itself is the ring round the active name (renderRings); the seconds are in TAB
+    turnClock = `${M.touchK === null ? "clock" : "recovery"} ${(M.touchK === null ? Math.max(0, 30 - M.k * h) : Math.max(0, 5 - (M.k - M.touchK) * h)).toFixed(1)} s`;
+    $("clock").textContent = M.touchK === null ? "strike clock" : "recovery";
   } else if (M.phase === "hold") {
     $("clock").textContent = `next turn in ${Math.max(0, M.holdLeft * h).toFixed(1)} s`;
   } else if (M.phase === "after") {
@@ -1055,28 +1280,32 @@ function loop(now) {
     $("fps").textContent = `${fpsNow} fps`;
     $("steps").textContent = LIVE ? "live feed" : S.steps > 9999 ? `${(S.steps / 1000).toFixed(1)}k steps` : `${S.steps} steps`;
     S.simTime = S.steps * h;
-    $("tel").textContent = LIVE ? `live · ${S.strikes} strikes` : `step ${S.steps} · ${S.simTime.toFixed(1)} s · ${look.tier}`;
+    $("tel").textContent = LIVE ? `live · ${S.strikes} strikes` : `${M.phase === "turn" ? `${turnClock} · ` : ""}step ${S.steps} · ${S.simTime.toFixed(1)} s · ${look.tier}`;
     if (!LIVE) {   // the local capture point: the danger the browser's own match is in
       const dg = localDanger();
       S.danger.red = dg[0]; S.danger.blue = dg[1]; S.danger.source = "local";
     }
-    updateDangerMeters(S.danger);
-    $("swingLine").textContent = `swings: feint ${S.feints} · real ${S.reals}`;
+    updateDangerMeters();
+    $("swingLine").textContent = `feint ${S.feints} · real ${S.reals} · flinch ${S.flinches}`;
     $("readLine").textContent = `AI read ${Math.round(100 * read.value)}% · ${read.kind || "quiet"}`;   // (on the 0.12 s late trace the brain sees)
     $("camLine").textContent = `camera ${director.mode}${director.mode === "auto" ? ` · ${director.shot}` : ""}`;
     renderTabBadges();
   }
-  renderPlates();
+  renderPlates(); renderRings();
+  if (tickerAt && now / 1000 - tickerAt > 8) { $("ticker").classList.add("old"); tickerAt = 0; }   // an old line dims
   const sparkOn = now / 1000 < sparkOnUntil;
   $("sparkbox").classList.toggle("on", sparkOn);
   $("sparkbox").classList.toggle("has", snap.points.length > 0);
   if (sparkOn || (detail && snap.recording)) drawSpark();
-  draw(game.d); directTick(game.d, dt); controls.update();
+  if (replay.pending && replayClock() >= replay.pending.at + REPLAY_POST) replayStart();
+  const shown = (replay.on && replayFrame(paused ? 0 : dt)) || game.d;   // the replay's MjData while it plays, else the match's
+  draw(shown); directTick(shown, dt); controls.update();
+  strainTick(game.d);
   feetTick(game.d, paused ? 0 : dt);
   // MuJoCo's contacts, once a frame, for the wear decals and the synthesised impacts and friction (display only)
   sound.tierHint = look.tier; sound.listen(camera);
   if (probe && (look.fx.wear || sound.synth)) { const cx = probe.read(game.d, LIVE && !paused ? dt : 0); look.contacts(cx); sound.contacts(cx); }
-  sound.tick(Math.max(S.danger.red || 0, S.danger.blue || 0), S.fatigue.red.stamina, S.fatigue.blue.stamina);
+  sound.tick(Math.max(dangerOf("red").total, dangerOf("blue").total), S.fatigue.red.stamina, S.fatigue.blue.stamina);
   look.render(dt * (paused ? 0 : 1), fpsNow);
   requestAnimationFrame(loop);
 }
@@ -1107,6 +1336,7 @@ function connectLive() {
     });
     game.match.mj.mj_forward(game.m, game.d);
     const t = performance.now() / 1000;
+    replayRecord(t);
     Object.assign(live, { at: performance.now(), slow: msg.slow, walkIn: msg.w });
     if (msg.w) $("turn").textContent = "To the podium";
     else if (isSide(msg.s)) {

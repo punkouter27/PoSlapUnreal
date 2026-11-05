@@ -1247,7 +1247,7 @@ export class Look {
     this.lens.uniforms.center.value.set(s.x * 0.5 + 0.5, s.y * 0.5 + 0.5);
     this.lens.uniforms.age.value = 0; this.lens.uniforms.amp.value = Math.min(1.5, Math.max(0, (speed - 4) / 6));
     this.shake = 0; this.shakeAmp = this.canShake ? Math.min(0.03, 0.002 * speed) : 0;
-    this.excite = Math.min(1, this.excite + 0.35 + 0.25 * size);
+    this.excite = Math.min(1, this.excite + 0.1 + 0.45 * size);   // the crowd's bob follows the impulse (size), not the event
   }
   knockdown(pos, k) { this.dust.puff(new THREE.Vector3(...pos), k); this.excite = 1; }
   // the hands' world positions this frame (flat [x, y, z] x n): the palm motion blur's paths

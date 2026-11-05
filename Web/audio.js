@@ -282,6 +282,14 @@ export class Sound {
       pan: striker === "red" ? -0.35 : 0.35, wet: 0.12, delay: 0.01, at: this.synth ? head : null });
     this.duckUntil = this.ctx.currentTime + 0.2;
   }
+  // the room's answer to a landed strike, sized by the impulse delivered (k = strike mass x palm speed over a 3 kg x
+  // 9 m/s clean slap): a light touch murmurs, a clean slap draws the "ooh", a heavy one the roar, and louder with it
+  crowd(k) {
+    k = Math.max(0, Math.min(2, k || 0));
+    if (k < 0.35) this.play("CrowdNear", { gain: 0.12 + 0.3 * k, rate: 0.92, wet: 0, air: false, delay: 0.12 });
+    else if (k < 1.1) this.play("CrowdNear", { gain: 0.25 + 0.4 * k, rate: 0.96 + 0.08 * k, wet: 0, air: false, delay: 0.1 });
+    else this.play("CrowdReact", { gain: Math.min(1, 0.35 + 0.35 * k), rate: 0.98 + 0.06 * (k - 1), wet: 0, air: false, delay: 0.08 });
+  }
   reaction(staggered, landed, k) {   // the crowd after a turn: a roar for a stagger, a groan for a slap that moved nobody
     const roar = 0.3 + 0.5 * k;
     if (staggered) this.play("CrowdReact", { gain: roar, wet: 0, air: false });
