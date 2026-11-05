@@ -19,6 +19,8 @@ namespace
 	constexpr double ImpactShot = 0.6, StrikeShot = 1.6;	// s: the impact close-up, then the strike medium
 	constexpr double ReadCut = 0.35;	// the AI read's score that cuts to the SIDE two-shot
 	constexpr double HoldBack = 1.0;	// s before a calmer shot may replace an escalation
+	constexpr float MaxWideDist = 200.f;	// cm: the WIDE shot sits ~100-120 cm out; Arena.glb's camera jibs start 1.8 m from the
+										// centre, press and judges' tables 2.9-3.0 m, the seating bowl 6 m
 }
 
 void ASlapHUD::SetCam(ECam Mode)
@@ -157,7 +159,9 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	default:				// wide, side-on: both athletes framed (~60 % of the portrait height), below the HUD panel
 	{
 		const float Height = FMath::Max(Box.GetSize().Z, Box.GetSize().X / Aspect) + 40.f;
-		const float Dist = Height * 0.5f / 0.55f / FMath::Tan(HalfV);
+		// capped: a fallen athlete sliding away grew the box and pulled the lens back into the ringside jibs and tables
+		// (their dark boxes filled the frame); past the cap the far athlete may leave the frame instead
+		const float Dist = FMath::Min(Height * 0.5f / 0.55f / FMath::Tan(HalfV), MaxWideDist);
 		Pos = Box.GetCenter() - Fwd * Dist + Up * (0.12f * 2.f * Dist * FMath::Tan(HalfV));
 		Look = Pos + Fwd;
 	}

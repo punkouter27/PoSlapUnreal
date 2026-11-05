@@ -191,7 +191,22 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		if (bPendingMatch.exchange(false)) ApplyPending();	// the menu: new brains, a fresh match
 		if (bWaitForStart && MatchNo == 0)	// a normal launch: the menu first; both stand at the podium until START
 		{
-			if (!bIdlePlaced) { StandIdle(m, d); bIdlePlaced = true; }
+			// the match brains were trained on 30 s turns that end in a reset: idling past that, one tips over and nobody
+			// referees the menu, so both stand again every IdleRestand s, or at once when a pelvis drops below 60 % of its
+			// stand height (a fallen athlete also pulled the WIDE shot back into the stands). Menu only: no match runs here
+			constexpr double IdleRestand = 25.0;
+			bool bRestand = !bIdlePlaced || (StepCount - IdlePlacedAt) * m->opt.timestep > IdleRestand;
+			for (int32 a = 0; a < 2 && !bRestand; ++a)
+			{
+				bRestand = d->xpos[3 * Athletes[a].Pelvis + 2] < 0.6 * IdlePelvisZ[a];
+			}
+			if (bRestand)
+			{
+				StandIdle(m, d);
+				bIdlePlaced = true;
+				IdlePlacedAt = StepCount;
+				for (int32 a = 0; a < 2; ++a) IdlePelvisZ[a] = d->xpos[3 * Athletes[a].Pelvis + 2];
+			}
 			if (StepCount % ControlEvery == 0) Decide(m, d);
 		}
 		else if (WalkInLeft > 0)

@@ -263,6 +263,8 @@ private:
 	void StandIdle(mjModel* m, mjData* d);	// the menu at launch: both in the stand pose at their foot boxes, no match
 	void ResetToStand(mjModel* m, mjData* d);	// brain_cpu.stand(): reset, the stand pose, fresh brains, full strength, forward twice
 	bool bIdlePlaced = false, bStartNext = false;	// physics thread: StandIdle done; the menu asked for the next match
+	int64 IdlePlacedAt = 0;	// physics thread: the step StandIdle last ran (the menu re-stands both every IdleRestand s or on a fall)
+	double IdlePelvisZ[2] = { 0.0, 0.0 };	// pelvis heights in that stand pose
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
