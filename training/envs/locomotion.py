@@ -14,7 +14,8 @@ Implements all 10 AI Realism Options:
 2. Earth gravity (-9.81 m/s^2), anthropometric mass, and per-foot + floor friction randomization (0.6-1.2).
 3. Continuous metabolic stamina drain (proportional to motor torque effort) & passive recovery ([0.70, 1.00]).
 4. Simplified inside-skin collision primitives with parent-child exclusions and zero self-clipping.
-5. Clean proprioceptive body awareness (136-float BRAIN_IO contract + optional 12-float foot/contact/load/phase extension = 148).
+5. Clean proprioceptive body awareness (the BRAIN_IO contract: 140 floats, interface 4 = 136 + heel/toe contacts; the
+   12-float foot/load/phase extension (148) was retired 2026-11-04, never trained).
 6. Smooth motor control: asymmetric full-range mapping, stamina-scaled velocity rate limiter, optional EMA muscle ramp, 0-20 ms reflex delay.
 7. Natural movement rewards: upright posture, smooth velocity tracking, torque efficiency, and alternating swing-foot clearance.
 8. Anti-cheat & exploit penalties: second-order action jerk (vibration), arm flailing, leg dragging, asymmetric hop, and non-sole knockdown.
@@ -41,7 +42,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import LAGS, MIN_STAMINA, OBS, OBS_EXT, models_dir
+from constants import LAGS, MIN_STAMINA, OBS, lpf_on, models_dir
 from envs import common
 from envs.common import blown_up, contact_slots
 from envs.slap import DECIM, hill, quat_mat
@@ -53,8 +54,8 @@ COURSE_BOX, COURSE_PODIUM, COURSE_AISLE = "box", "podium", "aisle"   # the three
 
 class LocomotionEnv:
     def __init__(self, character="grandpa", level="S2", num_envs=4096, seed=0, randomize=True, obs_dim=OBS):
-        if level not in ("S2", "S3", "S4"):
-            raise NotImplementedError(f"{level}: LocomotionEnv runs S2, S3 and S4")
+        if level not in ("S2", "S3", "S4", "S5"):
+            raise NotImplementedError(f"{level}: LocomotionEnv runs S2-S5")
         self.character, self.level, self.cfg, self.N, self.randomize = character, level, LEVELS[level], num_envs, randomize
         self.obs_dim = obs_dim
         self.course = self.cfg.get("course", COURSE_BOX)
@@ -142,6 +143,7 @@ class LocomotionEnv:
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.mocap = T(self.dw.mocap_pos)
+        self.con_pos = T(self.dw.contact.pos)   # the heel/toe inputs (envs/common.foot_contacts)
         self.geom_xpos[:, self.podium] = torch.tensor([50.0, 0.0, -5.0], device=dev)
         if self.step_g >= 0:
             self.geom_xpos[:, self.step_g] = torch.tensor([50.0, 0.0, -5.0], device=dev)
@@ -149,6 +151,9 @@ class LocomotionEnv:
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         self.foot_l, self.foot_r = feet[0], feet[1]
+        # interface 4: heel/toe contacts (BRAIN_IO 136-139; the step is a world geom too) and the action low-pass
+        self.foot_of, self.is_world = common.foot_lookup(m, [feet], dev), common.world_geoms(m, dev)
+        self.lpf = lpf_on(obs_dim)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
         self.bad = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.bad[[g for g in body_geoms if g not in feet]] = True
@@ -241,6 +246,8 @@ class LocomotionEnv:
         self.bump = z(N)                 # the body parts that hit an obstacle this step (the penalty)
         self.reaction = tuple(self.cfg.get("reaction", (0.0, 0.0)))   # the human reaction latency (s)
         self.slope = float(self.cfg.get("slope_deg", 0.0))            # the per-world gravity tilt (deg)
+        self.slope_scale = 1.0   # item 45, S5: the tilt's share of slope_deg (train.py ramps it 0 -> 1 as no-falls hold)
+        self.hp, self.v_prev, self.com_ref, self.com_new = z(N, A), z(N, A), z(N, 2), zb()   # items 47 and 46
 
         self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
 
@@ -298,8 +305,9 @@ class LocomotionEnv:
         self.wp_i[mask], self.stall_t[mask], self.wp_best[mask] = 0, 0.0, 1e9
         self.reach_paid[mask] = False
         self.wp_dist_prev[mask] = 0.0
-        if self.slope > 0.0:   # the slope: a per-world gravity tilt (up to slope_deg), the floor stays flat
-            t = math.radians(self.slope)
+        self.hp[mask], self.v_prev[mask], self.com_new[mask] = 0.0, 0.0, True
+        if self.slope > 0.0:   # the slope: a per-world gravity tilt (up to slope_deg x slope_scale), the floor stays flat
+            t = math.radians(self.slope * self.slope_scale)
             pit, rol = self._u(n, -t, t), self._u(n, -t, t)
             self.gravity[mask, 0] = 9.81 * torch.sin(pit)
             self.gravity[mask, 1] = 9.81 * torch.sin(rol)
@@ -469,9 +477,10 @@ class LocomotionEnv:
 
         # Option 6: Smooth motor control with asymmetric range mapping, stamina rate-limit, and EMA filter
         tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
+        tgt = common.lowpass(tgt, self.goal, self.lpf)   # interface 4: the 8 Hz low-pass (every engine's rule)
         ms = self.max_step * self.stamina[:, None]
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
-        tgt = self.ema_alpha * tgt + (1.0 - self.ema_alpha) * self.goal
+        tgt = self.ema_alpha * tgt + (1.0 - self.ema_alpha) * self.goal   # the walk-in's own EMA (Unreal mirrors it)
         old, self.goal = self.goal, tgt
 
         for s in range(DECIM):
@@ -609,7 +618,13 @@ class LocomotionEnv:
         # the flail penalty (Option 8): the action's spread across the joints - a body that shakes every muscle at
         # once is not walking, it is thrashing (the jerk term catches the vibration, this catches the noise)
         flail = (a - a.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
-        r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing
+        # item 47: no joint buzzing above ~10 Hz; item 46: standing (command 0), the CoM back over its stance (5 cm)
+        osc, self.hp = common.hf_oscillation(v[:, self.jv], self.v_prev, self.hp)
+        self.v_prev = v[:, self.jv]
+        self.com_ref = torch.where(self.com_new[:, None], self.com[:, self.pelvis, :2] - mid_feet, self.com_ref)
+        self.com_new[:] = False
+        com_pay, _ = common.com_recovery(self.com[:, self.pelvis, :2], feet_pos[:, :, :2], self.com_ref)
+        r = (1.0 + 0.5 * upright.clamp(min=0) + 0.4 * height + 0.3 * facing - osc + (1.0 - moving) * com_pay
              + vel_rew + progress + gait_rew
              - 0.0005 * energy - 0.01 * smooth - 0.01 * jerk - 0.03 * arm_flail - 0.30 * leg_drag - 0.05 * flail
              - 3.0 * (-self.rem - 0.10).clamp(min=0.0))   # walked past the box (Kim overran hers by 0.25 m and fell)
@@ -700,14 +715,8 @@ class LocomotionEnv:
             self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),
         ], -1)
 
-        if self.obs_dim == OBS_EXT:
-            # Option 5: +12 explicit locomotion proprioception channels (foot_l/r pos, contact flags, vertical load, gait clock)
-            fl_h = self._heading(self.geom_xpos[:, self.foot_l] - self.xpos[:, self.pelvis], c, s)
-            fr_h = self._heading(self.geom_xpos[:, self.foot_r] - self.xpos[:, self.pelvis], c, s)
-            phi = 2.0 * math.pi * self.gait_phase
-            phase_sc = torch.stack([torch.sin(phi), torch.cos(phi)], -1)
-            ext = torch.cat([fl_h, fr_h, self.foot_contact.float(), self.foot_load, phase_sc], -1)
-            obs = torch.cat([obs, ext], -1)
+        obs = torch.cat([obs, common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4)], -1)   # 136-139
+        obs = obs[:, :self.obs_dim]   # an older interface's width (obs_dim 136: no foot contacts)
 
         if self.randomize:
             noise = torch.zeros(obs.shape[-1], device=self.device)

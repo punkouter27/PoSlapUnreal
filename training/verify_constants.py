@@ -9,6 +9,7 @@ changed in one engine only is caught here instead of in a silent parity break.
 The expectation is the python constant itself, never a literal written here: the check fails when the three
 engines disagree, not when a number happens to be different from a number typed into this file.
 """
+import math
 import re
 import sys
 from pathlib import Path
@@ -49,8 +50,12 @@ def value_of(text, ident):
 #         JS file, JS identifier (or None), the literal the JS mirror must contain (or None),
 #         the python constant the JS mirror must equal
 MIRROR_CHECKS = [
-    ("OBS", "Source/PoSlapUnreal/SlapControllerInternal.h", "NumObs", constants.OBS_EXT,
+    ("OBS", "Source/PoSlapUnreal/SlapControllerInternal.h", "NumObs", constants.OBS,
      "Web/sim.js", "OBS", None, constants.OBS),
+    ("LPF_HZ", "Source/PoSlapUnreal/SlapControllerInternal.h", "LpfHz", constants.LPF_HZ,
+     "Web/sim.js", "LPF_HZ", None, constants.LPF_HZ),
+    ("LPF_FROM_OBS", "Source/PoSlapUnreal/SlapControllerInternal.h", "LpfFromObs", constants.LPF_FROM_OBS,
+     "Web/sim.js", "LPF_FROM_OBS", None, constants.LPF_FROM_OBS),
     ("REACT", "Source/PoSlapUnreal/SlapControllerInternal.h", "React", constants.REACT,
      "Web/sim.js", "REACT", None, constants.REACT),
     ("HILL_K", "Source/PoSlapUnreal/SlapControllerInternal.h", "HillK", constants.HILL_K,
@@ -93,26 +98,27 @@ def check_mirrors():
 
 
 def check_observation_sizes():
-    """The base layout (136) and the extended one (148) must be the same in both mirrors."""
+    """Interface 4 (DOCS/BRAIN_IO.md): the same width in both mirrors, the foot contacts at the end (136-139), and each
+    engine feeding a brain only its own width (a shipped 136 brain keeps working)."""
     print("\n=== The observation layout ===")
     cpp = read("Source/PoSlapUnreal/SlapControllerInternal.h")
     js = read("Web/sim.js")
-    c_n = value_of(cpp, "NumObs")
-    j_n = value_of(js, "OBS")
-    if c_n is None:
-        fail("SlapControllerInternal.h does not declare NumObs")
-    if j_n is None:
-        fail("Web/sim.js does not declare OBS")
-    if c_n is not None and j_n is not None:
-        # the C++ runs the extended layout (base + locomotion proprioception), the browser the base one
-        if c_n != constants.OBS_EXT:
-            fail(f"SlapController.cpp NumObs is {c_n}, constants.OBS_EXT is {constants.OBS_EXT}")
-        if j_n != constants.OBS:
-            fail(f"Web/sim.js OBS is {j_n}, constants.OBS is {constants.OBS}")
-        if constants.OBS_EXT < constants.OBS:
-            fail(f"OBS_EXT ({constants.OBS_EXT}) is smaller than OBS ({constants.OBS})")
-        print(f"  [PASS] C++ NumObs {c_n:g} (= base {constants.OBS} + {constants.OBS_EXT - constants.OBS} extended), "
-              f"browser OBS {j_n:g}")
+    io = read("Source/PoSlapUnreal/SlapBrainIO.cpp")
+    c_n, j_n = value_of(cpp, "NumObs"), value_of(js, "OBS")
+    if c_n != constants.OBS or j_n != constants.OBS:
+        fail(f"NumObs {c_n} / sim.js OBS {j_n}, constants.OBS is {constants.OBS}")
+    if (constants.FOOT.start, constants.FOOT.stop) != (constants.OBS_V3, constants.OBS):
+        fail(f"the foot contacts {constants.FOOT} are not appended at the end of the 136 inputs")
+    if "FootContacts" not in io:
+        fail("SlapBrainIO.cpp has no FootContacts (BRAIN_IO 136-139)")
+    if "footContacts" not in js:
+        fail("Web/sim.js has no footContacts (BRAIN_IO 136-139)")
+    if abs(constants.LPF_ALPHA - (1.0 - math.exp(-2.0 * math.pi * constants.LPF_HZ / constants.CONTROL_HZ))) > 1e-12:
+        fail(f"LPF_ALPHA {constants.LPF_ALPHA} is not 1 - exp(-2 pi LPF_HZ / CONTROL_HZ)")
+    if not FAILURES:
+        print(f"  [PASS] C++ NumObs {c_n:g}, browser OBS {j_n:g} (interface {constants.interface_of(constants.OBS)}: "
+              f"foot contacts {constants.FOOT.start}-{constants.FOOT.stop - 1}); low-pass {constants.LPF_HZ:g} Hz "
+              f"(alpha {constants.LPF_ALPHA:.6f}) from width {constants.LPF_FROM_OBS}")
 
 
 def check_rates():

@@ -27,7 +27,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, models_dir
+from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, lpf_on, models_dir
 from envs import common
 from envs.common import blown_up, contact_slots
 from levels import LEVELS
@@ -56,7 +56,7 @@ def quat_mat(q):    # (N, 4) wxyz -> (N, 3, 3), body -> world
 
 class SlapEnv:
     def __init__(self, character="grandpa", level="L0", num_envs=4096, seed=0, randomize=True):
-        if level not in ("L0", "L1", "L2", "L3"):
+        if level not in ("L0", "L1", "L2", "L3", "G1"):   # G1: envs/getup.py builds on this env
             raise NotImplementedError(f"{level}: its mechanics are added when the ladder reaches it (levels.py)")
         self.level, self.cfg, self.N, self.randomize = level, LEVELS[level], num_envs, randomize
         dev = self.device = "cuda"
@@ -114,6 +114,9 @@ class SlapEnv:
         self.con_pos, self.site_xpos, self.site_xmat = T(self.dw.contact.pos), T(self.dw.site_xpos), T(self.dw.site_xmat)
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
+        # interface 4: the heel/toe contact inputs (BRAIN_IO 136-139) and the action low-pass (its brains only)
+        self.foot_of, self.is_world = common.foot_lookup(m, [feet], dev), common.world_geoms(m, dev)
+        self.lpf = lpf_on(OBS)
         body_geoms = [g for g in range(m.ngeom) if m.body_rootid[m.geom_bodyid[g]] == m.body("pelvis").id]
         self.bad = torch.zeros(m.ngeom, dtype=torch.bool, device=dev)
         self.bad[[g for g in body_geoms if g not in feet]] = True
@@ -196,6 +199,8 @@ class SlapEnv:
         self.t_hit, self.slap_f, self.slap_r, self.com0, self.com_err = zl(), z(N, 3), z(N, 3), z(N, 2), z(N)
         self.stamina, self.neck = torch.ones(N, device=dev), torch.ones(N, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
+        self.hp, self.v_prev, self.com_ref, self.com_e = z(N, A), z(N, A), z(N, 2), z(N)   # motion style, CoM recovery
+        self.com_new = zb()
 
         self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
         self.reset(torch.ones(N, dtype=torch.bool, device=dev))
@@ -256,6 +261,8 @@ class SlapEnv:
         wp.capture_launch(self.g_kin)
         self.foot0[mask] = self.geom_xpos[mask][:, self.feet, :2]
         self.head0[mask] = self.xpos[mask][:, self.head]
+        self.com_new[mask] = True   # subtree_com is the last step's: the stance offset is read at the first step
+        self.hp[mask], self.v_prev[mask] = 0.0, 0.0
         strike = mask & (self.role == 1)
         base = self.teasy + self.reach * (self.tbase - self.teasy)   # strike curriculum: 0 easy -> 1 the real head
         self.mocap[mask, 0] = self.tpark
@@ -320,6 +327,7 @@ class SlapEnv:
             delta_stam = torch.where(effort > 0.20, -0.00016 * effort, 0.0003 * (1.0 - effort))
             self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
         tgt = torch.clamp(self.stand + torch.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)
+        tgt = common.lowpass(tgt, self.goal, self.lpf)             # interface 4: the 8 Hz low-pass, then the rate limit
         ms = self.max_step * self.stamina[:, None]                 # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
@@ -444,6 +452,15 @@ class SlapEnv:
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
         if self.physics >= 2:   # the anti-flail term (envs/locomotion.py's): the action's spread across the joints
             r = r - 0.02 * (a - a.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
+        # item 47: no joint buzzing above ~10 Hz; item 46: the CoM back over its stance spot (5 cm), every role
+        v = self.qvel[:, self.jv]
+        osc, self.hp = common.hf_oscillation(v, self.v_prev, self.hp)
+        self.v_prev = v
+        com_xy, feet_xy = self.com[:, self.pelvis, :2], self.geom_xpos[:, self.feet, :2]
+        self.com_ref = torch.where(self.com_new[:, None], com_xy - feet_xy.mean(-2), self.com_ref)
+        self.com_new[:] = False
+        com_pay, self.com_e = common.com_recovery(com_xy, feet_xy, self.com_ref)
+        r = r - osc + com_pay
         if self.cfg.get("foot_box"):   # L1 guard: feet in the box, facing the opponent (+X), head where it started
             bx, by = self.cfg["foot_box"]
             d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()
@@ -477,7 +494,8 @@ class SlapEnv:
         before = go * (-0.05 + 30.0 * (d_prev - d) + 5.0 * (phi - self.phi_prev)) + 0.04 * upright.clamp(min=0) - 0.01 * smooth \
             - 2.0 * self.pod_touch.float()   # v5: approach x3 (10 was outweighed by the podium risk: he froze)
         self.phi_prev = phi
-        r_strike = torch.where(self.struck, torch.zeros_like(r), before) + self.bonus
+        # after the touch: stick the landing, the CoM back over the stance (item 46); the buzz costs in every phase
+        r_strike = torch.where(self.struck, com_pay, before) + self.bonus - osc
         if self.ref_q is not None and self.imit > 0:   # imitation: wind-up, strike, follow-through, back to the stand
             ref = self.ref_q[self.t.clamp(max=len(self.ref_q) - 1)]
             err = (((self.qpos[:, self.jq] - ref) ** 2) * self.imit_mask).sum(-1)
@@ -542,6 +560,7 @@ class SlapEnv:
             self.mem, self.stamina[:, None], self.neck[:, None],
             self._heading(self.geom_xpos[:, self.hand] - self.xpos[:, self.pelvis], c, s),   # own palm: centre - pelvis,
             self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),                     # facing (BRAIN_IO 130-135)
+            common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4),  # heel/toe (136-139)
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

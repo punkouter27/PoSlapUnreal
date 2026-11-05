@@ -80,4 +80,24 @@ LEVELS = {
         reward_target={0: 3000.0},
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_reach=0.70)},
     ),
+    # S5 (item 45, 2026-11-04): the S3 podium course on a tilted floor, a per-world gravity tilt up to +-5 deg in pitch
+    # and roll. slope_scale ramps 0 -> 1 (train.py) while the no-fall rate holds; graduation only at the full 5 deg.
+    "S5": dict(
+        model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),
+        target_speed=(0.9, 1.3), box_dist=(1.3, 1.9), course="podium", reaction=(0.15, 0.35),
+        step_scale_start=1.0,                           # from an S3 brain: the full step
+        slope_deg=5.0, slope_scale_start=0.0,           # the tilt from 0 to +-5 deg
+        reward_target={0: 2400.0},
+        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_down=0.70, min_reach=0.70)},
+    ),
+    # G1 (item 44, 2026-11-04): get up. Each episode starts from a REAL knockdown state (getup_states.py: the moment a
+    # brain's non-sole part met the floor or the podium in the slap env under heavy slaps and shoves, qpos + qvel), the
+    # goal and the previous action taken from the body as it is (the director hands over with the last action, never a
+    # snapped pose). Up = pelvis >= 0.85 x stand height, upright >= 0.9, only the soles on floor/podium, held 1 s.
+    # Same observation (role 0: the own foot box), joint order, action map and timing as every other policy.
+    "G1": dict(
+        model="getup", roles={0: 1.0}, seconds=10.0, pushes=False,
+        reward_target={0: 250.0},
+        check={0: dict(episodes=100, min_up=0.80)},
+    ),
 }

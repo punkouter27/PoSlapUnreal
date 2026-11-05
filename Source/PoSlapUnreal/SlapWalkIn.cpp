@@ -157,7 +157,9 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 			{
 				const double Step = A.MaxStep[j] * A.Stamina;
 				const double Act = FMath::Clamp((double)A.WalkAction[j], -1.0, 1.0);
-				const double Tgt = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
+				double Raw = Target(A.Stand[j], A.Lo[j], A.Hi[j], Act);
+				if (A.WalkIn >= LpfFromObs) Raw = LowPass(Raw, A.Goal[j]);	// interface 4 walking brains: the 8 Hz low-pass first
+				const double Tgt = FMath::Clamp(Raw, A.Goal[j] - Step, A.Goal[j] + Step);
 				A.Goal[j] = 0.85 * Tgt + 0.15 * A.Goal[j];
 				A.PrevAction[j] = (float)Act;
 			}

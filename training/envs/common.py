@@ -81,3 +81,68 @@ def contact_slots(env, worlds):
     idx = torch.arange(env.con_geom.shape[0], device=env.device)
     g = env.con_geom.long()
     return idx < env.nacon[0], g[:, 0], g[:, 1], env.con_world.long().clamp(0, worlds - 1)
+
+
+# ---------------------------------------------------------------- interface 4 (DOCS/BRAIN_IO.md, 2026-11-04)
+def world_geoms(m, device):
+    """(ngeom,) True for geoms of the world body (floor, podium, the course's step): what a sole stands on."""
+    return torch.tensor([int(m.geom_bodyid[g]) == 0 for g in range(m.ngeom)], dtype=torch.bool, device=device)
+
+
+def foot_lookup(m, feet, device):
+    """(ngeom,) per geom: its slot 2 k + f for the sole box f (0 left, 1 right) of athlete k in `feet` [(l, r), ...],
+    -1 for any other geom."""
+    of = torch.full((m.ngeom,), -1, dtype=torch.long, device=device)
+    for k, pair in enumerate(feet):
+        for f, g in enumerate(pair):
+            of[int(g)] = 2 * k + f
+    return of
+
+
+def foot_contacts(env, worlds, foot_of, is_world, athletes=1):
+    """BRAIN_IO 136-139 per athlete, (worlds, athletes, 4): heel_l, toe_l, heel_r, toe_r. A contact between a sole box
+    and a world geom, its point taken into the box's frame: heel when it lies behind the box centre along the box's
+    long (local x) axis, toe at or ahead of it. The contact list is the last physics step's (as d->contact in Unreal and
+    the browser at decision time); no host sync."""
+    valid, g0, g1, w = contact_slots(env, worlds)
+    f0, f1 = foot_of[g0], foot_of[g1]
+    sole = torch.where(f0 >= 0, f0, f1)
+    other = torch.where(f0 >= 0, g1, g0)
+    on = valid & (sole >= 0) & is_world[other]
+    g = torch.where(f0 >= 0, g0, g1)
+    pos = env.con_pos[:, :3]
+    axis = env.geom_xmat[w, g][:, :, 0]                       # the box's local x axis in world coordinates
+    toe = (((pos - env.geom_xpos[w, g]) * axis).sum(-1) >= 0).long()
+    slot = w * (4 * athletes) + sole.clamp(min=0) * 2 + toe   # world, athlete, foot, heel/toe
+    out = torch.zeros(worlds * 4 * athletes, device=env.device)
+    out.scatter_reduce_(0, torch.where(on, slot, torch.zeros_like(slot)), on.float(), "amax")
+    return out.view(worlds, athletes, 4)
+
+
+def lowpass(tgt, goal, on):
+    """The interface-4 action low-pass (constants.LPF_ALPHA, before the rate limit) on rows where `on` ((rows, 1) bool,
+    or a bool): target = goal + alpha (target - goal). Rows of older brains (interface <= 3) pass through unchanged."""
+    from constants import LPF_ALPHA
+    f = goal + LPF_ALPHA * (tgt - goal)
+    return torch.where(on, f, tgt) if isinstance(on, torch.Tensor) else (f if on else tgt)
+
+
+# The motion-style terms every policy shares (AGENTS.md §3 hand-overs): training only, never an input.
+HF_BETA = (1.0 / (2 * 3.141592653589793 * 10.0)) / (1.0 / (2 * 3.141592653589793 * 10.0) + 0.02)   # 10 Hz high-pass at 50 Hz
+HF_W, HF_CAP = 0.002, 2.0          # cost per (rad/s)^2 of >10 Hz joint velocity, summed over joints, capped per step
+COM_W, COM_VAR = 0.3, 0.0025       # CoM recovery: 0.3 exp(-e^2 / (5 cm)^2), e = horizontal CoM drift from its stance spot
+
+
+def hf_oscillation(v, v_prev, hp):
+    """Item 47: the joint velocities' content above ~10 Hz, a first-order high-pass at the 50 Hz decision
+    (hp = beta (hp + v - v_prev)): cheap, one (rows, joints) state. Returns (penalty per row, new hp state); a smooth
+    swing leaves hp near 0, a joint buzzing at 15-25 Hz drives it to the swing's amplitude."""
+    hp = HF_BETA * (hp + v - v_prev)
+    return (HF_W * (hp ** 2).sum(-1)).clamp(max=HF_CAP), hp
+
+
+def com_recovery(com_xy, feet_xy, ref):
+    """Item 46: the L3 criterion (CoM back within 5 cm) as a per-step pay at every level: e = |(CoM - mid-feet) - ref|,
+    ref = the same offset at the episode's stance (each body's own lean). Returns (pay, e)."""
+    e = ((com_xy - feet_xy.mean(-2)) - ref).norm(dim=-1)
+    return COM_W * torch.exp(-e ** 2 / COM_VAR), e

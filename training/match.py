@@ -32,6 +32,7 @@ import mujoco
 import numpy as np
 
 from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, muscle_step, muscle_vmax, onnx_policy, settle_muscles
+from constants import OBS_V3, lpf_on
 from constants import (FEINT_AFTER_S, FEINT_MIN_PEAK, FEINT_PULLBACK, FEINT_REARM, FEINT_REARM_S, GAZE_GAIN, GAZE_MAX_STEP,
                        GAZE_ON, WATCH_MAX_STEP, models_dir)
 
@@ -143,6 +144,7 @@ class Side:
 
     def __init__(self, m, fp, prefix, policy):
         self.a, self.policy, self.card, self.fp, self.prefix = Athlete(m, fp, prefix), policy, card(fp), fp, prefix
+        self.a.lpf = lpf_on(getattr(policy, "n_in", OBS_V3))   # interface 4 brains only (unknown width: the shipped 136)
         self.fr0 = m.actuator_forcerange[self.a.neck].copy()
         self.fr_all = m.actuator_forcerange[self.a.act].copy()   # every motor's own force (fainting slackens them all)
         self.name = prefix.split("_")[-2] if prefix.count("_") >= 1 else prefix

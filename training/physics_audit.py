@@ -4,6 +4,9 @@
                                                                                                momentum, head kinematics)
     .venv/Scripts/python.exe physics_audit.py cost --pairing gk                                (mj_step cost v1/v2/v3, CCD flags,
                                                                                                solver options; open-loop replay)
+    .venv/Scripts/python.exe physics_audit.py tunnel --physics 3                              (the regression gate, item 29:
+                                                                                               exit 1 if a hand at the peak speed
+                                                                                               passes through a face shape)
 Matches are match.py's own (jittered exam starts), the brains as Scripts/collision_review.py --brains v2.
 """
 import argparse, json, math, os, sys, time
@@ -216,13 +219,110 @@ def cost(a):
     (HERE / "runs" / "exam_v3" / f"audit_cost_{a.pairing}.json").write_text(json.dumps(rows, indent=1))
 
 
+PEAK_MPS = 15.0     # the gate's hand speed: 1.5 x the fastest clean slap measured (~10 m/s, physics3.md); MuJoCo 3.10 has
+                    # no swept collision, so a shape is only caught if the hand lands inside it (+ margin) at some 5 ms step
+INFO_MPS = (5.0, 10.0, 20.0)   # also reported, not gated
+
+SHOT_XML = """<mujoco><option timestep="{dt}" gravity="0 0 0" integrator="implicitfast"/>
+<worldbody><geom name="face" type="{gtype}" size="{size}" pos="{pos}" quat="{quat}" contype="0" conaffinity="0"/>
+<body name="h" pos="{start}" quat="{hq}"><freejoint/>
+<geom name="hand" type="box" size="{hsize}" mass="0.5" contype="0" conaffinity="0"/></body></worldbody>
+<contact><pair geom1="hand" geom2="face" margin="{margin}" solref="{solref}" solimp="{solimp}"/></contact></mujoco>"""
+
+
+def tunnel(a):
+    """Item 29, a deterministic regression (Scripts/verify_all.ps1): the striker's hand box, shot at the defender's
+    face shapes at the 5 ms step, never passes through one without a contact.
+
+    The shapes are the model's own (every pairing's arena on this physics: the defender's head sphere and jaw capsules
+    at their stand pose, the striker's hand box and the explicit hand-face <pair> with its margin, solref and solimp,
+    or the geoms' own on physics 1/2). Shots: the palm leading (the box's thin axis along the path: the worst case),
+    along the slap's lateral swing, straight in and two diagonals, at offsets across the shape's cross-section out to
+    5 mm inside the touching distance (the strikes audit's tunnel rule); gravity off, one free body."""
+    import mujoco
+    import constants
+    os.environ["SLAP_PHYSICS"] = str(a.physics)
+    md = constants.models_dir(a.physics)
+    arenas = sorted(md.glob("*_vs_*_arena.xml"))
+    rows, fails = [], 0
+    dirs = {"lateral": (0.0, -1.0, 0.0), "straight": (1.0, 0.0, 0.0), "diag_up": (0.7, -0.7, 0.2), "diag_down": (0.7, -0.6, -0.4)}
+    f = lambda xs: " ".join(f"{x:.6g}" for x in xs)
+    for path in arenas:
+        m = mujoco.MjModel.from_xml_path(str(path))
+        d = mujoco.MjData(m)
+        mujoco.mj_forward(m, d)   # qpos0: both athletes in their stand pose at their boxes
+        gid = lambda n: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
+        hand = gid("red_hand_r")
+        hs = m.geom_size[hand]
+        for fname in ("blue_head", "blue_jaw_l", "blue_jaw_r"):
+            g = gid(fname)
+            if g < 0:
+                continue
+            pair = next((i for i in range(m.npair) if {int(m.pair_geom1[i]), int(m.pair_geom2[i])} == {hand, g}), None)
+            if pair is not None:
+                margin, solref, solimp = float(m.pair_margin[pair]), m.pair_solref[pair][:2], m.pair_solimp[pair][:5]
+            else:
+                margin, solref, solimp = float(max(m.geom_margin[hand], m.geom_margin[g])), m.geom_solref[g][:2], m.geom_solimp[g][:5]
+            sphere = m.geom_type[g] == mujoco.mjtGeom.mjGEOM_SPHERE
+            q = np.zeros(4)
+            mujoco.mju_mat2Quat(q, d.geom_xmat[g])
+            c = d.geom_xpos[g].copy()
+            half_len = 0.0 if sphere else float(m.geom_size[g][1])
+            ax = d.geom_xmat[g].reshape(3, 3)[:, 2] * half_len
+            a0, b0 = c - ax, c + ax
+            lim = float(m.geom_size[g][0]) + float(hs[2]) - 0.005   # 5 mm inside: radius + the hand's half thickness
+            for speed in (PEAK_MPS,) + INFO_MPS:
+                n_shot = n_miss = 0
+                for dv in dirs.values():
+                    u = np.array(dv) / np.linalg.norm(dv)
+                    e1 = np.cross(u, [0, 0, 1.0])
+                    e1 = e1 / np.linalg.norm(e1)
+                    e2 = np.cross(u, e1)
+                    for o1 in np.linspace(-lim - half_len, lim + half_len, 7):
+                        for o2 in np.linspace(-lim, lim, 7):
+                            start = c + o1 * e1 + o2 * e2 - u * 0.30
+                            if seg_seg(start, start + u * 0.60, a0, b0, n=60) > lim:
+                                continue   # the path never comes 5 mm inside the touching distance
+                            hq = np.zeros(4)
+                            mujoco.mju_quatZ2Vec(hq, -u)   # the palm (the box's -z) leads
+                            xml = SHOT_XML.format(dt=m.opt.timestep, gtype="sphere" if sphere else "capsule",
+                                                  size=f(m.geom_size[g][:1 if sphere else 2]), pos=f(c), quat=f(q), start=f(start),
+                                                  hq=f(hq), hsize=f(hs), margin=f"{margin:.6g}", solref=f(solref), solimp=f(solimp))
+                            tm = mujoco.MjModel.from_xml_string(xml)
+                            td = mujoco.MjData(tm)
+                            td.qvel[:3] = u * speed
+                            touched = False
+                            for _ in range(int(0.60 / (speed * tm.opt.timestep)) + 4):
+                                mujoco.mj_step(tm, td)
+                                if td.ncon:
+                                    touched = True
+                                    break
+                            n_shot += 1
+                            n_miss += not touched
+                gated = speed == PEAK_MPS
+                fails += n_miss if gated else 0
+                rows.append(dict(arena=path.stem, face=fname.replace("blue_", ""), mps=speed, shots=n_shot, tunnelled=n_miss, gated=gated))
+    for r in rows:
+        if r["gated"] or r["tunnelled"]:
+            tag = ("FAIL" if r["tunnelled"] else "PASS") if r["gated"] else "info"
+            print(f"  [{tag}] physics {a.physics} {r['arena']} {r['face']}: {r['mps']:g} m/s, {r['tunnelled']} of {r['shots']} shots passed through")
+    total = sum(r["shots"] for r in rows if r["gated"])
+    (HERE / "runs" / "exam_v3").mkdir(parents=True, exist_ok=True)
+    (HERE / "runs" / "exam_v3" / f"audit_tunnel_p{a.physics}.json").write_text(json.dumps(rows, indent=1))
+    print(f"tunnel gate, physics {a.physics}: {total} palm-first shots at {PEAK_MPS:g} m/s on {len(arenas)} arenas' face shapes, "
+          f"{fails} passed through -> {'FAIL' if fails else 'PASS'}")
+    return 1 if fails else 0
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("strikes", "cost"))
+    ap.add_argument("cmd", choices=("strikes", "cost", "tunnel"))
     ap.add_argument("--physics", type=int, default=3)
     ap.add_argument("--pairing", default="gk", choices=list(PAIR))
     ap.add_argument("--matches", type=int, default=6)
     ap.add_argument("--workers", type=int, default=6)
     a = ap.parse_args()
     (HERE / "runs" / "exam_v3").mkdir(parents=True, exist_ok=True)
+    if a.cmd == "tunnel":
+        sys.exit(tunnel(a))
     strikes(a) if a.cmd == "strikes" else cost(a)

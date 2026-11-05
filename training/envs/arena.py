@@ -19,7 +19,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP, models_dir
+from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP, lpf_on, models_dir
 from envs import common
 from envs.common import blown_up, contact_slots
 from envs.slap import DECIM, WAIT, hill, quat_mat
@@ -176,6 +176,14 @@ class ArenaEnv:
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
         self.hand_seen = z(W, REACT + 1, 2, 3)   # both right hands, oldest first: the defender sees [:, 0] (0.12 s late)
+        # interface 4: heel/toe contacts (BRAIN_IO 136-139) and the action low-pass, per agent row (a frozen opponent
+        # of an older interface keeps its own rule: VsFrozen clears its rows)
+        self.foot_of = common.foot_lookup(m, self.feet.tolist(), dev)
+        self.is_world = common.world_geoms(m, dev)
+        self.lpf = torch.full((N, 1), lpf_on(OBS), dtype=torch.bool, device=dev)
+        self.obs_w = OBS   # the learner's width (VsFrozen slices the opponent's rows to its own)
+        self.hp, self.v_prev = z(N, A), z(N, A)                     # item 47: the >10 Hz joint-velocity state
+        self.com_ref, self.com_new = z(W, 2, 2), torch.zeros(W, dtype=torch.bool, device=dev)   # item 46
 
         # The eye-contact servo (match.py gaze_desire/gaze_walk/gaze_apply/strike_hold, ported to the batch):
         # each athlete keeps a WORLD-space gaze bias that walks toward the opponent's eye line; the driven
@@ -256,6 +264,8 @@ class ArenaEnv:
         self.phi_prev[mask] = self._palm_phi(hs[0], ht[1])[mask]
         self.com_err[mask] = 0.0
         self.disp_peak[mask] = 0.0
+        self.com_new[mask] = True   # the stance CoM offset is read at the first step (subtree_com is the last step's)
+        self.hp[am], self.v_prev[am] = 0.0, 0.0
         # the gaze bias starts on the eye line (match.py: the bias is reseeded at every turn start)
         eye = self._gaze_desire()
         self.wbias[mask] = eye[mask]
@@ -327,6 +337,7 @@ class ArenaEnv:
             self.stamina = (self.stamina + delta_stam).clamp(MIN_STAMINA, 1.0)
         st, lo, hi = self.stand_n, self.lo_n, self.hi_n
         tgt = torch.clamp(st + torch.where(a > 0, a * (hi - st), a * (st - lo)), lo, hi)
+        tgt = common.lowpass(tgt, self.goal, self.lpf)          # interface 4 rows: the 8 Hz low-pass, then the rate limit
         ms = self.ms_n * self.stamina.reshape(-1, 1)          # fatigue: a tired athlete moves slower
         tgt = torch.max(torch.min(tgt, self.goal + ms), self.goal - ms)
         old, self.goal = self.goal, tgt
@@ -474,6 +485,16 @@ class ArenaEnv:
         r = 1.0 + 0.5 * upright.clamp(min=0) + 0.5 * height + 0.3 * posture - 0.01 * smooth - 0.002 * jerk
         if self.physics >= 2:   # the anti-flail term (envs/locomotion.py's): the action's spread across the joints
             r = r - 0.02 * (a2 - a2.mean(dim=-1, keepdim=True)).pow(2).mean(dim=-1)
+        # item 47: no joint buzzing above ~10 Hz; item 46: each CoM back over its stance spot (5 cm)
+        v = torch.stack([self.qvel[:, self.jv[k]] for k in range(2)], 1).reshape(self.N, -1)
+        osc, self.hp = common.hf_oscillation(v, self.v_prev, self.hp)
+        self.v_prev = v
+        osc = osc.view(W, 2)
+        com_xy, feet_xy = self.com[:, self.pelvis, :2], self.geom_xpos[:, self.feet, :2]     # (W, 2, 2), (W, 2, 2, 2)
+        self.com_ref = torch.where(self.com_new[:, None, None], com_xy - feet_xy.mean(-2), self.com_ref)
+        self.com_new[:] = False
+        com_pay, _ = common.com_recovery(com_xy, feet_xy, self.com_ref)                       # (W, 2)
+        r = r - osc + com_pay
         bx, by = self.cfg["foot_box"]
         d = (self.geom_xpos[:, self.feet, :2] - self.foot0).abs()                       # (W, 2, 2 feet, 2)
         out = (d[..., 0] > bx).any(-1) | (d[..., 1] > by).any(-1)
@@ -509,12 +530,12 @@ class ArenaEnv:
         # stick the landing (user 2026-10-25: "focus on not falling down after slapping"): after the touch the
         # striker earns for REMAINING UPRIGHT through the recovery window - flat zeros gave no signal to ride
         # out the recoil HE triggers (0.5/step ~ the value of the hit itself over a calm 5 s recovery)
-        land = 0.5 * su.clamp(min=0)
+        land = 0.5 * su.clamp(min=0) + self._sd(com_pay)[0]   # + his CoM back over his stance (item 46)
         # ...and off the podium (2026-10-29: all of grandpa_L4's 12 % exam self-falls were his belly leaning onto it
         # 0.5-2 s after the touch, still standing): from 8 cm of clearance (11.9 at stand) to touching costs up to 1/step
         gap = self._sd(self.geom_xpos[:, self.belly_g, 0])[0].abs() - self.podium_half - self.belly_r[self.striker]
         land = land - ((0.08 - gap) / 0.08).clamp(0.0, 1.0)
-        r_str = torch.where(self.struck, land, before) + self.bonus + 40.0 * ko.float()
+        r_str = torch.where(self.struck, land, before) + self.bonus + 40.0 * ko.float() - self._sd(osc)[0]
         if self.ko_reward:   # KO_DISP: the defender's displacement, paid once as its peak grows
             peak = torch.where(self.struck, torch.maximum(self.disp_peak, (self.com_err - DISP_FROM).clamp(0.0, DISP_TO - DISP_FROM)),
                                torch.zeros_like(self.disp_peak))
@@ -542,6 +563,7 @@ class ArenaEnv:
                                      torch.cat([self.hand_seen[:, 1:], hand[:, None]], 1))
         self.fresh[:] = False
         rows = []
+        feet_io = common.foot_contacts(self, W, self.foot_of, self.is_world, athletes=2)   # (W, 2, 4): BRAIN_IO 136-139
         for k in range(2):
             rq, rv = self.rq[k], self.rv[k]
             R = quat_mat(q[:, rq + 3:rq + 7])
@@ -564,6 +586,7 @@ class ArenaEnv:
                                                    # right hand (striker: 0, as L2/L3 trained)
                 self.mem[:, 1 - k], self.stamina[:, k:k + 1], self.neck[:, k:k + 1],
                 hd(hand[:, k] - pel), hd(-self.geom_xmat[:, self.hand_g[k]][:, :, 2]),   # own palm: centre, facing (130-135)
+                feet_io[:, k],                                                            # heel/toe contacts (136-139)
             ], -1))
         obs = torch.stack(rows, 1).reshape(self.N, -1)   # (2W, 108 + 10): memory history goes in below
         cur = obs[:, 102:108]
@@ -581,7 +604,7 @@ class VsFrozen:
     its mean action) the other. Grandpa vs Kim never sparred together (each L4 brain only met its double; 2026-10-24
     Grandpa's fell at 1-2 s every turn on Kim's lower podium), so the two take turns learning against each other.
     Looks like an ArenaEnv with one agent per world (the learner's rows); everything else is the arena's."""
-    _own = ("env", "side", "N", "opp", "_full")
+    _own = ("env", "side", "N", "opp", "_full", "opp_w")
 
     def __init__(self, learner, opponent, opp_ckpt, level="L4", num_envs=4096, seed=0, randomize=True, side=None):
         # side: the learner's corner (0 red, 1 blue); None = red when <learner>_vs_<opponent>_arena.xml exists
@@ -591,8 +614,13 @@ class VsFrozen:
         pair = (learner, opponent) if side == 0 else (opponent, learner)
         self.env = ArenaEnv(pair, level, num_envs, seed, randomize)
         self.side, self.N = pair.index(learner), num_envs
-        self.opp = PPO(OBS, self.env.A, 1, "cuda", PPOConfig())
+        from ppo import obs_dim_of
+        from constants import lpf_on as _lpf
+        n = obs_dim_of(str(opp_ckpt))   # the frozen brain reads its own width (a shipped 136 brain: no foot contacts)
+        self.opp = PPO(n, self.env.A, 1, "cuda", PPOConfig())
         self.opp.load(str(opp_ckpt))
+        self.env.lpf[1 - self.side::2] = _lpf(n)   # and keeps the action rule it trained with (no low-pass before 140)
+        self.opp_w = n
         self._full = self.env.observe()
 
     def __getattr__(self, k):
@@ -616,7 +644,7 @@ class VsFrozen:
     def step(self, action):
         full = torch.empty(self.env.N, self.env.A, device=self.env.device)
         full[self.side::2] = action
-        o = self._full[1 - self.side::2]
+        o = self._full[1 - self.side::2, :self.opp_w]
         full[1 - self.side::2] = self.opp.model.actor(self.opp.obs_rms.normalize(o, self.opp.cfg.obs_clip))
         obs, rew, done, timeout = self.env.step(full)
         self._full = obs

@@ -2,7 +2,9 @@
 // decide, the referee and judges are training/match.py's (Unreal's USlapController mirrors the same rules).
 // Each corner reads its own fingerprint and character card, as Unreal does for Grandpa vs Kim.
 
-export const OBS = 136;                    // DOCS/BRAIN_IO.md
+export const OBS = 140;                    // DOCS/BRAIN_IO.md, interface 4 (136 + heel/toe contacts); a brain reads its own width
+// the action low-pass (interface 4 only: brains >= LPF_FROM_OBS wide), constants.LPF_*: target = goal + alpha (target - goal)
+const LPF_HZ = 8.0, LPF_FROM_OBS = 140, LPF_ALPHA = 1 - Math.exp(-2 * Math.PI * LPF_HZ / 50);
 const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 const REACT = 6;
 const HILL_K = 0.25;                       // Hill's force-velocity curvature (brain_cpu.HILL_K)
@@ -48,6 +50,24 @@ const faintStep = (card, seed, rnd, s, i, dt) => {
   return Math.round((1 + 9 * mix(seed, rnd, s, i, 1) / 4294967296) / dt / 4) * 4;
 };
 
+// BRAIN_IO 136-139 (brain_cpu.foot_contacts): heel_l, toe_l, heel_r, toe_r - a sole box touching a world geom, the contact
+// point behind (heel) / at or ahead of (toe) the box centre along the box's local x axis; the last physics step's contacts
+export function footContacts(d, feet, bodyOf) {
+  const out = [0, 0, 0, 0], cs = d.contact, n = d.ncon;
+  for (let i = 0; i < n; i++) {
+    const c = cs.get(i), g0 = c.geom1, g1 = c.geom2;
+    const X = d.geom_xmat, G = d.geom_xpos;   // after get(): it may grow the WASM heap and detach older views
+    for (let f = 0; f < 2; f++) {
+      const g = feet[f], other = g0 === g ? g1 : g1 === g ? g0 : -1;
+      if (other < 0 || bodyOf[other] !== 0) continue;
+      const ax = (c.pos[0] - G[3 * g]) * X[9 * g] + (c.pos[1] - G[3 * g + 1]) * X[9 * g + 3] + (c.pos[2] - G[3 * g + 2]) * X[9 * g + 6];
+      out[2 * f + (ax >= 0 ? 1 : 0)] = 1;
+    }
+    c.delete();
+  }
+  return out;
+}
+
 class Athlete {
   constructor(m, fp, card, prefix, policy) {
     const id = (kind, n) => { const a = m[kind](prefix + n), i = a.id; a.delete(); return i; };
@@ -82,6 +102,8 @@ class Athlete {
     this.ankleL = this.order.indexOf("ankle_flex_l"); this.ankleR = this.order.indexOf("ankle_flex_r");
     this.shL = this.order.indexOf("shoulder_swing_l"); this.shR = this.order.indexOf("shoulder_swing_r");
     this.chest = id("body", "chest"); this.iYaw = this.order.indexOf("neck_turn");
+    this.bodyOf = Int32Array.from(m.geom_bodyid);   // world geoms (body 0): what a sole stands on (inputs 136-139)
+    this.lpf = (policy?.nIn ?? 136) >= LPF_FROM_OBS;   // the low-pass only for brains trained with it (unknown width: shipped 136)
     this.fp = fp; this.mem = [0, 0]; this.stamina = 1; this.neckStrength = 1; this.reset();
   }
   reset() { this.goal = this.standPose.slice(); this.prev = new Float32Array(this.order.length); this.hist = []; }
@@ -140,13 +162,17 @@ class Athlete {
     const H = v3(d.geom_xpos, this.hand), X = d.geom_xmat, b = 9 * this.hand;
     o.set(hd(H[0] - P[0], H[1] - P[1], H[2] - P[2]), 130);
     o.set(hd(-X[b + 2], -X[b + 5], -X[b + 8]), 133);   // own palm: the hand box's -z axis
+    o.set(this.footContacts(d), 136);
     return Float32Array.from(o);
   }
+
+  footContacts(d) { return footContacts(d, this.feet, this.bodyOf); }
 
   decide(action) {
     for (let i = 0; i < this.order.length; i++) {
       const a = clamp(action[i], -1, 1), st = this.standPose[i];
-      const t = clamp(st + (a > 0 ? a * (this.hi[i] - st) : a * (st - this.lo[i])), this.lo[i], this.hi[i]);
+      let t = clamp(st + (a > 0 ? a * (this.hi[i] - st) : a * (st - this.lo[i])), this.lo[i], this.hi[i]);
+      if (this.lpf) t = this.goal[i] + LPF_ALPHA * (t - this.goal[i]);   // interface 4: the 8 Hz low-pass, then the rate limit
       const step = this.maxStep[i] * this.stamina;   // fatigue: a tired athlete moves slower
       this.goal[i] = clamp(t, this.goal[i] - step, this.goal[i] + step);
       this.prev[i] = a;

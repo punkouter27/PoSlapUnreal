@@ -329,8 +329,10 @@ class ExportPolicy(nn.Module):
         return self.actor(x), self.critic(x)
 
 
-def export_onnx(ppo: PPO, path: str, obs_dim: int, fixed_batch: bool = False) -> None:
-    """fixed_batch: the graph takes exactly one observation, which is all the game ever gives it."""
+def export_onnx(ppo: PPO, path: str, obs_dim: int, fixed_batch: bool = False, meta: Dict | None = None) -> None:
+    """fixed_batch: the graph takes exactly one observation, which is all the game ever gives it.
+    meta: written into the model's metadata_props (the interface and physics tags, AGENTS.md section 3); the runtimes
+    key on the input width, tools read the tags."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     wrapper = ExportPolicy(ppo.model, ppo.obs_rms, ppo.cfg.obs_clip).to("cpu").eval()
     dummy = torch.zeros(1, obs_dim)
@@ -338,3 +340,10 @@ def export_onnx(ppo: PPO, path: str, obs_dim: int, fixed_batch: bool = False) ->
                       opset_version=17, dynamo=False,
                       dynamic_axes=None if fixed_batch else {"obs": {0: "batch"}, "actions": {0: "batch"}, "value": {0: "batch"}})
     ppo.model.to(ppo.device)
+    from constants import interface_of
+    tags = {"interface": interface_of(obs_dim), "obs_dim": obs_dim, **(meta or {})}
+    import onnx
+    mo = onnx.load(path)
+    for k, v in tags.items():
+        mo.metadata_props.add(key=str(k), value=str(v))
+    onnx.save(mo, path)

@@ -15,7 +15,12 @@
 namespace SlapCtl
 {
 	inline constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
-	inline constexpr int32 NumObs = 148;		// DOCS/BRAIN_IO.md (136 base + 12 extended proprioceptive foot-ground/phase floats)
+	inline constexpr int32 NumObs = 140;		// DOCS/BRAIN_IO.md, interface 4: 136 + heel/toe contact per foot (136-139); a brain reads its first NumIn
+	// the action low-pass (interface 4 only: brains >= LpfFromObs wide; training/constants.py LPF_*): before the rate limit,
+	// target = goal + alpha (target - goal), alpha = 1 - exp(-2 pi LpfHz / 50). The same maths in brain_cpu, the envs and sim.js
+	inline constexpr double LpfHz = 8.0;
+	inline constexpr int32 LpfFromObs = 140;
+	inline double LowPass(double Tgt, double Goal) { return Goal + (1.0 - std::exp(-2.0 * PI * LpfHz / 50.0)) * (Tgt - Goal); }
 	inline constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
 	inline constexpr double HillK = 0.25;	// Hill's force-velocity curvature (brain_cpu.HILL_K)
 	inline constexpr int32 React = 6;	// the defender sees the striker's hand 6 decisions (0.12 s) late (brain_cpu.REACT)

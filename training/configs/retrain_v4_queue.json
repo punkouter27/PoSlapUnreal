@@ -1,0 +1,135 @@
+[
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "runs/grandpa_L4_v3_night3_1103/best.pt",
+  "args": ["--physics", "3", "--critic-warmup", "20"],
+  "note": "interface 4 starts here: the v3 self-play brain (best exam 0.49, KO band missed) widened 136 -> 140 with zero weights, the 8 Hz low-pass on; the CoM-recovery and >10 Hz terms are new to the critic (warm-up 20)"
+ },
+ {
+  "level": "L2",
+  "char": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "runs/kim_L2_v3_night4_1219/latest.pt",
+  "args": ["--physics", "3", "--critic-warmup", "20", "--reach-start", "1.0"],
+  "note": "carries on the v3 Kim L2 stage the 12:29 logoff killed (~10 min in, from kim_final_vs_grandpa_v2); its curricula ride in the checkpoint"
+ },
+ {
+  "level": "L3",
+  "char": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"]
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"],
+  "note": "self-play; the KO reward is the lever (v2 sat at KO 1-6 %)"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "vs": "kim",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"],
+  "note": "mixed: against Kim's stage-4 brain (frozen)"
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "vs": "grandpa",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"],
+  "note": "mixed, the gate pairing: KO 10-40 % per strike, self-falls <= 5 %"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "vs": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"],
+  "note": "polish against the stage-6 Kim"
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "vs": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"],
+  "note": "polish against the stage-7 Grandpa"
+ },
+ {
+  "level": "L2",
+  "char": "matt",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/matt_L1.pt",
+  "args": ["--physics", "3", "--critic-warmup", "20", "--reach-start", "1.0", "--imit-start", "1.0", "--allow-config-change"],
+  "note": "Matt from his graduated L1 (physics 1 -> 3: allowed, no snapshot beside it); imitates models/v3/matt_slap_demo.json; never graduated L2 (tasks K13). His hand box is short of the card rule (L13): fix before shipping"
+ },
+ {
+  "level": "L3",
+  "char": "matt",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"]
+ },
+ {
+  "level": "L4",
+  "char": "matt",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "3"]
+ },
+ {
+  "level": "G1",
+  "char": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "@stage:7",
+  "args": ["--physics", "3", "--critic-warmup", "20"],
+  "note": "the get-up policy (item 44), from real knockdown states (models/v3/getup/grandpa_states.npz); seeded from Grandpa's stage-7 match brain (same layout: its motor habits, a fresh critic warm-up). Not carried: the match final stays the L4 brain. Graduates as grandpa_G1_v3.onnx"
+ },
+ {
+  "level": "S3",
+  "char": "grandpa",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/grandpa_S2.pt",
+  "args": ["--physics", "3", "--allow-config-change"],
+  "note": "the podium course (K12) on physics 3, from the shipped walk-in brain (physics 1 -> 3: allowed); the step curriculum from a 1 cm sill"
+ },
+ {
+  "level": "S5",
+  "char": "grandpa",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "@stage:13",
+  "args": ["--physics", "3"],
+  "note": "the slope stage (item 45): the S3 course with the floor tilt ramped 0 -> +-5 deg as the no-fall rate holds"
+ }
+]

@@ -10,7 +10,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from constants import HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT   # the shared numbers (DOCS/BRAIN_IO.md)
+from constants import HILL_K, LAGS, LPF_ALPHA, MIN_NECK, MIN_STAMINA, OBS, OBS_V3, REACT, lpf_on   # the shared numbers (DOCS/BRAIN_IO.md)
 
 HERE = Path(__file__).parent
 # OBS, LAGS, REACT, HILL_K, MIN_STAMINA and MIN_NECK live in constants.py (one source of truth for the three
@@ -99,6 +99,9 @@ class Athlete:
         self.rq, self.rv = m.jnt_qposadr[root], m.jnt_dofadr[root]
         self.pelvis = m.body(prefix + "pelvis").id
         self.hand = m.geom(prefix + "hand_r").id
+        self.feet = [m.geom(prefix + "foot_l").id, m.geom(prefix + "foot_r").id]   # the soles (heel/toe inputs 136-139)
+        self.m = m
+        self.lpf = lpf_on(OBS_V3)   # the action low-pass: off until set per brain from its width (match.py, rollout)
         self.box = m.qpos0[self.rq:self.rq + 2].copy()   # foot-box centre = start pelvis x, y
         self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
         self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
@@ -142,14 +145,37 @@ class Athlete:
         r, n = d.geom_xpos[self.hand] - d.xpos[self.pelvis], -d.geom_xmat[self.hand].reshape(3, 3)[:, 2]   # own palm: centre, facing
         o[130:133] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         o[133:136] = [c * n[0] + s * n[1], -s * n[0] + c * n[1], n[2]]
+        o[136:140] = foot_contacts(self.m, d, self.feet)
         return o.astype(np.float32)
 
     def decide(self, action):
         a = np.clip(np.asarray(action, float), -1.0, 1.0)
         t = np.clip(self.stand + np.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)   # a = +-1: the range ends
+        if self.lpf:   # interface 4: the 8 Hz first-order low-pass on the targets, before the rate limit
+            t = self.goal + LPF_ALPHA * (t - self.goal)
         step = self.max_step * self.stamina   # fatigue: a tired athlete moves slower
         self.goal = np.clip(t, self.goal - step, self.goal + step)
         self.prev = a.astype(np.float32)
+
+
+def foot_contacts(m, d, feet):
+    """BRAIN_IO 136-139: heel_l, toe_l, heel_r, toe_r. 1 when the sole box has a contact with a geom of the world body
+    (floor, podium, a step) whose point lies behind (heel) / at or ahead of (toe) the box centre along the box's local x
+    axis (its length). d.contact is the last physics step's list, as Unreal's d->contact and the browser's d.contact
+    at decision time. The same arithmetic in envs/common.foot_contacts, SlapBrainIO.cpp FootContacts, sim.js footContacts."""
+    out = [0.0, 0.0, 0.0, 0.0]
+    for i in range(d.ncon):
+        c = d.contact[i]
+        g0, g1 = int(c.geom[0]), int(c.geom[1])
+        for f, g in enumerate(feet):
+            other = g1 if g0 == g else g0 if g1 == g else -1
+            if other < 0 or m.geom_bodyid[other] != 0:
+                continue
+            X = d.geom_xmat[g]   # row-major: the box's x axis is column 0 (X[0], X[3], X[6])
+            p = d.geom_xpos[g]
+            ax = (c.pos[0] - p[0]) * X[0] + (c.pos[1] - p[1]) * X[3] + (c.pos[2] - p[2]) * X[6]
+            out[2 * f + (1 if ax >= 0 else 0)] = 1.0
+    return out
 
 
 def hill(fr, v, vmax):
@@ -201,8 +227,10 @@ def stand(m, d, fp):
 def onnx_policy(path):
     import onnxruntime as ort
     s = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    n = s.get_inputs()[0].shape[1]   # brains from before memory read the first 108 numbers
-    return lambda o: s.run(None, {"obs": o[None, :n]})[0][0]
+    n = s.get_inputs()[0].shape[1]   # brains from before memory read the first 108 numbers, interface 3 the first 136
+    f = lambda o: s.run(None, {"obs": o[None, :n]})[0][0]
+    f.n_in = n   # the interface: the low-pass applies only to brains this wide (constants.lpf_on)
+    return f
 
 
 def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, setup=None):
@@ -210,6 +238,8 @@ def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, 
     d = mujoco.MjData(m)
     stand(m, d, fp)
     ath = [Athlete(m, fp, p) for p in prefixes]
+    for a in ath:
+        a.lpf = lpf_on(getattr(policy, "n_in", OBS_V3))   # unknown width: the shipped interface
     obs = obs or (lambda a, d, k: a.obs(d))
     vmax = muscle_vmax(m, ath)
     if setup:

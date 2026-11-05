@@ -10,13 +10,16 @@ level's own exam passed by the deterministic policy. runs/<run>/: latest.pt, tel
 report.html (runs over 30 min). At start, runs older than 24 h are pruned (housekeeping).
 
 --physics 2 trains on the realism batch (models/v2/, DOCS/20261103/training_realism.md); the default is the shipped 1.
+--allow-config-change: a resume compares the card, the model and (same level) the level config with the checkpoint's
+config snapshot (item 49) and refuses on a mismatch; this flag lets a deliberate change (a new physics) through.
+Checkpoints carry their interface and physics tags (extra.interface / physics / obs_dim / config, AGENTS.md section 3).
 --supervise N (the CUDA 719 guard, tasks J10): the run is a child process; when it dies (a GPU fault kills the CUDA
 context, so it cannot be caught in-process) it is resumed from its latest.pt after the GPU cools, up to N times,
 inside the same --minutes. Checkpoints are written every 3 minutes, so a crash costs at most that.
 Every 10 iterations the telemetry carries the buffers' fill (nefc vs njmax, contacts vs naconmax, Warp's overflow
 bits), the worlds reset after a blow-up, and the GPU's temperature and clock.
 """
-import argparse, copy, json, os, shutil, socket, subprocess, sys, time
+import argparse, copy, hashlib, json, os, shutil, socket, subprocess, sys, time
 from collections import deque
 from pathlib import Path
 
@@ -25,12 +28,13 @@ import warp as wp
 from torch.utils.tensorboard import SummaryWriter
 
 from brain_cpu import LAGS, OBS, pca_projection, video
-from constants import GAZE_ON, models_dir, physics
+from constants import GAZE_ON, INTERFACE, interface_of, models_dir, physics
 from envs.common import buffer_health
 from gpuwatch import cooldown, gpu_status
 from envs.arena import ArenaEnv, Field, VsFrozen
 from envs.locomotion import LocomotionEnv
 from envs.slap import SlapEnv
+from envs.getup import GetUpEnv
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx, obs_dim_of
 
@@ -85,6 +89,55 @@ def git_sha():
         return "", False
 
 
+def _h(obj):
+    """sha256 of a JSON-able object, canonical (key order, tuples as lists, int keys as strings: what a snapshot holds)."""
+    return hashlib.sha256(json.dumps(json.loads(json.dumps(obj, default=str)), sort_keys=True).encode()).hexdigest()
+
+
+def config_hashes(char, level):
+    """Item 49: what a checkpoint was trained on, hashed: the character card, the model (the fingerprint's sha256 of the
+    solo XML, with the physics version) and the level's config."""
+    card_path = HERE / "characters" / f"{char}.json"
+    fp_path = models_dir() / f"{char}_fingerprint.json"
+    return {"character": char, "card": _h(json.loads(card_path.read_text())) if card_path.exists() else None,
+            "model": json.loads(fp_path.read_text()).get("sha256") if fp_path.exists() else None,
+            "physics": physics(), "level": level, "level_config": _h(LEVELS.get(level, {}))}
+
+
+def tags(char, level):
+    """The tags every checkpoint carries (AGENTS.md section 3): its interface, physics and the config hashes."""
+    return {"interface": INTERFACE, "physics": physics(), "obs_dim": OBS, "config": config_hashes(char, level)}
+
+
+def check_config(resume, char, level, allow):
+    """Item 49, before the policy is built: the checkpoint's config (its tags, else the config_snapshot.json beside it)
+    against this run's. A different card, model, physics or character - or the same level with a different level
+    config - is refused unless --allow-config-change. Returns the differences (written into the run's snapshot)."""
+    ck = Path(resume)
+    old = None
+    try:
+        old = torch.load(str(ck), map_location="cpu", weights_only=True).get("extra", {}).get("config")
+    except Exception:
+        pass
+    if old is None and (ck.parent / "config_snapshot.json").exists():   # checkpoints before the tags: the run's snapshot
+        snap = json.loads((ck.parent / "config_snapshot.json").read_text())
+        old = snap.get("hashes") or {"character": snap.get("character"), "card": _h(snap["card"]) if snap.get("card") else None,
+                                     "model": snap.get("fingerprint_sha256"), "physics": snap.get("physics", 1),
+                                     "level": snap.get("level"), "level_config": _h(snap.get("level_config", {}))}
+    if old is None:
+        print(f"config check: {ck} has no tags and no config snapshot beside it: unchecked")
+        return ["unchecked: no snapshot"]
+    new = config_hashes(char, level)
+    keys = ["character", "card", "model", "physics"] + (["level_config"] if old.get("level") == level else [])
+    diff = [f"{k}: {str(old.get(k))[:12]} -> {str(new.get(k))[:12]}" for k in keys if old.get(k) is not None and old.get(k) != new.get(k)]
+    if diff and not allow:
+        sys.exit(f"config check: refusing to resume {ck} - its config differs ({'; '.join(diff)}). "
+                 f"Pass --allow-config-change if the change is meant (AGENTS.md section 3: log it in DOCS first).")
+    same = "same card, model and physics" + (", same level config" if "level_config" in keys else "")
+    print(f"config check: {ck.name} vs this run: " + ("; ".join(diff) + " (allowed)" if diff else same))
+    return diff
+
+
 def write_config_snapshot(run, args):
     """The run's config snapshot (Realism 10: multi-instance runs record exactly what they train).
 
@@ -107,6 +160,9 @@ def write_config_snapshot(run, args):
         "git_dirty": dirty,
         "versions": {"python": sys.version.split()[0], "torch": torch.__version__, "mujoco": __import__("mujoco").__version__},
         "obs_dim": OBS,
+        "interface": INTERFACE,
+        "hashes": config_hashes(args.char, args.level),
+        "config_changes": getattr(args, "config_changes", []),
         "ppo": {"lr": PPOConfig().lr, "init_std": PPOConfig().init_std, "max_std": args.max_std, "entropy": args.entropy},
         "worlds": args.envs,
         "gaze_servo": GAZE_ON,
@@ -132,8 +188,9 @@ def cpu_policy(ppo):
 
     @torch.no_grad()
     def act(o):
-        x = torch.clamp((torch.from_numpy(o) - mean) / std, -clip, clip)
+        x = torch.clamp((torch.from_numpy(o[:mean.shape[0]]) - mean) / std, -clip, clip)
         return actor(x[None])[0].numpy()
+    act.n_in = int(mean.shape[0])   # brain_cpu keys the low-pass on the width
     return act
 
 
@@ -199,7 +256,8 @@ def exam(ppo, character, level):
     env = _exam_envs.get((character, level))
     loco = L.get("model") == "locomotion"
     if env is None:   # built once: a fresh env (and CUDA stream) per exam broke Warp's capture after ~30 exams
-        env = _exam_envs[(character, level)] = (LocomotionEnv if loco else SlapEnv)(character, level, num_envs=100, seed=12345)
+        cls = LocomotionEnv if loco else GetUpEnv if L.get("model") == "getup" else SlapEnv
+        env = _exam_envs[(character, level)] = cls(character, level, num_envs=100, seed=12345)
     torch.cuda.set_stream(env.stream)
     wp.set_stream(wp.stream_from_torch(env.stream))
     env.push_scale = L.get("max_push", 1.0)           # exams use the level's own bars
@@ -207,6 +265,7 @@ def exam(ppo, character, level):
     env.reach = 1.0                                     # and the real opponent's head
     env.slap_j, env.exam = float(L.get("slap_impulse", 0.0)), True
     env.step_scale = 1.0                                # the obstacle course: the full step
+    env.slope_scale = 1.0                               # and the full tilt (S5)
     for role, chk in L["check"].items():
         env.force_role = role
         env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
@@ -217,6 +276,7 @@ def exam(ppo, character, level):
         clear = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # the obstacle course: stepped up onto the step
         down = torch.zeros(env.N, dtype=torch.bool, device="cuda")   # ... stepped down off its far side
         reach = torch.zeros(env.N, dtype=torch.bool, device="cuda")  # ... and reached the last waypoint
+        up = torch.zeros(env.N, dtype=torch.bool, device="cuda")     # get-up (G1): up and held 1 s
         for _ in range(env.T):
             a = ppo.model.actor(ppo.obs_rms.normalize(obs, ppo.cfg.obs_clip))
             lb = getattr(env, "left_box", torch.zeros_like(fell)).clone()
@@ -238,6 +298,7 @@ def exam(ppo, character, level):
             left_box |= live & lb
             hit |= live & getattr(env, "done_hit", torch.zeros_like(fell))
             absorbed |= live & getattr(env, "done_absorbed", ~env.fell_now & (env.com_err <= 0.08))
+            up |= live & getattr(env, "done_up", torch.zeros_like(fell))
             seen |= done
             if bool(seen.all()):
                 break
@@ -259,6 +320,8 @@ def exam(ppo, character, level):
             r[f"{tag}_down"] = down.float().mean().item()
         if "min_reach" in chk:      # ... and got past the podium to the last waypoint, still on his feet
             r[f"{tag}_reach"] = reach.float().mean().item()
+        if "min_up" in chk:         # get-up (G1): standing on the soles alone within the 10 s
+            r[f"{tag}_up"] = up.float().mean().item()
         for k, v in r.items():
             passed &= v >= chk.get("min_" + k.split("_", 1)[1], 0.0) - 1e-6   # float32 means: 90/100 reads 0.8999999762
         res.update(r)
@@ -293,10 +356,13 @@ def main():
                          "engines need no change)")
     ap.add_argument("--physics", type=int, default=None, choices=(1, 2, 3),
                     help="the physics version's models: 1 shipped (models/), 2 the realism batch (models/v2/); default SLAP_PHYSICS or 1")
+    ap.add_argument("--allow-config-change", action="store_true",
+                    help="resume although the checkpoint's card / model / physics / level config differ (item 49)")
     ap.add_argument("--supervise", type=int, default=0, help="crash guard: resume a crashed run from latest.pt up to N times (see the docstring)")
     a = ap.parse_args()
     if a.physics is not None:   # before any env is built: every env reads its models from constants.models_dir()
         os.environ["SLAP_PHYSICS"] = str(a.physics)
+    a.config_changes = check_config(a.resume, a.char, a.level, a.allow_config_change) if a.resume else []   # before anything is written
     RUNS.mkdir(exist_ok=True)
     run_dir = RUNS / (a.run or "")
     housekeeping(keep=[run_dir] + ([Path(a.resume).parent] if a.resume else []))
@@ -314,7 +380,7 @@ def main():
     out_name = a.out or (f"{a.char}_all" if field else f"{a.char}_{a.level}{vs}")
     if physics() >= 2 and not a.out:   # a physics-2 brain never overwrites a shipped (physics 1) one in models/brains
         out_name += f"_v{physics()}"
-    env_cls = ArenaEnv if arena else (LocomotionEnv if loco else SlapEnv)
+    env_cls = ArenaEnv if arena else (LocomotionEnv if loco else GetUpEnv if LEVELS[a.level].get("model") == "getup" else SlapEnv)
     env = (Field(a.char, field, a.level, num_envs=a.envs) if field
            else VsFrozen(a.char, *opp, a.level, num_envs=a.envs) if opp else env_cls(a.char, a.level, num_envs=a.envs))
     if field:
@@ -334,6 +400,11 @@ def main():
         env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
     ppo = PPO(OBS, env.A, env.N, "cuda", PPOConfig(init_std=0.25, lr_min=1e-4, max_std=a.max_std, entropy_coef=a.entropy, group_obs=100), proj=proj)
     extra = ppo.load(a.resume, widen=True) if a.resume else {}
+    if a.resume and obs_dim_of(a.resume) < OBS:   # AGENTS.md section 3: appended inputs start with zero first-layer weights
+        n0 = obs_dim_of(a.resume)
+        z = max(float(ppo.model.actor[0].weight[:, n0:].abs().max()), float(ppo.model.critic[0].weight[:, n0:].abs().max()))
+        print(f"interface {interface_of(n0)} -> {INTERFACE}: inputs {n0}-{OBS - 1} added with zero weights (max |w| {z:g}); "
+              f"the action low-pass is on from here", flush=True)
     if a.resume:   # carry on at the rate it had reached: the 1e-3 default broke a resumed slap within minutes (2026-10-23)
         ppo.cfg.lr = float(extra.get("lr", ppo.cfg.lr_min))
     if a.resume and obs_dim_of(a.resume) == 108:   # memory inputs start with the scale of what they remember (102-107)
@@ -366,8 +437,10 @@ def main():
     env.slap_j = carry("slap_j", -1, float(L.get("slap_impulse_start", 0.0)))
     if loco:   # the obstacle course's step height (S3): from a sill to the full step as the clear rate comes
         env.step_scale = float(extra["step_scale"]) if extra.get("level") == a.level and "step_scale" in extra else float(L.get("step_scale_start", 1.0))
+        # the slope (S5, item 45): the tilt's share of slope_deg, from 0 as the no-fall rate holds
+        env.slope_scale = float(extra["slope_scale"]) if extra.get("level") == a.level and "slope_scale" in extra else float(L.get("slope_scale_start", 1.0))
     curr = lambda: {"push_scale": env.push_scale, "hit_v": env.hit_v, "reach": env.reach, "slap_j": env.slap_j, "imit": env.imit, "lr": ppo.cfg.lr,
-                    **({"step_scale": env.step_scale} if loco else {})}
+                    **({"step_scale": env.step_scale, "slope_scale": env.slope_scale} if loco else {})}
     target = L["reward_target"]
     recent = {r: deque(maxlen=100) for r in roles}
     obs, t0, steps, it, last_exam, graduated, nan = env.observe(), time.time(), 0, 0, -1e9, None, False
@@ -431,6 +504,10 @@ def main():
         if loco and "guard_clear" in m and len(recent[0]) == 100 and env.step_scale < 1.0 and m["guard_clear"] > 0.6 \
                 and m.get("guard_down", 0.0) > 0.5:   # the step grows once he climbs and comes down off the sill
             env.step_scale = min(1.0, round(env.step_scale + 0.01, 2))   # 0.05 per iteration hit the full step in 20 (smoke)
+        if loco and "slope_scale_start" in L and len(recent[0]) == 100 and env.slope_scale < 1.0 and m["guard_fall"] < 0.10:
+            env.slope_scale = min(1.0, round(env.slope_scale + 0.02, 2))   # +0.1 deg of tilt per good iteration
+        if 0 in recent and recent[0] and "up" in recent[0][0]:
+            m["getup_up"] = mean([e["up"] for e in recent[0]])
         if it % 10 == 0:   # the CUDA 719 watch: the buffers' fill, blow-ups and the GPU (one host sync per 10 iterations)
             seat = env.seats[0] if hasattr(env, "seats") else getattr(env, "env", env)
             m.update({f"buf_{k}": v for k, v in buffer_health(seat.dw).items()})
@@ -448,7 +525,7 @@ def main():
                   f"bar {env.hit_v:.2f} reach {env.reach:.2f} imit {env.imit:.2f} slap {env.slap_j:.2f} | std {stats['action_std']:.3f} lr {stats['lr']:.1e}", flush=True)
         if it % 50 == 0 or time.time() - last_save > 180:   # every 3 min at most: what a crash can cost (--supervise)
             last_save = time.time()
-            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr()})
+            ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr(), **tags(a.char, a.level)})
         if time.time() - last_video > 600:   # checkpoint video every 10 min (CPU MuJoCo, pushes off)
             last_video = time.time()
             gif = run / "videos" / f"it{it:05d}_{(time.time() - t0) / 60:04.0f}min.gif"
@@ -458,7 +535,7 @@ def main():
             and (0 not in roles or not L.get("pushes") or env.push_scale >= L.get("max_push", 1.0)) \
             and (1 not in roles or (env.hit_v >= float(L["hit_speed"]) and env.reach >= 1.0)) \
             and (-1 not in roles or env.slap_j >= float(L.get("slap_impulse", 0.0))) \
-            and (not loco or getattr(env, "step_scale", 1.0) >= 1.0)
+            and (not loco or (getattr(env, "step_scale", 1.0) >= 1.0 and getattr(env, "slope_scale", 1.0) >= 1.0))
         exam_cd = min(600, max(45, a.minutes * 10))
         if ready and time.time() - last_exam > exam_cd:   # up to 10 min of training between exams, scaled for shorter runs:
             ok, res = (field_exam(ppo, a.char, a.level, field) if field else arena_exam(ppo, a.char, a.level, opp)) if arena else exam(ppo, a.char, a.level)   # an exam takes 2-3 min (100 worlds, 30 s guard,
@@ -470,16 +547,16 @@ def main():
             score = res.get("score", min(res.values()))
             if score > best_exam:   # the best exam so far, kept for a deadline that ends before graduation
                 best_exam = score
-                ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, **curr(), "exam": res})
+                ppo.save(str(run / "best.pt"), {"steps": steps, "level": a.level, **curr(), "exam": res, **tags(a.char, a.level)})
             if ok and not graduated:
                 graduated = res
                 out = HERE / "models" / "brains" / f"{out_name}.onnx"
-                export_onnx(ppo, str(out), OBS, fixed_batch=True)
+                export_onnx(ppo, str(out), OBS, fixed_batch=True, meta={"interface": INTERFACE, "physics": physics(), "level": a.level})
                 print(f"GRADUATED -> {out}", flush=True)
                 if not a.keep_going:
                     break
 
-    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr()})
+    ppo.save(str(run / "latest.pt"), {"steps": steps, "level": a.level, **curr(), **tags(a.char, a.level)})
     minutes = (time.time() - t0) / 60
     meta = {"char": a.char, "level": a.level, "steps": steps, "iterations": it, "minutes": round(minutes, 1),
             **({k: v for k, v in m.items()} if it else {}), "graduated": graduated, "nan": nan, "exit_code": 0}

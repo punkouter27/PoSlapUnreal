@@ -38,6 +38,8 @@ function Step($Name, $Script) {
 Step "Cards, models and packaged staging" { & $Py (Join-Path $Root "training\verify_cards.py") }
 Step "The three engines agree on the shared numbers" { & $Py (Join-Path $Root "training\verify_constants.py") }
 Step "Asset naming and folder conventions" { & $Py (Join-Path $Root "Scripts\check_naming.py") }
+# item 29: a hand at 15 m/s (1.5 x the fastest slap) never passes through a face shape at the 5 ms step (physics 3)
+Step "No tunnelling: hand vs face shapes at the 5 ms step" { & $Py (Join-Path $Root "training\physics_audit.py") tunnel --physics 3 }
 
 # --- the browser engine -------------------------------------------------------------------------
 if (-not $SkipWeb) {

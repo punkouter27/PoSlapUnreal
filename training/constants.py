@@ -6,10 +6,10 @@ Changing a value here means changing it in both mirrors too, or the parity check
 the Unreal match engines event by event, and `node Web/check.mjs` runs the browser engine.
 
     constant      value        C++ mirror (Source/PoSlapUnreal)          JS mirror (Web/sim.js)
-    OBS           136          SlapController.cpp: NumObs = 148          sim.js: export const OBS = 136
-                              (136 base + 12 extended proprioception)
-    OBS_EXT       148          SlapController.cpp: NumObs = 148          sim.js: (the browser engine has no
-                                                                              extended layout: it reads OBS)
+    OBS           140          SlapControllerInternal.h: NumObs = 140    sim.js: export const OBS = 140
+                              (interface 4: 136 + heel/toe contact per foot; older brains read their first n)
+    LPF_HZ        8.0          SlapControllerInternal.h: LpfHz = 8.0     sim.js: const LPF_HZ = 8.0
+                              (the action low-pass, interface 4 only: width >= LPF_FROM_OBS = 140)
     LAGS          (5, 10, 15)  SlapController.cpp: Lags[3]                sim.js: const LAGS = [5, 10, 15]
     REACT         6            SlapController.cpp: React = 6             sim.js: const REACT = 6
     HILL_K        0.25         SlapController.cpp: HillK = 0.25          sim.js: const HILL_K = 0.25
@@ -25,11 +25,33 @@ Nothing here may change value without the two mirrors changing with it (see the 
 """
 from __future__ import annotations
 
+import math
 import os
 
-OBS = 136                       # DOCS/BRAIN_IO.md (108 before memory and fatigue, 130 before the own palm;
-                                # older brains read their first n)
-OBS_EXT = 148                   # + 12 locomotion proprioception floats (foot pos, contacts, load, gait clock)
+OBS = 140                       # DOCS/BRAIN_IO.md, interface 4 (108 before memory and fatigue, 130 before the own
+                                # palm, 136 before the foot contacts; older brains read their first n)
+OBS_V3 = 136                    # interface 3: every shipped brain (2026-11-04)
+FOOT = slice(136, 140)          # interface 4: heel_l, toe_l, heel_r, toe_r (a sole box touching a world geom;
+                                # heel = contact behind the box centre along its long axis, toe = at or ahead of it)
+INTERFACE = 4                   # the interface new checkpoints are tagged with (DOCS/20261104/policy_change_log.md)
+# (OBS_EXT = 148, an unused 12-float locomotion extension at 136-147, was retired 2026-11-04: no brain ever read it)
+
+
+def interface_of(n_in):
+    """A brain's interface from its input width: 108 -> 1, 130 -> 2, 136 -> 3, 140 -> 4."""
+    return 4 if n_in >= 140 else 3 if n_in >= 136 else 2 if n_in >= 130 else 1
+
+
+# the action low-pass (interface 4 only, item 43): a first-order filter at LPF_HZ on the joint targets, computed at
+# the 50 Hz decision: target = goal + LPF_ALPHA (mapped - goal), then the per-joint rate limit. One state (the goal),
+# identical in envs/*, brain_cpu.Athlete.decide, Web/sim.js decide and Unreal's Decide / walk-in.
+LPF_HZ = 8.0
+LPF_FROM_OBS = 140              # brains this wide (interface >= 4) were trained with it
+LPF_ALPHA = 1.0 - math.exp(-2.0 * math.pi * LPF_HZ / 50.0)   # 0.634069 at 50 Hz
+
+
+def lpf_on(n_in):
+    return n_in >= LPF_FROM_OBS
 LAGS = (5, 10, 15)              # memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago (a wind-up, a feint)
 REACT = 6                       # the defender sees the opponent's hand 6 decisions (0.12 s) late: human reaction
 HILL_K = 0.25                   # Hill's force-velocity curvature (a / F0, human muscle ~0.25): see brain_cpu.hill
@@ -82,7 +104,9 @@ def models_dir(version=None):
 
 # The mirrors, as (file, needle) so a checker can prove the three engines still agree.
 MIRRORS = {
-    "OBS": ("Source/PoSlapUnreal/SlapController.cpp", "NumObs = 148", "Web/sim.js", "export const OBS = 136"),
+    "OBS": ("Source/PoSlapUnreal/SlapControllerInternal.h", "NumObs = 140", "Web/sim.js", "export const OBS = 140"),
+    "LPF_HZ": ("Source/PoSlapUnreal/SlapControllerInternal.h", "LpfHz = 8.0", "Web/sim.js", "const LPF_HZ = 8.0"),
+    "LPF_FROM_OBS": ("Source/PoSlapUnreal/SlapControllerInternal.h", "LpfFromObs = 140", "Web/sim.js", "const LPF_FROM_OBS = 140"),
     "LAGS": ("Source/PoSlapUnreal/SlapController.cpp", "Lags[3] = { 5, 10, 15 }", "Web/sim.js", "const LAGS = [5, 10, 15]"),
     "REACT": ("Source/PoSlapUnreal/SlapController.cpp", "React = 6", "Web/sim.js", "const REACT = 6"),
     "HILL_K": ("Source/PoSlapUnreal/SlapController.cpp", "HillK = 0.25", "Web/sim.js", "const HILL_K = 0.25"),

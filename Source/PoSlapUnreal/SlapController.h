@@ -180,7 +180,7 @@ private:
 		TArray<double> Stand, Lo, Hi, Goal, Fr0;	// Fr0: the neck motors' own forcerange (lo, hi per motor)
 		TArray<float> PrevAction;
 		TSharedPtr<UE::NNE::IModelInstanceCPU> Net;
-		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130 before the own palm, 136)
+		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130 before the own palm, 136, 140 = interface 4: foot contacts + low-pass)
 		int32 NumOut = 1;
 		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
 		double Seen[7][3] = {};		// defender: the striker's hand at the last React + 1 decisions (React = 6, the .cpp)
@@ -318,6 +318,7 @@ private:
 	TArray<FMotor> HillMotors;	// every motor of both athletes, in joint order (the policy path fills it from the athletes)
 	TArray<mjtNum> FrSaved;
 	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs, const float* Cmd = nullptr) const;	// Cmd: inputs 102-107 (the walking brain's command)
+	static void FootContacts(const mjModel* m, const mjData* d, const FAthlete& A, float* Out);	// BRAIN_IO 136-139 (heel/toe per foot)
 	void WriteQposDump(const mjModel* m, const FString& RelPath);
 
 	// live matching check (-SlapRecord=<file>): record qpos for RecordSteps physics steps from the stand pose

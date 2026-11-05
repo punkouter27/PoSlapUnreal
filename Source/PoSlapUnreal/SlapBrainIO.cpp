@@ -187,7 +187,9 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		{
 			const double Step = A.MaxStep[j] * A.Stamina;	// fatigue: a tired athlete moves slower
 			const double Act = FMath::Clamp((double)A.Action[j], -1.0, 1.0);
-			A.Goal[j] = FMath::Clamp(Target(A.Stand[j], A.Lo[j], A.Hi[j], Act), A.Goal[j] - Step, A.Goal[j] + Step);
+			double Tgt = Target(A.Stand[j], A.Lo[j], A.Hi[j], Act);
+			if (A.NumIn >= LpfFromObs) Tgt = LowPass(Tgt, A.Goal[j]);	// interface 4: the 8 Hz low-pass, then the rate limit
+			A.Goal[j] = FMath::Clamp(Tgt, A.Goal[j] - Step, A.Goal[j] + Step);
 			A.PrevAction[j] = (float)Act;
 		}
 		A.Value = A.NumOut > 1 ? Value : 0.f;
@@ -385,20 +387,30 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 	Heading(Rp, O + 40 + N);
 	Heading(Palm, O + 43 + N);
 
-	// extended proprioceptive foot-ground & phase awareness (136-147): sole_l/r rel pos, contact flags, load, gait phase clock
-	if (A.NumIn >= 148 && A.Feet.Num() >= 2)
+	// interface 4 (136-139): heel/toe contact per foot. Always written; a brain reads only its own width (shipped: 136)
+	FootContacts(m, d, A, O + 46 + N);
+}
+
+void USlapController::FootContacts(const mjModel* m, const mjData* d, const FAthlete& A, float* Out)
+{
+	// brain_cpu.foot_contacts: heel_l, toe_l, heel_r, toe_r. A contact of the sole box with a world geom (body 0: floor,
+	// podium), its point behind (heel) / at or ahead of (toe) the box centre along the box's local x axis (its length).
+	// d->contact is the last physics step's list, as in training and the browser at decision time.
+	for (int32 k = 0; k < 4; ++k) Out[k] = 0.f;
+	if (A.Feet.Num() < 2) return;
+	for (int32 i = 0; i < d->ncon; ++i)
 	{
+		const mjContact& C = d->contact[i];
 		for (int32 f = 0; f < 2; ++f)
 		{
-			const double* Fp = d->geom_xpos + 3 * A.Feet[f];
-			const double Rf[3] = { Fp[0] - Pelvis[0], Fp[1] - Pelvis[1], Fp[2] - Pelvis[2] };
-			Heading(Rf, O + 46 + N + 3 * f);
-			O[52 + N + f] = Fp[2] < 0.045 ? 1.f : 0.f;
-			O[54 + N + f] = (float)FMath::Clamp((0.045 - Fp[2]) / 0.025, 0.0, 1.0);
+			const int32 G = A.Feet[f];
+			const int32 Other = C.geom[0] == G ? C.geom[1] : C.geom[1] == G ? C.geom[0] : -1;
+			if (Other < 0 || m->geom_bodyid[Other] != 0) continue;
+			const double* P = d->geom_xpos + 3 * G;
+			const double* X = d->geom_xmat + 9 * G;	// row-major: the box's x axis is column 0
+			const double Ax = (C.pos[0] - P[0]) * X[0] + (C.pos[1] - P[1]) * X[3] + (C.pos[2] - P[2]) * X[6];
+			Out[2 * f + (Ax >= 0.0 ? 1 : 0)] = 1.f;
 		}
-		const double GaitAngle = 2.0 * PI * 1.8 * d->time;
-		O[56 + N] = (float)std::sin(GaitAngle);
-		O[57 + N] = (float)std::cos(GaitAngle);
 	}
 }
 
