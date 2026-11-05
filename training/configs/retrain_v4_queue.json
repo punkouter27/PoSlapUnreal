@@ -6,8 +6,19 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "runs/grandpa_L4_v3_night3_1103/best.pt",
-  "args": ["--physics", "3", "--critic-warmup", "20"],
-  "note": "interface 4 starts here: the v3 self-play brain (best exam 0.49, KO band missed) widened 136 -> 140 with zero weights, the 8 Hz low-pass on; the CoM-recovery and >10 Hz terms are new to the critic (warm-up 20)"
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20"
+  ],
+  "note": "interface 4 starts here: the v3 self-play brain (best exam 0.49, KO band missed) widened 136 -> 140 with zero weights, the 8 Hz low-pass on; the CoM-recovery and >10 Hz terms are new to the critic (warm-up 20)",
+  "run": "grandpa_L4_v3_night1_2346",
+  "started": "2026-11-04 23:51:22",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.577500008046627
  },
  {
   "level": "L2",
@@ -16,8 +27,21 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "runs/kim_L2_v3_night4_1219/latest.pt",
-  "args": ["--physics", "3", "--critic-warmup", "20", "--reach-start", "1.0"],
-  "note": "carries on the v3 Kim L2 stage the 12:29 logoff killed (~10 min in, from kim_final_vs_grandpa_v2); its curricula ride in the checkpoint"
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0"
+  ],
+  "note": "carries on the v3 Kim L2 stage the 12:29 logoff killed (~10 min in, from kim_final_vs_grandpa_v2); its curricula ride in the checkpoint",
+  "run": "kim_L2_v3_night2_0052",
+  "started": "2026-11-05 00:52:12",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": -1.0
  },
  {
   "level": "L3",
@@ -25,7 +49,22 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"]
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "run": "kim_L3_v3_night3_0138",
+  "started": "2026-11-05 01:38:08",
+  "done": true,
+  "code": 0,
+  "graduated": {
+   "absorb_no_fall": 1.0,
+   "absorb_absorbed": 1.0,
+   "strike_no_fall": 0.9200000017881393,
+   "strike_in_box": 1.0,
+   "strike_hit": 0.8999999761581421
+  },
+  "best_exam": 0.8999999761581421
  },
  {
   "level": "L4",
@@ -33,8 +72,17 @@
   "minutes": 75,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"],
-  "note": "self-play; the KO reward is the lever (v2 sat at KO 1-6 %)"
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "self-play; the KO reward is the lever (v2 sat at KO 1-6 %)",
+  "run": "kim_L4_v3_night4_0201",
+  "started": "2026-11-05 02:01:16",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.48014997604899107
  },
  {
   "level": "L4",
@@ -43,8 +91,17 @@
   "minutes": 75,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"],
-  "note": "mixed: against Kim's stage-4 brain (frozen)"
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "mixed: against Kim's stage-4 brain (frozen)",
+  "run": "grandpa_L4_vs_kim_v3_night5_0316",
+  "started": "2026-11-05 03:16:39",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.6096999635428189
  },
  {
   "level": "L4",
@@ -53,8 +110,17 @@
   "minutes": 75,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"],
-  "note": "mixed, the gate pairing: KO 10-40 % per strike, self-falls <= 5 %"
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "mixed, the gate pairing: KO 10-40 % per strike, self-falls <= 5 %",
+  "run": "kim_L4_vs_grandpa_v3_night6_0432",
+  "started": "2026-11-05 04:32:01",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.7857000028558075
  },
  {
   "level": "L4",
@@ -63,8 +129,17 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"],
-  "note": "polish against the stage-6 Kim"
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "polish against the stage-6 Kim",
+  "run": "grandpa_L4_vs_kim_v3_night7_0547",
+  "started": "2026-11-05 05:47:20",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.7895999764740467
  },
  {
   "level": "L4",
@@ -73,8 +148,17 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"],
-  "note": "polish against the stage-7 Grandpa"
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "note": "polish against the stage-7 Grandpa",
+  "run": "kim_L4_vs_grandpa_v3_night8_0632",
+  "started": "2026-11-05 06:32:42",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": 0.7743000047624111
  },
  {
   "level": "L2",
@@ -83,8 +167,24 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "models/brains/matt_L1.pt",
-  "args": ["--physics", "3", "--critic-warmup", "20", "--reach-start", "1.0", "--imit-start", "1.0", "--allow-config-change"],
-  "note": "Matt from his graduated L1 (physics 1 -> 3: allowed, no snapshot beside it); imitates models/v3/matt_slap_demo.json; never graduated L2 (tasks K13). His hand box is short of the card rule (L13): fix before shipping"
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0",
+   "--imit-start",
+   "1.0",
+   "--allow-config-change"
+  ],
+  "note": "Matt from his graduated L1 (physics 1 -> 3: allowed, no snapshot beside it); imitates models/v3/matt_slap_demo.json; never graduated L2 (tasks K13). His hand box is short of the card rule (L13): fix before shipping",
+  "run": "matt_L2_v3_night9_0718",
+  "started": "2026-11-05 07:18:03",
+  "done": true,
+  "code": 0,
+  "graduated": null,
+  "best_exam": -1.0
  },
  {
   "level": "L3",
@@ -92,7 +192,15 @@
   "minutes": 60,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"]
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "run": "matt_L3_v3_night10_0848",
+  "started": "2026-11-05 08:48:19",
+  "done": true,
+  "skipped": "skipped 2026-11-05 09:10 (user): matt_L2 v3 landed 0 hits in 90 min (podium brace + hand box 26 % short, L13); L3/L4 from it cannot make a striker",
+  "carry": false
  },
  {
   "level": "L4",
@@ -100,7 +208,13 @@
   "minutes": 60,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "3"]
+  "args": [
+   "--physics",
+   "3"
+  ],
+  "done": true,
+  "skipped": "skipped 2026-11-05 09:10 (user): matt_L2 v3 landed 0 hits in 90 min (podium brace + hand box 26 % short, L13); L3/L4 from it cannot make a striker",
+  "carry": false
  },
  {
   "level": "G1",
@@ -109,8 +223,15 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "@stage:7",
-  "args": ["--physics", "3", "--critic-warmup", "20"],
-  "note": "the get-up policy (item 44), from real knockdown states (models/v3/getup/grandpa_states.npz); seeded from Grandpa's stage-7 match brain (same layout: its motor habits, a fresh critic warm-up). Not carried: the match final stays the L4 brain. Graduates as grandpa_G1_v3.onnx"
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20"
+  ],
+  "note": "the get-up policy (item 44), from real knockdown states (models/v3/getup/grandpa_states.npz); seeded from Grandpa's stage-7 match brain (same layout: its motor habits, a fresh critic warm-up). Not carried: the match final stays the L4 brain. Graduates as grandpa_G1_v3.onnx",
+  "run": "grandpa_G1_v3_night12_0910",
+  "started": "2026-11-05 09:10:59"
  },
  {
   "level": "S3",
@@ -119,7 +240,11 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "models/brains/grandpa_S2.pt",
-  "args": ["--physics", "3", "--allow-config-change"],
+  "args": [
+   "--physics",
+   "3",
+   "--allow-config-change"
+  ],
   "note": "the podium course (K12) on physics 3, from the shipped walk-in brain (physics 1 -> 3: allowed); the step curriculum from a 1 cm sill"
  },
  {
@@ -129,7 +254,30 @@
   "envs": 8192,
   "no_gate": true,
   "resume": "@stage:13",
-  "args": ["--physics", "3"],
+  "args": [
+   "--physics",
+   "3"
+  ],
   "note": "the slope stage (item 45): the S3 course with the floor tilt ramped 0 -> +-5 deg as the no-fall rate holds"
+ },
+ {
+  "level": "L2",
+  "char": "matt",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/matt_L1.pt",
+  "args": [
+   "--physics",
+   "3",
+   "--critic-warmup",
+   "20",
+   "--reach-start",
+   "1.0",
+   "--imit-start",
+   "1.0",
+   "--allow-config-change"
+  ],
+  "note": "Matt L2 again (2026-11-05, user): full-size hands (card stance arms -60, A10 shrinks nothing; L13) and a reference slap re-searched on that body (10/20 clean on the 20-variation check vs Grandpa 8, Kim 1). Last night's run on the shrunk body landed 0 hits in 90 min."
  }
 ]
