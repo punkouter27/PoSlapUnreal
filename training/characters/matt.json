@@ -33,11 +33,11 @@
       "ankle_roll_r": -6,
       "waist_flex": 1,
       "shoulder_swing_l": -5,
-      "shoulder_raise_l": -75,
+      "shoulder_raise_l": -60,
       "shoulder_twist_l": 0,
       "elbow_l": 20,
       "shoulder_swing_r": -5,
-      "shoulder_raise_r": -75,
+      "shoulder_raise_r": -60,
       "shoulder_twist_r": 10,
       "elbow_r": 15
     },

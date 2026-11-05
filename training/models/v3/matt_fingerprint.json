@@ -2,7 +2,7 @@
  "mujoco": "3.10.0",
  "model": "matt_solo.xml",
  "physics": 3,
- "sha256": "a1bd2190b09d5faa7271b9aaeb19d1e7c467f6483c5a7f34bd3c8ec34e67080e",
+ "sha256": "def74deb59750598a7e4ac7c84057a63549fe2f8cf3af6ba46d4b1203892d020",
  "option": {
   "timestep": 0.005,
   "integrator": 3,
@@ -295,9 +295,9 @@
   6.6000000000000005
  ],
  "stand_pose_deg": {
-  "shoulder_raise_l": -75,
+  "shoulder_raise_l": -60,
   "elbow_l": 20,
-  "shoulder_raise_r": -75,
+  "shoulder_raise_r": -60,
   "elbow_r": 15,
   "knee_l": 22,
   "knee_r": 22,
@@ -316,9 +316,9 @@
   "shoulder_twist_r": 10
  },
  "stand_pose_rad": {
-  "shoulder_raise_l": -1.3089969389957472,
+  "shoulder_raise_l": -1.0471975511965976,
   "elbow_l": 0.3490658503988659,
-  "shoulder_raise_r": -1.3089969389957472,
+  "shoulder_raise_r": -1.0471975511965976,
   "elbow_r": 0.2617993877991494,
   "knee_l": 0.3839724354387525,
   "knee_r": 0.3839724354387525,
@@ -337,21 +337,10 @@
   "shoulder_twist_r": 0.17453292519943295
  },
  "root_height_m": 0.9615765715608033,
- "geom_scale": {
-  "belly": 0.5987369392383786,
-  "forearm_l": 0.9025,
-  "forearm_r": 0.8573749999999999,
-  "upperarm_l": 0.8573749999999999,
-  "upperarm_r": 0.8573749999999999,
-  "pelvis": 0.95,
-  "hand_r": 0.6634204312890623,
-  "thigh_r": 0.6634204312890623,
-  "hand_l": 0.7737809374999999,
-  "thigh_l": 0.7737809374999999
- },
+ "geom_scale": {},
  "balance_offset_m": [
-  0.0022029326609456033,
-  4.0993390782496943e-05
+  0.002881418108302192,
+  1.0681876994217597e-06
  ],
  "drop_test_upright_s": 2.9999999999999583,
  "card": {
@@ -389,11 +378,11 @@
     "ankle_roll_r": -6,
     "waist_flex": 1,
     "shoulder_swing_l": -5,
-    "shoulder_raise_l": -75,
+    "shoulder_raise_l": -60,
     "shoulder_twist_l": 0,
     "elbow_l": 20,
     "shoulder_swing_r": -5,
-    "shoulder_raise_r": -75,
+    "shoulder_raise_r": -60,
     "shoulder_twist_r": 10,
     "elbow_r": 15
    },
