@@ -1,4 +1,5 @@
-"""Mixamo-style rigged FBX -> a PoSlap athlete (headless Blender): the 17-bone skeleton build_body.py expects.
+"""Mixamo-style or AccuRig/CC (UE5 Mannequin names) rigged FBX -> a PoSlap athlete (headless Blender): the 17-bone
+skeleton build_body.py expects. An AccuRig A-pose gets its arms straightened to Grandpa/Matt's rest (10 deg below horizontal).
 
     blender -b --factory-startup --python Scripts/rig_mixamo.py -- <in.fbx> <name> <height_m>
 
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 src, name, height = sys.argv[-3], sys.argv[-2], float(sys.argv[-1])
@@ -44,14 +45,57 @@ bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / "Content/Art/Raw" / f"{Name}_raw
 arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
 mesh = next(o for o in bpy.data.objects if o.type == "MESH")
 arm.animation_data_clear()
-arm.data.pose_position = "REST"
-src_pts = {}
-for b in arm.data.bones:
-    src_pts[b.name + ".h"] = arm.matrix_world @ b.head_local
-    src_pts[b.name + ".t"] = arm.matrix_world @ b.tail_local
+UE = "spine_01" in arm.data.bones   # Reallusion AccuRig / CC export: UE5 Mannequin names, A-pose bind
+if UE:
+    # our bone <- (head from, tail from, source anchor bones); every other source bone (twists, fingers, toes, breasts,
+    # face) joins the anchor it hangs under. Spine split by height to match Grandpa/Matt (pelvis to ~59 %, belly to ~66 %).
+    MAP = {"pelvis": ("pelvis.h", "spine_03.h", ["pelvis", "spine_01", "spine_02"]),
+           "belly": ("spine_03.h", "spine_04.h", ["spine_03"]),
+           "chest": ("spine_04.h", "neck_01.h", ["spine_04", "spine_05", "clavicle_l", "clavicle_r"]),
+           "neck": ("neck_01.h", "head.h", ["neck_01", "neck_02"]),
+           "head": ("head.h", "Head.t", ["head"])}
+    for s in "lr":
+        MAP.update({f"upperarm_{s}": (f"upperarm_{s}.h", f"lowerarm_{s}.h", [f"upperarm_{s}"]),
+                    f"forearm_{s}": (f"lowerarm_{s}.h", f"hand_{s}.h", [f"lowerarm_{s}"]),
+                    f"hand_{s}": (f"hand_{s}.h", f"hand_{s}.tip", [f"hand_{s}"]),
+                    f"thigh_{s}": (f"thigh_{s}.h", f"calf_{s}.h", [f"thigh_{s}"]),
+                    f"shin_{s}": (f"calf_{s}.h", f"foot_{s}.h", [f"calf_{s}"]),
+                    f"foot_{s}": (f"foot_{s}.h", f"foot_{s}.tip", [f"foot_{s}"])})
+    anchor = {sb: n for n in MAP for sb in MAP[n][2]}
+    for b in arm.data.bones:   # every source bone -> the first anchor up its parent chain
+        p = b
+        while p is not None and p.name not in anchor:
+            p = p.parent
+        if p is not None and b.name not in anchor:
+            MAP[anchor[p.name]][2].append(b.name)
+    # A-pose -> Grandpa/Matt's rest: each arm straight, along +-X, 10 deg below horizontal (palms turn down with it)
+    arm.data.pose_position = "POSE"
+    mi = arm.matrix_world.inverted().to_3x3()
+    for s, sx in (("l", 1.0), ("r", -1.0)):
+        target = (mi @ Vector((sx * np.cos(np.radians(10)), 0.0, -np.sin(np.radians(10))))).normalized()
+        for b, nxt in ((f"upperarm_{s}", f"lowerarm_{s}"), (f"lowerarm_{s}", f"hand_{s}"), (f"hand_{s}", f"middle_03_{s}")):
+            bpy.context.view_layer.update()
+            pb, pn = arm.pose.bones[b], arm.pose.bones[nxt]
+            h = pb.head.copy()
+            q = (pn.head - h).normalized().rotation_difference(target)
+            pb.matrix = Matrix.Translation(h) @ q.to_matrix().to_4x4() @ Matrix.Translation(-h) @ pb.matrix
+    bpy.context.view_layer.update()
+    src_pts = {}
+    for pb in arm.pose.bones:
+        src_pts[pb.name + ".h"] = arm.matrix_world @ pb.head
+        src_pts[pb.name + ".t"] = arm.matrix_world @ pb.tail
+else:
+    arm.data.pose_position = "REST"
+    src_pts = {}
+    for b in arm.data.bones:
+        src_pts[b.name + ".h"] = arm.matrix_world @ b.head_local
+        src_pts[b.name + ".t"] = arm.matrix_world @ b.tail_local
 
-# bake the bind pose into the mesh, in world space
+# bake the bind (UE: the straightened) pose into the mesh, in world space
 bpy.context.view_layer.objects.active = mesh
+if mesh.data.shape_keys:   # CC visemes/expressions: an armature can't be applied over them (cheek morphs come later)
+    print(f"dropping {len(mesh.data.shape_keys.key_blocks)} shape keys")
+    mesh.shape_key_clear()
 for md in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
     bpy.ops.object.modifier_apply(modifier=md.name)
 mw = mesh.matrix_world.copy()
@@ -62,14 +106,43 @@ mesh.select_set(True)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 bpy.data.objects.remove(arm)
 
+if UE:   # CC bone tails don't mark the fingertip or toe tip: take them from the mesh (95th pct along the limb)
+    Vw = np.array([tuple(v.co) for v in mesh.data.vertices])
+    gname = {g.index: g.name for g in mesh.vertex_groups}
+    lead = np.array([gname[max(v.groups, key=lambda g: g.weight).group] if len(v.groups) else "" for v in mesh.data.vertices])
+    for s in "lr":
+        for b, start, d in ((f"hand_{s}", src_pts[f"hand_{s}.h"], src_pts[f"middle_03_{s}.h"] - src_pts[f"hand_{s}.h"]),
+                            (f"foot_{s}", src_pts[f"ball_{s}.h"], Vector((0.0, -1.0, 0.0)))):
+            d = np.array(d.normalized())
+            sel = Vw[np.isin(lead, MAP[b][2])]
+            reach = float(np.percentile((sel - np.array(start)) @ d, 99))
+            tip = np.array(start) + reach * d
+            if b.startswith("foot"):
+                tip[2] = src_pts[f"ball_{s}.h"].z   # toe tip at ball height, as Mixamo's ToeBase end
+            src_pts[f"{b}.tip"] = Vector(tip)
+
 zs = np.array([v.co.z for v in mesh.data.vertices])
 z0, top = float(zs.min()), float(zs.max())
 k = height / (top - z0)
 for v in mesh.data.vertices:
     v.co = Vector(((v.co.x) * k, v.co.y * k, (v.co.z - z0) * k))
 P = {key: Vector((p.x * k, p.y * k, (p.z - z0) * k)) for key, p in src_pts.items()}
-P["Head.t"] = Vector((P["Head.h"].x, P["Head.h"].y, height))  # crown, not the source's helper end
+hh = P[MAP["head"][0]]
+P["Head.t"] = Vector((hh.x, hh.y, height))  # crown, not the source's helper end
 print(f"scale {k:.4f}: {top - z0:.3f} m -> {height} m")
+if UE:   # AccuRig's arm joints: one shoulder sunk into the chest, elbows at the sleeve hem (A8 asymmetric / short humerus)
+    cx = float(P["pelvis.h"].x)
+    sh = max(abs(P["upperarm_l.h"].x - cx), abs(P["upperarm_r.h"].x - cx))   # the wider shoulder = the armpit edge
+    for s, sx in (("l", 1.0), ("r", -1.0)):
+        P[f"upperarm_{s}.h"].x = cx + sx * sh
+        # elbow at 56 % shoulder -> wrist (upper arm : forearm = 0.186 : 0.146 H, Winter); the wrist stays AccuRig's
+        P[f"lowerarm_{s}.h"] = P[f"upperarm_{s}.h"].lerp(P[f"hand_{s}.h"], 0.186 / (0.186 + 0.146))
+    for key in ("foot_{}.tip",):   # toe tips mirrored: the scan's right foot turns out more than its left
+        l, r = P[key.format("l")], P[key.format("r")]
+        m = Vector(((abs(l.x - cx) + abs(r.x - cx)) / 2, (l.y + r.y) / 2, (l.z + r.z) / 2))
+        P[key.format("l")], P[key.format("r")] = Vector((cx + m.x, m.y, m.z)), Vector((cx - m.x, m.y, m.z))
+    for s in "lr":
+        print(f"  arm {s}: shoulder {tuple(round(c, 3) for c in P[f'upperarm_{s}.h'])} elbow {tuple(round(c, 3) for c in P[f'lowerarm_{s}.h'])}")
 
 # vertex groups: merge into ours, then keep 4 strongest per vertex, normalised
 groups = {g.index: g.name for g in mesh.vertex_groups}
@@ -81,6 +154,15 @@ for v in mesh.data.vertices:
         i = src_to_ours.get(groups[g.group])
         if i is not None:
             W[v.index, i] += g.weight
+if UE:   # upper arm / forearm weights re-split along the arm so the skin bends at the moved elbow (6 cm blend)
+    Vn = np.array([tuple(v.co) for v in mesh.data.vertices])
+    for s in "lr":
+        iu, i_f = ours.index(f"upperarm_{s}"), ours.index(f"forearm_{s}")
+        sh, el, wr = (np.array(P[f"{j}_{s}.h"]) for j in ("upperarm", "lowerarm", "hand"))
+        d = (wr - sh) / np.linalg.norm(wr - sh)
+        f = np.clip(((Vn - sh) @ d - (el - sh) @ d + 0.03) / 0.06, 0.0, 1.0)
+        w = W[:, iu] + W[:, i_f]
+        W[:, iu], W[:, i_f] = w * (1 - f), w * f
 W[W < np.sort(W, 1)[:, -4:-3]] = 0.0
 W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
 unweighted = int((W.sum(1) == 0).sum())
@@ -138,7 +220,7 @@ for z in np.arange(0.45, 0.93, 0.025) * height:
         slices.append({"z": round(float(z), 4), "x": [round(float(np.percentile(s[:, 0], 3)), 4), round(float(np.percentile(s[:, 0], 97)), 4)],
                        "y": [round(float(np.percentile(s[:, 1], 3)), 4), round(float(np.percentile(s[:, 1], 97)), 4)]})
 out = {"source": f"Content/Art/Exports/{Name}_rigged.fbx",
-       "frame": "blender: Z up, metres, character faces -Y, character left = +X; rest = T-pose (Mixamo-style source rig, Scripts/rig_mixamo.py)",
+       "frame": "blender: Z up, metres, character faces -Y, character left = +X; rest = " + ("arms straight 10 deg below horizontal (AccuRig/CC source rig, A-pose straightened" if UE else "T-pose (Mixamo-style source rig") + ", Scripts/rig_mixamo.py)",
        "mesh_stats": "per bone: vertices whose strongest weight (>0.5) is that bone; r_med = median distance to bone segment; x/y/z = 5th/95th percentile",
        "bones": bones, "torso_slices": slices, "torso_note": "z bands +-1.5cm, arm verts excluded, 3rd/97th percentile extents"}
 (ROOT / "training/characters" / f"{name}_skeleton.json").write_text(json.dumps(out, indent=1))

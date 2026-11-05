@@ -245,6 +245,7 @@ training, assets); reports in `DOCS/20261103/` and `SCREENSHOTS/261103_{web_pass
 - Note: `Scripts/blender_open_hands.py` is generalised to all athletes but unrun and uncommitted (assets stream stopped at the user's 15-min wrap-up)
 - [ ] L14 Android APK blocked: UE 5.8.4 was installed without its Android component (Epic Launcher -> UE 5.8 -> Options -> Android). Then package, install on the Pixel (adb authorized), play through, close F8
 - [ ] L15 Unreal not done: MetaSounds impact/friction synthesis, droplet refraction/dispersion; `Scripts/bake_maps.py` (AO/cavity on Unreal materials) written but unrun/uncommitted. Unreal fps under load: HIGH 66, epic 104, +Lumen GI 38, +Lumen reflections 37 (720x1280); desktop default stays HIGH
+- [ ] L16 Mom (4th athlete, AccuRig FBX; `DOCS/20261105/mom_onboarding.md`): rigged, card, bodies v1+v3, checks pass. L0 stopped at 69 min, not graduated (falls 56 % at push 0.84; resume from `runs/mom_L0_night1_1315/latest.pt`), then L1 -> L2 (no reference slap: the search found no clean one; her reach is short like Kim's). After: S2, L3/L4, duels, Unreal level, web GLB, Android `.bin`
 
 ## Phase M — Options 2-47, 49, 50 (user 2026-11-04 22:40)
 
