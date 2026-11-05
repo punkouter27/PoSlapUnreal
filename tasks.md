@@ -245,3 +245,18 @@ training, assets); reports in `DOCS/20261103/` and `SCREENSHOTS/261103_{web_pass
 - Note: `Scripts/blender_open_hands.py` is generalised to all athletes but unrun and uncommitted (assets stream stopped at the user's 15-min wrap-up)
 - [ ] L14 Android APK blocked: UE 5.8.4 was installed without its Android component (Epic Launcher -> UE 5.8 -> Options -> Android). Then package, install on the Pixel (adb authorized), play through, close F8
 - [ ] L15 Unreal not done: MetaSounds impact/friction synthesis, droplet refraction/dispersion; `Scripts/bake_maps.py` (AO/cavity on Unreal materials) written but unrun/uncommitted. Unreal fps under load: HIGH 66, epic 104, +Lumen GI 38, +Lumen reflections 37 (720x1280); desktop default stays HIGH
+
+## Phase M — Options 2-47, 49, 50 (user 2026-11-04 22:40)
+
+User: "do 2 3 4 5 6 7 8 9 10 11-47 49 50" of the 50-option list (features, clean, gfx/audio, UI, humanoid realism).
+Already built in Phases I/K/L (verified, not rebuilt): 5, 6, 7, 13, 18, 20-25, 27, 28, 30-35, 38, 40, 42.
+Three streams, disjoint files: browser display (`Web/app.js` etc.), Unreal display (`SlapHUD*`), training
+(brain interface, rewards, envs, `sim.js`, `SlapBrainIO.cpp`). Lead: cleanup, tasks.md, the training launch.
+
+- [ ] M1 Display features 2 (danger from neck damage), 3 (FLINCH), 4 (per-strike replay), 8 (scouting card), 9 (joint strain, TAB), 10 (crowd by impulse), 36 (clock ring), 37 (health chips), 39 (ticker) — browser + Unreal
+- [ ] M2 Clean: 11 prune (dry run 22:45: 0 runs deletable, all < 24 h or queued), 12 unused-asset report, 14 empty `Content/Developers` + `Collections` removed, 16/17 dead code + per-tick logs, 19 menu audit
+- [ ] M3 Unreal 23/28 tier check, 26 MetaSounds (stretch)
+- [ ] M4 Brain interface: 41 foot heel/toe contact bits (appended, zero-init), 43 low-pass actions keyed on the interface tag, 46 CoM recovery reward, 47 oscillation penalty; `DOCS/20261104/policy_change_log.md`
+- [ ] M5 New envs: 44 get-up (from real knockdowns) + director table spec, 45 slope stage
+- [ ] M6 Checks: 29 tunnelling regression, 49 config-snapshot validation before policy init
+- [ ] M7 Training (50): the v3 retrain queue died at 12:29 on a Windows logoff (exit 0x40010004, then 0xC000026B); Grandpa v3 L2/L3/L4 ran, none graduated (L4 exam 0.49); relaunch as `retrain_v4_queue.json` after M4-M6, resumable after logoff
