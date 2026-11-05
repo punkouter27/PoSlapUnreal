@@ -10,6 +10,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
 import { loadMatch, MATCHUPS, matchupKey } from "./loader.js";
+import { OBS } from "./sim.js";
 import { loadArena, loadAthlete, clipPush } from "./art.js";
 import { Look, TIERS } from "./fx.js";
 import { Sound } from "./audio.js";
@@ -732,7 +733,7 @@ const TABS = {
     row(...["auto", ...TIERS.slice().reverse()].map(t => btn(t === "auto" ? `Auto (${look.tier})` : t[0].toUpperCase() + t.slice(1), "gfx", look.auto ? t === "auto" : t === look.tier, t)),
       btn("Shake", "shake", look.shakeOn), btn(sound.muted ? "Sound off" : "Sound on", "sound", !sound.muted),
       btn(sound.synth ? "Audio: synth" : "Audio: samples", "audio", sound.synth), btn(replay.enabled ? "Replays on" : "Replays off", "replay", replay.enabled)),
-    el("div", "note", `${LIVE ? `Live: ${LIVE}. API on the same host: /api/match, /api/events.` : "Local match: the same rules as training/match.py."} Build ${BUILD} · OBS 136 · 200 Hz.`),
+    el("div", "note", `${LIVE ? `Live: ${LIVE}. API on the same host: /api/match, /api/events.` : "Local match: the same rules as training/match.py."} Build ${BUILD} · OBS ${OBS} · 200 Hz.`),
   ],
 };
 function renderSheet() {

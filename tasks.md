@@ -253,10 +253,14 @@ Already built in Phases I/K/L (verified, not rebuilt): 5, 6, 7, 13, 18, 20-25, 2
 Three streams, disjoint files: browser display (`Web/app.js` etc.), Unreal display (`SlapHUD*`), training
 (brain interface, rewards, envs, `sim.js`, `SlapBrainIO.cpp`). Lead: cleanup, tasks.md, the training launch.
 
-- [ ] M1 Display features 2 (danger from neck damage), 3 (FLINCH), 4 (per-strike replay), 8 (scouting card), 9 (joint strain, TAB), 10 (crowd by impulse), 36 (clock ring), 37 (health chips), 39 (ticker) — browser + Unreal
-- [ ] M2 Clean: 11 prune (dry run 22:45: 0 runs deletable, all < 24 h or queued), 12 unused-asset report, 14 empty `Content/Developers` + `Collections` removed, 16/17 dead code + per-tick logs, 19 menu audit
-- [ ] M3 Unreal 23/28 tier check, 26 MetaSounds (stretch)
-- [ ] M4 Brain interface: 41 foot heel/toe contact bits (appended, zero-init), 43 low-pass actions keyed on the interface tag, 46 CoM recovery reward, 47 oscillation penalty; `DOCS/20261104/policy_change_log.md`
-- [ ] M5 New envs: 44 get-up (from real knockdowns) + director table spec, 45 slope stage
-- [ ] M6 Checks: 29 tunnelling regression, 49 config-snapshot validation before policy init
+- [x] M1 Display features 2 (danger from neck damage), 3 (FLINCH), 4 (per-strike replay), 8 (scouting card), 9 (joint strain, TAB), 10 (crowd by impulse), 36 (clock ring), 37 (health chips), 39 (ticker) — browser + Unreal
+- [x] M2 Clean: 11 prune (dry run 22:45: 0 runs deletable, all < 24 h or queued), 12 unused-asset report, 14 empty `Content/Developers` + `Collections` removed, 16/17 dead code + per-tick logs, 19 menu audit
+- [x] M3 Unreal 23/28 tier check, 26 MetaSounds (stretch)
+- [x] M4 Brain interface: 41 foot heel/toe contact bits (appended, zero-init), 43 low-pass actions keyed on the interface tag, 46 CoM recovery reward, 47 oscillation penalty; `DOCS/20261104/policy_change_log.md`
+- [~] M5 New envs: 44 get-up (from real knockdowns) + director table spec, 45 slope stage — envs in (`envs/getup.py` G1, level S5, `DOCS/20261104/director_transitions.md`); a 4-min G1 smoke gets up from ~1 % of knockdowns; runtime switching waits for a graduated get-up brain
+- [x] M6 Checks: 29 tunnelling regression, 49 config-snapshot validation before policy init
 - [ ] M7 Training (50): the v3 retrain queue died at 12:29 on a Windows logoff (exit 0x40010004, then 0xC000026B); Grandpa v3 L2/L3/L4 ran, none graduated (L4 exam 0.49); relaunch as `retrain_v4_queue.json` after M4-M6, resumable after logoff (user 2026-11-04: yes to a Task Scheduler "at logon" restart)
+- Results: browser `8156bf2` (report `SCREENSHOTS/261104_display_pass_web/`), training `b3fd4ac` (interface 4 = 140 inputs, `DOCS/20261104/policy_change_log.md`), Unreal in `96be31b` + `1032edb` (the lead's commit swept the Unreal stream's staged files; report `SCREENSHOTS/261104_display_pass_unreal/`). Unreal HIGH had silently been LOW (an auto step-down saved scalability 0 to GameUserSettings.ini): fixed. Contact shadows were off at HIGH: fixed. `MS_ImpactSynth` MetaSound built headlessly (not listened to).
+- Unused assets (`Scripts/unused_assets.py` -> `DOCS/20261104/unused_assets.json`): 25 of 188 unreferenced, but brains and per-character breath/grunt sounds are loaded by name; truly orphaned: the `Arena_Mobile` textures (~3.6 MB) since the phone plays the full arena. Nothing deleted.
+- Open: `match.py compare` gk FAILS (knockdown t 0.9 blue belly) on the old code too — find before any v4 brain ships. `-SlapLayoutTest` 3 fails (tale-of-the-tape card on the centre), predates this pass. Default `L_Arena` grandpa_L4 knocks itself down ~2.3 s into each turn. Menu cut proposals in the Unreal report. Relay `/api/match` danger still head snap/12. Task Scheduler: only the at-logon task registered (S4U / start-up need admin: `training\queue_task.ps1 -S4U -AtStartup` from an elevated shell).
+

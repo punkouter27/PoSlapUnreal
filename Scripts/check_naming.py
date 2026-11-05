@@ -33,7 +33,7 @@ FOLDER_PREFIX = {
 }
 
 # The audio bank's own prefixes: sounds, reverb, ambiences.
-AUDIO_PREFIX = ("S_", "RV_", "AM_", "M_")
+AUDIO_PREFIX = ("S_", "RV_", "AM_", "M_", "MS_")   # MS_ = MetaSound Source (MS_ImpactSynth, 2026-11-04)
 
 # Content top-level folders, and where each one belongs.
 FOLDER_OWNER = {
