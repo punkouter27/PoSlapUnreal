@@ -13,9 +13,9 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
-COLORS = {"grandpa": "#2a78d6", "kim": "#eb6834", "matt": "#1baf7a"}          # categorical slots 1-3 (validated)
+COLORS = {"grandpa": "#2a78d6", "kim": "#eb6834", "matt": "#1baf7a", "mom": "#eda100"}        # categorical slots 1-3 (validated)
 SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
-PRETTY = {"grandpa": "Grandpa", "kim": "Kim", "matt": "Matt"}
+PRETTY = {"grandpa": "Grandpa", "kim": "Kim", "matt": "Matt", "mom": "Mom"}
 
 
 def read_jsonl(p):
