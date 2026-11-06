@@ -23,5 +23,10 @@
   "name": "MATT",
   "card": "matt",
   "brain": "models/brains/matt_final.onnx"
+ },
+ {
+  "name": "MOM",
+  "card": "mom",
+  "brain": "models/brains/mom_final.onnx"
  }
 ]
