@@ -93,7 +93,7 @@ key. `node Web/api_check.mjs` proves all of it.
 
 1. **URLab** (not in git): `git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab`,
    then `git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch` (MuJoCo pinned to 3.10.0 + UE 5.8 fixes).
-2. **URLab natives**: `third_party/build_all.ps1`. If CoACD fails with "file RENAME failed … Access is denied" (antivirus on the
+2. **URLab natives**: `build_all.ps1` run from inside `Plugins/UnrealRoboticsLab/third_party` (or `Scripts/setup_urlab.ps1` does steps 1–2). If CoACD fails with "file RENAME failed … Access is denied" (antivirus on the
    Boost extract), configure CoACD by hand with `-DFETCHCONTENT_SOURCE_DIR_BOOST=<extracted boost dir>` and quote every `-D…` argument.
 3. **Python**: `uv venv training/.venv --python 3.11`, `uv pip install -r training/requirements.txt` (+ torch cu128, trimesh scipy networkx Pillow for URLab's importer).
 4. **Body**: `training/.venv/Scripts/python.exe training/build_body.py training/characters/grandpa.json`.

@@ -40,7 +40,7 @@ git submodule update --init --recursive
 git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
 
 # Build URLab native libraries (MuJoCo, CoACD, ZMQ)
-powershell -ExecutionPolicy Bypass -File Plugins/UnrealRoboticsLab/third_party/build_all.ps1
+Push-Location Plugins/UnrealRoboticsLab/third_party; powershell -ExecutionPolicy Bypass -File .\build_all.ps1; Pop-Location   # must run from its own folder (or use Scripts/setup_urlab.ps1)
 
 # Set up Python training virtual environment
 uv venv training/.venv --python 3.11

@@ -40,7 +40,8 @@ First-time setup (from repo root):
 git clone --recurse-submodules https://github.com/URLab-Sim/UnrealRoboticsLab Plugins/UnrealRoboticsLab   # not tracked here
 git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
 git -C Plugins/UnrealRoboticsLab submodule update --recursive   # the patch moves MuJoCo's gitlink to 3.10.0
-powershell -ExecutionPolicy Bypass -File Plugins/UnrealRoboticsLab/third_party/build_all.ps1   # MuJoCo, CoACD, ZMQ
+Push-Location Plugins/UnrealRoboticsLab/third_party; powershell -ExecutionPolicy Bypass -File .\build_all.ps1; Pop-Location   # MuJoCo, CoACD, ZMQ; must run from its own folder
+# or all of the above in one go: powershell -ExecutionPolicy Bypass -File Scripts/setup_urlab.ps1
 uv venv training/.venv --python 3.11; uv pip install --python training/.venv -r training/requirements.txt   # + torch cu128, trimesh scipy networkx Pillow
 git lfs pull   # brains and Web/assets/*.glb
 ```
