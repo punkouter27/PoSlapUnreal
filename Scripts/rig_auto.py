@@ -28,6 +28,17 @@ ARM_DOWN = math.radians(10)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
 mesh = next(o for o in bpy.data.objects if o.type == "MESH")
+# a model that arrives with its own rig (Tong.glb, 2026-11-09: an AI auto-rig, 19 bones named hips/spine/upperarm.L...):
+# its skin is dropped and the model rigged from scratch like an unrigged one (the mesh data is already the bind pose)
+for o in [o for o in bpy.data.objects if o.type == "ARMATURE"]:
+    for m in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
+        mesh.modifiers.remove(m)
+    if mesh.parent == o:
+        mw = mesh.matrix_world.copy()
+        mesh.parent = None
+        mesh.matrix_world = mw
+    bpy.data.objects.remove(o, do_unlink=True)
+mesh.vertex_groups.clear()
 bpy.context.view_layer.objects.active = mesh
 mesh.select_set(True)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)

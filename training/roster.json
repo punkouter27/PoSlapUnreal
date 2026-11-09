@@ -28,5 +28,10 @@
   "name": "MOM",
   "card": "mom",
   "brain": "models/brains/mom_L0_candidate.onnx"
+ },
+ {
+  "name": "TONG",
+  "card": "tong",
+  "brain": "models/brains/tong_L0_candidate.onnx"
  }
 ]

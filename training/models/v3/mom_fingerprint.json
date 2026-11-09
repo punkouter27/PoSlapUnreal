@@ -363,7 +363,7 @@
   "strike_mass": 3.08,
   "notes": "Fourth roster athlete (user, 2026-11-05: MomRigged.fbx from AccuRig, \"tough and stubborn\", 1.68 m / 80 kg). Rigged by Scripts/rig_mixamo.py's AccuRig/CC path (A-pose arms straightened to Grandpa/Matt's rest; 92 CC shape keys dropped). Toughest neck on the roster (toughness 1.2 vs Matt 1.15) and slowest to wear down (neck damage 0.03 per m/s of snap, stamina 0.03 per strike vs Grandpa's 0.04 / 0.05); a steady hitter, not a fast one (strength 0.6 like Kim, speed 0.7 between Matt 0.55 and Grandpa 0.75), a little less supple than Kim (flexibility 0.9). Strike mass scaled to body mass as for the others (3.0 kg per 78 kg). Same rules as grandpa.json otherwise.",
   "style": {
-   "summary": "Balance: square and planted - knees softly bent 15 deg, hips nearly straight over the feet (3 deg, COM +0.1 cm), hands low and in front. Slap: a short, flat chop - a moderate hip and trunk turn, a bent arm that straightens late, and almost no follow-through (she stays over her feet).",
+   "summary": "Balance: square and planted - knees softly bent 15 deg, hips nearly straight over the feet (3 deg, COM +0.1 cm), hands low. Slap: a quick upward chop - a full hip and trunk turn and a lean to make up for a short reach, the lead arm kept at her side, almost no follow-through.",
    "stance_deg": {
     "knee_l": 15,
     "knee_r": 15,
@@ -386,17 +386,17 @@
     "elbow_r": 30
    },
    "slap": {
-    "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Mom: a moderate trunk wind-up, the elbow bent through the wind-up and straightening late, a short follow-through so the belly stays off the podium (Matt's long follow-through fell, tasks.md J10).",
+    "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Mom: quick, because every athlete drifts onto the podium ~0.75 s into stand targets and her slow joints (speed 0.7) need the time; a high arm (the face is ~30 cm above her shoulder) with a full trunk/hip turn and a lean, because her reach is short like Kim's (hand 17 cm short of the face in the best static pose vs Grandpa 4, Matt 1, Kim 16); the lead arm hangs at her side (in front it hit the podium in the wind-up); short follow-through.",
     "guess_deg": {
      "waist_twist": [
-      -18,
-      18,
-      18
+      -25,
+      30,
+      30
      ],
      "waist_flex": [
       4,
-      8,
-      6
+      14,
+      10
      ],
      "waist_side": [
       0,
@@ -409,9 +409,9 @@
       -72
      ],
      "shoulder_raise_r": [
-      30,
-      24,
-      20
+      60,
+      55,
+      45
      ],
      "shoulder_twist_r": [
       -25,
@@ -434,29 +434,29 @@
       0
      ],
      "shoulder_swing_l": [
-      -10,
-      -10,
-      -10
+      0,
+      0,
+      0
      ],
      "shoulder_raise_l": [
-      -60,
-      -60,
-      -60
+      -80,
+      -80,
+      -80
      ],
      "elbow_l": [
-      30,
-      30,
-      30
+      10,
+      10,
+      10
      ],
      "hip_flex_l": [
       3,
-      5,
-      5
+      10,
+      10
      ],
      "hip_flex_r": [
       3,
-      5,
-      5
+      10,
+      10
      ],
      "knee_l": [
       15,
@@ -469,20 +469,20 @@
       20
      ],
      "hip_rot_l": [
-      -8,
-      8,
-      8
+      -10,
+      12,
+      12
      ],
      "hip_rot_r": [
-      -8,
-      8,
-      8
+      -10,
+      12,
+      12
      ]
     },
     "times_s": [
-     0.45,
-     0.3,
-     0.35
+     0.25,
+     0.18,
+     0.2
     ],
     "delays_s": {
      "hip_rot_l": 0.0,
@@ -495,7 +495,7 @@
      "elbow_r": 0.12,
      "wrist_flex_r": 0.15
     },
-    "search_sigma_deg": 12.0
+    "search_sigma_deg": 15.0
    }
   },
   "sparring": {

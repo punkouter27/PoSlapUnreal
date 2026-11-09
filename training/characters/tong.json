@@ -1,0 +1,170 @@
+{
+  "name": "tong",
+  "display": "TONG",
+  "slot": 5,
+  "mesh": "Content/Art/Exports/Tong_rigged.fbx",
+  "skeleton": "characters/tong_skeleton.json",
+  "height_m": 1.75,
+  "mass_kg": 75.0,
+  "strength": 0.65,
+  "speed": 0.9,
+  "flexibility": 1.0,
+  "toughness": 0.9,
+  "stamina_per_strike": 0.04,
+  "neck_damage_per_snap": 0.045,
+  "strike_mass": 2.88,
+  "notes": "Fifth roster athlete (user, 2026-11-09: Tong.glb, an AI-rigged baby model, \"do 1\": a full-size fighter, the baby look a costume). Rigged by Scripts/rig_glb.py (the model's own 19-bone skin kept, renamed to Mixamo, arms straightened to Grandpa's rest) then Scripts/rig_mixamo.py at 1.75 m (x2.30 from 0.761 m). Card values picked by Claude (user gave none): quick and supple (speed 0.9 between Grandpa 0.75 and Kim 0.95, flexibility 1.0 like Kim), middling power (strength 0.65), a lighter neck than the adults (toughness 0.9, neck damage 0.045) and average stamina (0.04). The scan keeps a baby's proportions at adult size: a big head and short legs, so its own balance and reach. Strike mass scaled to body mass (3.0 kg per 78 kg). Same rules as grandpa.json otherwise.",
+  "style": {
+    "summary": "Balance: square and planted, knees softly bent, hands low (Mom's stance as the start; rebalanced at build time). Slap: a quick upward chop with a full hip and trunk turn (Mom's guess as the start; re-searched for Tong's body).",
+    "stance_deg": {
+      "knee_l": 15.0,
+      "knee_r": 15.0,
+      "hip_flex_l": -6.0,
+      "hip_flex_r": -6.0,
+      "hip_abd_l": 6,
+      "hip_abd_r": 6,
+      "ankle_flex_l": 11.0,
+      "ankle_flex_r": 11.0,
+      "ankle_roll_l": -5,
+      "ankle_roll_r": -5,
+      "waist_flex": 4.0,
+      "shoulder_swing_l": -10,
+      "shoulder_raise_l": -60,
+      "shoulder_twist_l": 0,
+      "elbow_l": 30,
+      "shoulder_swing_r": -10,
+      "shoulder_raise_r": -60,
+      "shoulder_twist_r": 10,
+      "elbow_r": 30
+    },
+    "slap": {
+      "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Mom: quick, because every athlete drifts onto the podium ~0.75 s into stand targets and her slow joints (speed 0.7) need the time; a high arm (the face is ~30 cm above her shoulder) with a full trunk/hip turn and a lean, because her reach is short like Kim's (hand 17 cm short of the face in the best static pose vs Grandpa 4, Matt 1, Kim 16); the lead arm hangs at her side (in front it hit the podium in the wind-up); short follow-through.",
+      "guess_deg": {
+        "waist_twist": [
+          -25,
+          30,
+          30
+        ],
+        "waist_flex": [
+          4,
+          14,
+          10
+        ],
+        "waist_side": [
+          0,
+          2,
+          2
+        ],
+        "shoulder_swing_r": [
+          12,
+          -70,
+          -72
+        ],
+        "shoulder_raise_r": [
+          60,
+          55,
+          45
+        ],
+        "shoulder_twist_r": [
+          -25,
+          -45,
+          -42
+        ],
+        "elbow_r": [
+          85,
+          15,
+          25
+        ],
+        "wrist_flex_r": [
+          -30,
+          20,
+          10
+        ],
+        "wrist_dev_r": [
+          0,
+          0,
+          0
+        ],
+        "shoulder_swing_l": [
+          0,
+          0,
+          0
+        ],
+        "shoulder_raise_l": [
+          -80,
+          -80,
+          -80
+        ],
+        "elbow_l": [
+          10,
+          10,
+          10
+        ],
+        "hip_flex_l": [
+          3,
+          10,
+          10
+        ],
+        "hip_flex_r": [
+          3,
+          10,
+          10
+        ],
+        "knee_l": [
+          15,
+          20,
+          20
+        ],
+        "knee_r": [
+          15,
+          20,
+          20
+        ],
+        "hip_rot_l": [
+          -10,
+          12,
+          12
+        ],
+        "hip_rot_r": [
+          -10,
+          12,
+          12
+        ]
+      },
+      "times_s": [
+        0.25,
+        0.18,
+        0.2
+      ],
+      "delays_s": {
+        "hip_rot_l": 0.0,
+        "hip_rot_r": 0.0,
+        "waist_twist": 0.03,
+        "waist_flex": 0.03,
+        "shoulder_swing_r": 0.06,
+        "shoulder_raise_r": 0.06,
+        "shoulder_twist_r": 0.09,
+        "elbow_r": 0.12,
+        "wrist_flex_r": 0.15
+      },
+      "search_sigma_deg": 15.0
+    }
+  },
+  "length_ratio": {
+    "thigh": [
+      0.16,
+      0.28
+    ]
+  },
+  "length_ratio_note": "A baby scan scaled to adult height (user 2026-11-09, option 1): thigh 0.18 H against the adult 0.20-0.28. The physics body follows the mesh, so Tong's legs are short on purpose.",
+  "sparring": {
+    "head": [
+      0.8,
+      0.0,
+      0.78
+    ],
+    "shorter_max": 0.15,
+    "lean": 1.0,
+    "note": "Practice opponent: Grandpa's face from Tong's start pelvis (Mom's 0.72 m plus the 6 cm Tong's pelvis sits lower: 0.787 vs 0.847 m); up to 15 cm lower for Kim; leaning in when braced"
+  }
+}

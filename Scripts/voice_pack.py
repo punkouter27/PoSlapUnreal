@@ -42,7 +42,8 @@ SOUNDS, LEVELS, RATE = 5, 5, 32000
 
 # per card: f0 (Hz), formant scale, pressed (0..1); broadcast_audio's three plus Mom (a woman's voice, a little lower
 # and rounder than Kim's). A card missing here gets one from its height (see voice_of).
-VOICES = dict(ba.VOICES, mom=(196.0, 1.14, 0.55))
+VOICES = dict(ba.VOICES, mom=(196.0, 1.14, 0.55),
+              tong=(330.0, 1.32, 0.45))   # Tong (2026-11-09): the baby costume, a high, bright, unstrained voice
 
 
 def cards():

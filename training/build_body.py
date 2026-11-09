@@ -274,7 +274,9 @@ def validate(sk, card):
                 d = np.linalg.norm(np.array(B[n][k]) - np.array(B[r][k]) * [-1, 1, 1])
                 if d > 0.03:
                     err.append(f"{n}/{r} {k} asymmetric by {d * 100:.1f} cm")
-    for s, (lo, hi) in LENGTH_RATIO.items():
+    # a card may widen a range for a body that is not adult-proportioned on purpose (tong.json: a baby scan at adult
+    # size, thigh 0.18 H); it states why in "length_ratio_note"
+    for s, (lo, hi) in {**LENGTH_RATIO, **{k: tuple(v) for k, v in card.get("length_ratio", {}).items()}}.items():
         L = np.linalg.norm(np.array(B[s + "_l"]["tail"]) - B[s + "_l"]["head"]) / H
         if not lo <= L <= hi:
             err.append(f"{s} length {L:.3f} x height outside human range {lo}-{hi}")
