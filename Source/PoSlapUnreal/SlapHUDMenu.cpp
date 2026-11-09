@@ -65,7 +65,8 @@ namespace
 	{
 		TSharedPtr<SButton> B;
 		TSharedRef<SBox> Box = SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(FMath::Max(Width, Touch))
-			[SAssignNew(B, SButton).ButtonColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([Colour] { return FSlateColor(Colour.Get()); })).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(MoveTemp(Click))[FitLabel(T, Size, TextColour)]];
+			[SAssignNew(B, SButton).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down).PressMethod(EButtonPressMethod::DownAndUp)
+					.ButtonColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([Colour] { return FSlateColor(Colour.Get()); })).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda(MoveTemp(Click))[FitLabel(T, Size, TextColour)]];
 		if (Out) *Out = B;
 		Targets.Add(Box);
 		return Box;
@@ -76,7 +77,7 @@ namespace
 	{
 		TSharedPtr<SButton> B;
 		TSharedRef<SBox> Box = SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(Touch)
-			[SAssignNew(B, SButton).ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder")).ContentPadding(0.f)
+			[SAssignNew(B, SButton).ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder")).ContentPadding(0.f).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down)
 				.OnClicked_Lambda([Click] { Click(); return FReply::Handled(); })
 				[SNew(SBorder).Padding(FMargin(4.f, 0.f)).HAlign(HAlign_Center).VAlign(VAlign_Center).BorderImage_Lambda([IsOn] { return IsOn() ? &OnBrush() : &OffBrush(); })
 					[FitLabel(FText::FromString(Code), 15, TAttribute<FSlateColor>::CreateLambda([IsOn] { return FSlateColor(IsOn() ? White : Dim); }))]]];
@@ -99,7 +100,18 @@ namespace
 void ASlapHUD::OpenMenu(bool bOpen)
 {
 	if (bMenu != bOpen) UE_LOG(LogSlap, Log, TEXT("SlapHUD: menu %s"), bOpen ? TEXT("open") : TEXT("closed"));
-	if (bOpen && !bMenu && GetWorld()) MenuAt = GetWorld()->GetTimeSeconds();
+	if (bOpen && !bMenu && GetWorld())
+	{
+		MenuAt = GetWorld()->GetTimeSeconds();
+		if (Last.Match == 0 || !Last.Result.IsEmpty())	// over a finished match: no replay or KO crane left running behind the sheet
+		{
+			for (const TWeakObjectPtr<ASlapAthleteVisual>& V : Visual)
+				if (V.IsValid()) V->Replay(0.0, 0.0, 0.0);
+			ReplayAt = -1.0;
+			ReplayEnd = FMath::Min(ReplayEnd, MenuAt);
+			bAutoReplay = false;
+		}
+	}
 	bMenu = bOpen;
 }
 
@@ -166,6 +178,7 @@ void ASlapHUD::BuildUi()
 		}
 	}
 	LoadRatings();
+	LoadTourney();	// after the roster and the ratings: a fresh bracket is seeded from both
 
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	Ui = SNew(SOverlay)
@@ -236,7 +249,7 @@ TSharedRef<SWidget> ASlapHUD::BuildAnchors()
 				SAssignNew(Anchor[2], SBox).HeightOverride(TopBar).VAlign(VAlign_Center).Padding(FMargin(8.f, 0.f))
 				[
 					SNew(SBox).WidthOverride(Touch).HeightOverride(Touch)
-					[SAssignNew(Hit[HitMenu], SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).ToolTipText(FText::FromString(TEXT("Menu")))
+					[SAssignNew(Hit[HitMenu], SButton).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down).HAlign(HAlign_Center).VAlign(VAlign_Center).ToolTipText(FText::FromString(TEXT("Menu")))
 						.OnClicked_Lambda([Self] { if (Self.IsValid()) Self->OpenMenu(!Self->bMenu); return FReply::Handled(); })[Burger()]]
 				]
 			]
@@ -248,7 +261,9 @@ TSharedRef<SWidget> ASlapHUD::BuildAnchors()
 				{
 					if (!Self.IsValid()) return FText();
 					const FSlapHud& H = Self->Last;
-					FString T = FString::Printf(TEXT("PALM %.1f m/s  HEAD %.0f g"), H.bStruck ? H.Speed : H.HandSpeed, H.HeadG);
+					float G = (float)H.HeadG;	// the head's peak over the last ~2 s: the live value is back near 0 a moment after a slap
+					for (const float Sample : Self->HeadG) G = FMath::Max(G, Sample);
+					FString T = FString::Printf(TEXT("PALM %.1f m/s  HEAD %.0f g"), H.bStruck ? H.Speed : H.HandSpeed, G);
 					if (Self->bShowDebug) T += FString::Printf(TEXT("\nSIM %.1fs dt %.0fms x%.2f %s %s T%d %.0fms"), H.Steps * H.Timestep, H.Timestep * 1000.0, H.SlowMo, ShotName[(int32)Self->Shot], CamName[(int32)Self->CamMode], Self->TierLive, Self->WorstMs);
 					return FText::FromString(T);
 				}), 13, Dim)]]
@@ -263,7 +278,7 @@ TSharedRef<SWidget> ASlapHUD::BuildAnchors()
 				SAssignNew(GripBox, SBox).WidthOverride(120.f).HeightOverride(Touch)
 				.Visibility_Lambda([Self] { return Self.IsValid() && Self->bMenu ? EVisibility::Hidden : EVisibility::Visible; })
 				[
-					SAssignNew(Hit[HitGrip], SButton).ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder")).HAlign(HAlign_Center).VAlign(VAlign_Center)
+					SAssignNew(Hit[HitGrip], SButton).ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder")).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down).HAlign(HAlign_Center).VAlign(VAlign_Center)
 					.ToolTipText(FText::FromString(TEXT("Menu"))).OnClicked_Lambda([Self] { if (Self.IsValid()) Self->OpenMenu(!Self->bMenu); return FReply::Handled(); })
 					[SNew(SBorder).BorderImage(&GripBrush()).Padding(FMargin(18.f, 8.f))[SNew(SBox).WidthOverride(44.f).HeightOverride(4.f)[SNew(SImage).Image(&BarBrush())]]]
 				]
@@ -287,15 +302,20 @@ TSharedRef<SWidget> ASlapHUD::BuildResultCard()
 			[Label(TAttribute<FText>::CreateLambda([bKO] { return FText::FromString(bKO() ? TEXT("KNOCKOUT") : TEXT("DECISION")); }), 30,
 				TAttribute<FSlateColor>::CreateLambda([bKO] { return FSlateColor(bKO() ? FLinearColor(FColor(250, 80, 60)) : Hi); }))]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 2.f)
-			[FitLabel(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->Last.Result : FString()); }), 18, White)]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 4.f, 0.f, 10.f)
+			[FitLabel(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->ResultPlain(Self->Last) : FString()); }), 18, White)]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 4.f, 0.f, 6.f)
 			[Label(TAttribute<FText>::CreateLambda([Self]
 			{
 				if (!Self.IsValid()) return FText();
 				const FSlapHud& H = Self->Last;
-				return FText::FromString(FString::Printf(TEXT("JUDGES %d:%d  %d:%d  %d:%d     SERIES %d-%d%s%s%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
-					H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT(""), Self->EloLine.IsEmpty() ? TEXT("") : TEXT("\n"), *Self->EloLine));
+				return FText::FromString(FString::Printf(TEXT("JUDGES %d:%d  %d:%d  %d:%d     SERIES %d-%d%s"), H.Cards[0][0], H.Cards[0][1], H.Cards[1][0], H.Cards[1][1], H.Cards[2][0], H.Cards[2][1],
+					H.Wins[0], H.Wins[1], H.Draws ? *FString::Printf(TEXT(" (%d D)"), H.Draws) : TEXT("")));
 			}), 15, Dim)]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)[BuildResultStats()]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 0.f, 0.f, 6.f)	// the summary: turning point, fastest slap, landed
+			[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->SummaryText() : FString()); }), 13, White)]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 10.f)
+			[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->EloLine : FString()); }), 14, Hi)]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SHorizontalBox)
@@ -308,9 +328,44 @@ TSharedRef<SWidget> ASlapHUD::BuildResultCard()
 					return FReply::Handled();
 				}, Targets, &Hit[HitRematch], White, RedTeam)]
 				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(4.f, 0.f, 0.f, 0.f))
-				[Button(FText::FromString(TEXT("MENU")), 18, [Self] { if (Self.IsValid()) Self->OpenMenu(true); return FReply::Handled(); }, Targets, &Hit[HitResultMenu], FLinearColor::Black)]
+				[Button(FText::FromString(TEXT("OK")), 18, [Self]	// the result stands until OK: then the menu (user 2026-11-09)
+				{
+					if (!Self.IsValid()) return FReply::Handled();
+					Self->OpenMenu(true);
+					Self->Tab = Self->bTourney || Self->TourneyPend[0] >= 0 ? TabTourney : TabMatch;
+					Self->ActiveCornerSelect = 0;
+					Self->ResultAt = -1.0;
+					if (Self->Controller.IsValid()) Self->Controller->bRestand = true;	// both back on their feet behind the menu
+					return FReply::Handled();
+}, Targets, &Hit[HitResultMenu], White, FLinearColor(0.15f, 0.55f, 0.25f))]
 			]
 		];
+}
+
+TSharedRef<SWidget> ASlapHUD::BuildResultStats()
+{
+	// the match's numbers on the result card: red | what | blue, one row each
+	TWeakObjectPtr<ASlapHUD> Self(this);
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	auto Row = [&](const TCHAR* What, TFunction<FString(int32)> Value)
+	{
+		auto Side = [Self, Value](int32 a) { return TAttribute<FText>::CreateLambda([Self, Value, a] { return FText::FromString(Self.IsValid() ? Value(a) : FString()); }); };
+		Rows->AddSlot().AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.f).HAlign(HAlign_Right)[FitLabel(Side(0), 15, RedTeam)]
+			+ SHorizontalBox::Slot().FillWidth(1.3f).HAlign(HAlign_Center)[Label(FText::FromString(What), 13, Dim)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).HAlign(HAlign_Left)[FitLabel(Side(1), 15, BlueTeam)]
+		];
+	};
+	Row(TEXT(""), [Self](int32 a) { return Self->HereCard[a].IsEmpty() ? FString(a ? TEXT("BLUE") : TEXT("RED")) : Self->HereCard[a].ToUpper(); });
+	Row(TEXT("STRIKES"), [Self](int32 a) { return FString::FromInt(Self->TotalStrikes[a]); });
+	Row(TEXT("FASTEST m/s"), [Self](int32 a) { return FString::Printf(TEXT("%.1f"), Self->PeakSpeed[a]); });
+	Row(TEXT("KNOCKDOWNS"), [Self](int32 a) { return FString::FromInt(Self->Last.Downs[a]); });
+	Row(TEXT("FLINCHES"), [Self](int32 a) { return FString::FromInt(Self->Flinches[a]); });
+	Row(TEXT("STAMINA"), [Self](int32 a) { return FString::Printf(TEXT("%.0f%%"), 100.0 * StaminaLeft(Self->Last.Stamina[a])); });
+	Row(TEXT("ELO"), [Self](int32 a) { return FString::Printf(TEXT("%.0f"), Self->EloNum(Self->HereCard[a])); });
+	return SNew(SBox).WidthOverride(330.f)[Rows];	// a fixed width: in the auto-sized card the labels were cut
 }
 
 TSharedRef<SWidget> ASlapHUD::BuildSheet()
@@ -321,7 +376,7 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 	auto TabButton = [this, Self](int32 i, const TCHAR* Name)
 	{
 		return Button(FText::FromString(Name), 17, [Self, i] { if (Self.IsValid()) Self->Tab = i; return FReply::Handled(); }, Targets,
-			&Hit[i == TabMatch ? HitTabMatch : i == TabBrains ? HitTabBrains : HitTabView],
+			&Hit[i == TabMatch ? HitTabMatch : i == TabBrains ? HitTabBrains : i == TabView ? HitTabView : HitTabTourney],
 			TAttribute<FSlateColor>::CreateLambda([Self, i] { return FSlateColor(Self.IsValid() && Self->Tab == i ? Hi : Dim); }), Panel);
 	};
 	return SNew(SOverlay)
@@ -350,6 +405,7 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabMatch, TEXT("MATCH"))]
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabBrains, TEXT("BRAINS"))]
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabView, TEXT("VIEW"))]
+							+ SHorizontalBox::Slot().FillWidth(1.2f).Padding(2.f)[TabButton(TabTourney, TEXT("TOURNEY"))]
 							+ SHorizontalBox::Slot().AutoWidth().Padding(2.f)
 							[Button(FText::FromString(TEXT("X")), 18, [Self] { if (Self.IsValid()) Self->OpenMenu(false); return FReply::Handled(); }, Targets, &Hit[HitClose])]
 						]
@@ -359,6 +415,7 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 							+ SWidgetSwitcher::Slot()[BuildMatchTab()]
 							+ SWidgetSwitcher::Slot()[BuildBrainsTab()]
 							+ SWidgetSwitcher::Slot()[BuildViewTab()]
+							+ SWidgetSwitcher::Slot()[BuildTourneyTab()]
 						]
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)	// START, bottom centre: one thumb
 						[
@@ -367,8 +424,15 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 							{
 								if (!Self.IsValid()) return FText();
 								if (Self->bTravelling) return FText::FromString(TEXT("LOADING..."));
+								if (Self->Tab == TabTourney) return FText::FromString(Self->bTourney ? TEXT("PAUSE TOURNAMENT") : TEXT("PLAY TOURNAMENT"));
 								return FText::FromString(Self->IsRematch() ? TEXT("REMATCH") : TEXT("START MATCH"));
-							}), 20, [Self] { if (Self.IsValid()) Self->Start(); return FReply::Handled(); }, Targets, &Hit[HitStart], White, RedTeam, 300.f)]
+							}), 20, [Self]
+							{
+								if (!Self.IsValid() || Self->bTravelling) return FReply::Handled();
+								if (Self->Tab == TabTourney) Self->PlayTourney(!Self->bTourney);	// the TOURNEY tab: START runs the bracket
+								else Self->Start();
+								return FReply::Handled();
+							}, Targets, &Hit[HitStart], White, RedTeam, 300.f)]
 						]
 					]
 				]
@@ -402,7 +466,7 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 		{
 			Grid->AddSlot(i % 4, i / 4)
 			[
-				SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center)
+				SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down)
 				.ButtonColorAndOpacity_Lambda([Self, i]
 				{
 					if (!Self.IsValid()) return FLinearColor::White;
@@ -433,7 +497,7 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 			[
 				SNew(SBorder).BorderImage(&OffBrush()).Padding(0.f).HAlign(HAlign_Center).VAlign(VAlign_Center)
 				[SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(Touch).HAlign(HAlign_Center).VAlign(VAlign_Center)
-					[FitLabel(FText::FromString(bOpen ? FString::Printf(TEXT("%d"), i + 1) : FString::Printf(TEXT("%d. %s\nin training"), i + 1, *Slots[i].Key)), 12, Dim * (bOpen ? 0.45f : 0.75f))]]
+					[FitLabel(FText::FromString(bOpen ? FString::Printf(TEXT("%d"), i + 1) : FString::Printf(TEXT("%d. %s\nin training"), i + 1, *Slots[i].Key)), 12, Dim * (bOpen ? 0.8f : 0.95f))]]
 			];
 		}
 	}
@@ -446,7 +510,7 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 			if (H.Match == 0) return FText::FromString(TEXT("Pick two fighters and START. Elo is saved after every match."));
 			FString T = FString::Printf(TEXT("M%d  R%d/%d  %s >  SERIES %d-%d"), H.Match, H.Round, Rounds, *H.Striker.ToUpper(), H.Wins[0], H.Wins[1]);
 			if (H.Draws) T += FString::Printf(TEXT(" (%d D)"), H.Draws);
-			if (!H.Result.IsEmpty()) T += TEXT("\n") + H.Result;
+			if (!H.Result.IsEmpty()) T += TEXT("\n") + Self->ResultPlain(H);
 			if (!H.Result.IsEmpty() && !Self->EloLine.IsEmpty()) T += TEXT("\n") + Self->EloLine;
 			return FText::FromString(T);
 		}), 14, White, true)]
@@ -510,7 +574,7 @@ TSharedRef<SWidget> ASlapHUD::BuildBrainsTab()
 		const bool bOpen = Slots[i].Key.IsEmpty();
 		Grid->AddSlot(i % 4, i / 4)
 		[
-			SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).OnClicked_Lambda([Self, i] { if (Self.IsValid()) Self->RosterSel = i; return FReply::Handled(); })
+			SNew(SButton).HAlign(HAlign_Center).VAlign(VAlign_Center).ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::Down).OnClicked_Lambda([Self, i] { if (Self.IsValid()) Self->RosterSel = i; return FReply::Handled(); })
 			[FitLabel(FText::FromString(FString::Printf(TEXT("%d %s"), i + 1, bOpen ? TEXT("open") : *Slots[i].Key)), 13,
 				TAttribute<FSlateColor>::CreateLambda([Self, i, bOpen] { return FSlateColor(Self.IsValid() && Self->RosterSel == i ? Hi : bOpen ? Dim * 0.7f : White); }))]
 		];
@@ -575,6 +639,81 @@ TSharedRef<SWidget> ASlapHUD::BuildViewTab()
 		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("PLATES"), TEXT("clock ring, STM / NECK chips, DNG = balance + neck damage"))]
 		+ SVerticalBox::Slot().AutoHeight()[Legend(TEXT("RPL"), TEXT("each landed strike again, slowed (tap / SPACE skips)"))]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)[Label(FText::FromString(TEXT("Swipe the arena for views, double tap to replay.")), 12, Dim, true)];	// the build stamp is the BR anchor's
+}
+
+TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
+{
+	// TOURNEY: the status line, the bracket (16 -> 8 -> 4 -> 2 -> the champion; winners gold, the match on now lit), the
+	// Elo of the field, NEW BRACKET; START (PLAY / PAUSE TOURNAMENT) runs it. Every cell reads the live state.
+	TWeakObjectPtr<ASlapHUD> Self(this);
+	auto Cell = [Self](int32 c, int32 j)
+	{
+		auto NameOf = [Self, c, j]() -> FString
+		{
+			if (!Self.IsValid() || Self->TourneyWon.Num() != TourneyRounds) return FString();
+			return c < TourneyRounds ? Self->TourneyEntrant(c, j / 2, j % 2) : Self->TourneyWon.Last()[0];
+		};
+		auto IsPending = [Self, c, j] { return Self.IsValid() && c < TourneyRounds && Self->TourneyPend[0] == c && Self->TourneyPend[1] == j / 2; };
+		return SNew(SBorder).Padding(FMargin(3.f, 0.f)).VAlign(VAlign_Center)
+			.BorderImage_Lambda([IsPending] { return IsPending() ? &OnBrush() : &OffBrush(); })
+			[FitLabel(TAttribute<FText>::CreateLambda([Self, NameOf, c, j]
+			{
+				const FString N = NameOf();
+				if (N.IsEmpty()) return FText::FromString(TEXT("-"));
+				FString T = N.ToUpper();
+				if (c > 0 && N != TEXT("BYE") && Self.IsValid() && Self->TourneyHow[c - 1].IsValidIndex(j) && Self->TourneyHow[c - 1][j] != TEXT("BYE"))
+					T += TEXT(" ") + Self->TourneyHow[c - 1][j];	// how he got here: KO, DEC, W/O, SEED
+				return FText::FromString(T);
+			}), 12, TAttribute<FSlateColor>::CreateLambda([Self, NameOf, IsPending, c, j]
+			{
+				const FString N = NameOf();
+				if (!Self.IsValid() || N.IsEmpty() || N == TEXT("BYE")) return FSlateColor(Dim * 0.5f);
+				if (c >= TourneyRounds || IsPending()) return FSlateColor(c >= TourneyRounds ? Hi : White);
+				const FString& W = Self->TourneyWon[c][j / 2];
+				return FSlateColor(W.IsEmpty() ? White * 0.85f : W == N ? Hi : Dim * 0.6f);
+			}))];
+	};
+	TSharedRef<SHorizontalBox> Bracket = SNew(SHorizontalBox);
+	for (int32 c = 0; c <= TourneyRounds; ++c)
+	{
+		TSharedRef<SVerticalBox> Col = SNew(SVerticalBox);
+		const int32 Rows = 16 >> c;
+		for (int32 j = 0; j < Rows; ++j)	// equal shares of the height: each winner sits level with the pair that fed it
+			Col->AddSlot().FillHeight(1.f).VAlign(VAlign_Center).Padding(0.f, 1.f, 0.f, j % 2 && j + 1 < Rows ? 3.f : 1.f)[SNew(SBox).HeightOverride(17.f)[Cell(c, j)]];
+		Bracket->AddSlot().FillWidth(c == 0 ? 1.15f : 1.f).Padding(c ? 3.f : 0.f, 0.f, 0.f, 0.f)[Col];
+	}
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->TourneyStatus() : FString()); }), 14,
+			TAttribute<FSlateColor>::CreateLambda([Self] { return FSlateColor(Self.IsValid() && Self->TourneyWon.Num() == TourneyRounds && !Self->TourneyWon.Last()[0].IsEmpty() ? Hi : White); }), true)]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 2.f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.15f)[Label(FText::FromString(TEXT("LAST 16")), 12, Hi)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("QF")), 12, Hi)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("SF")), 12, Hi)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("FINAL")), 12, Hi)]
+			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("CHAMP")), 12, Hi)]
+		]
+		+ SVerticalBox::Slot().AutoHeight()[SNew(SBox).HeightOverride(16.f * 19.f + 7.f * 2.f)[Bracket]]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 4.f)[Label(TAttribute<FText>::CreateLambda([Self]
+		{
+			if (!Self.IsValid()) return FText();
+			TArray<FString> Field;	// the field's Elo, best first, and the last champions
+			for (const FString& Seed : Self->TourneySeeds)
+				if (Seed != TEXT("BYE")) Field.Add(Seed);
+			Field.Sort([&Self](const FString& A, const FString& B) { return Self->EloNum(A) > Self->EloNum(B); });
+			FString T = TEXT("ELO ");
+			for (const FString& F : Field) T += FString::Printf(TEXT(" %s %.0f "), *F.ToUpper(), Self->EloNum(F));
+			const int32 N = Self->TourneyChampions.Num();
+			if (N) T += FString::Printf(TEXT("\nCHAMPIONS (%d): %s"), N, *FString::Join(TArray<FString>(Self->TourneyChampions.GetData() + FMath::Max(0, N - 3), FMath::Min(N, 3)), TEXT(", ")).ToUpper());
+			return FText::FromString(T);
+		}), 12, Dim, true)]
+		+ SVerticalBox::Slot().AutoHeight()
+		[Button(FText::FromString(TEXT("NEW BRACKET (reseed by Elo)")), 14, [Self]
+		{
+			if (Self.IsValid() && !Self->bTravelling) Self->NewTourney();	// stops a running one
+			return FReply::Handled();
+		}, Targets, &Hit[HitTourneyNew], White, Panel)];
 }
 
 bool ASlapHUD::IsRematch() const

@@ -92,6 +92,8 @@ void ASlapHUD::BeginPlay()
 	bUiTest = FParse::Param(Cmd, TEXT("SlapUiTest"));
 	bRoundTripTest = FParse::Param(Cmd, TEXT("SlapRoundTripTest"));
 	bPairTest = FParse::Param(Cmd, TEXT("SlapPairTest"));
+	bTourneyAuto = FParse::Param(Cmd, TEXT("SlapTourney"));
+	bTour = FParse::Param(Cmd, TEXT("SlapTour"));
 	bLayoutTest = FParse::Param(Cmd, TEXT("SlapLayoutTest"));
 	int32 Cv = 0;	// the display pass's switches: -SlapDisplayPass=0 (the parity proof), -SlapHudLog=0|1|2
 	if (FParse::Value(Cmd, TEXT("SlapDisplayPass="), Cv)) IConsoleManager::Get().FindConsoleVariable(TEXT("slap.DisplayPass"))->Set(Cv, ECVF_SetByCommandline);
@@ -104,7 +106,7 @@ void ASlapHUD::BeginPlay()
 		bShowTelemetry = View.Contains(TEXT("telemetry"));
 		bShowScience = View.Contains(TEXT("science"));
 		bShowXRay = View.Contains(TEXT("xray"));
-		bShowCommentary = View.Contains(TEXT("commentary"));
+		bShowCommentary = View.Contains(TEXT("commentary")) || !View.Contains(TEXT("nocommentary"));
 		bShowDebug = View.Contains(TEXT("debug"));
 		bSlowMo = !View.Contains(TEXT("noslow"));
 	}
@@ -351,6 +353,7 @@ void ASlapHUD::DrawHUD()
 		UE_LOG(LogSlap, Warning, TEXT("SlapHUD: the pairing level did not open within 6 s: the menu is live again"));
 	}
 	RoundTrip();
+	TourneyTick(Now);
 	FSlapHud& H = Last;	// -SlapFxTest's fakes below show in the menu too: only that check sees them
 	CacheAthletes();
 	const int32 FxDef = Team(H.Defender);
@@ -372,6 +375,7 @@ void ASlapHUD::DrawHUD()
 	Spotlight(H);
 	Scuffs(H);
 	Pant(H);
+	AnnounceTick();
 	Steps(H);
 	Dust(H);
 	if (USlapController* C = Controller.Get())	// the VIEW switches the physics thread reads
@@ -391,7 +395,7 @@ void ASlapHUD::DrawHUD()
 	AutoTier();
 	Live(H);
 	if (Camera.IsValid()) Direct(Camera.Get(), H);
-	if (H.Match > 0)
+	if (H.Match > 0 && !(bMenu && !H.Result.IsEmpty()))	// the menu over a finished match: the arena and the menu, nothing else
 	{
 		Boxes.Reset();
 		TextOverflows = TextShrunk = 0;
@@ -404,18 +408,20 @@ void ASlapHUD::DrawHUD()
 		if (bShowXRay) DrawXRay(H);
 		DrawOverlays(H);
 		DrawFlinch(H);
-		DrawImpactCard(H);
+		if (H.Result.IsEmpty()) DrawImpactCard(H);	// the result card owns the bottom once it is over
 		DrawScouting(H);
 		DrawTicker(H);
 		DrawTell(H);
 		DrawJudges(H);
 		DrawWinner(H);
+		DrawCaptions(H);	// ROUND / KNOCKDOWN / KNOCKOUT / WINS, the turn banner, the running score
 		if (Now < ReplayEnd && bAutoReplay) DrawStrikeReplayCaption(H);
 		else if (Now < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + 6.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
 
 	if (bUiTest) UiTest(H);
 	if (bRoundTripTest) RoundTripTest(H);
+	if (bTour) Tour(H);
 	if (bLayoutTest) LayoutAudit();
 	if (bPairTest) PairTest(H);
 	Screenshot();

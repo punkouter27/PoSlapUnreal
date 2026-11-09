@@ -21,6 +21,7 @@ namespace
 	constexpr double HoldBack = 1.0;	// s before a calmer shot may replace an escalation
 	constexpr float MaxWideDist = 200.f;	// cm: the WIDE shot sits ~100-120 cm out; Arena.glb's camera jibs start 1.8 m from the
 										// centre, press and judges' tables 2.9-3.0 m, the seating bowl 6 m
+	constexpr float WalkInMaxDist = 170.f;	// cm: the walk-in dolly stays inside the jibs (it sat 2.6-3.4 m out: a jib filled the frame)
 }
 
 void ASlapHUD::SetCam(ECam Mode)
@@ -32,8 +33,12 @@ void ASlapHUD::SetCam(ECam Mode)
 
 ASlapHUD::EShot ASlapHUD::Pick(const FSlapHud& H, double Now) const
 {
+	// the menu over the arena (the launch, or after a result): the steady wide shot, never a replay orbit or the KO crane
+	// (after a KO the lens was left out among the props behind the menu; scene tour 2026-11-09)
+	if (bMenu && (H.Match == 0 || !H.Result.IsEmpty())) return EShot::Wide;
 	if (Now < ReplayEnd) return EShot::Replay;
 	if (H.bWalkIn) return EShot::WalkIn;
+	if (!H.Result.IsEmpty() && H.Winner >= 0 && Now - KOAt >= KOShot) return EShot::Winner;	// the result: on the winner
 	switch (CamMode)
 	{
 	case ECam::Wide: return EShot::Wide;
@@ -112,8 +117,11 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 		const float YawSweep = 28.f * (1.f - Wp);
 		Look = 0.5f * (Pelvis[0] + Pelvis[1]) + Up * 25.f;
 		const float Apart = FVector::Dist2D(Pelvis[0], Pelvis[1]);	// brain walkers start 2.4 m down each aisle
-		const float Back = FMath::Max(FMath::Lerp(340.f, 260.f, Wp), (0.5f * Apart + 70.f) / FMath::Tan(FMath::DegreesToRadians(CC->FieldOfView) * 0.5f));
-		Pos = Look - Fwd.RotateAngleAxis(YawSweep, Up) * Back + Up * FMath::Lerp(-15.f, 20.f, Wp);
+		// capped like the wide shot: fitting both walkers 2.4 m out pulled the lens back past the ringside tables and jibs,
+		// whose dark boxes filled half the frame (and the whole hall in view cost frames); high enough to look over them
+		const float Fit = (0.5f * Apart + 70.f) / FMath::Tan(FMath::DegreesToRadians(CC->FieldOfView) * 0.5f);
+		const float Back = FMath::Min(FMath::Max(FMath::Lerp(340.f, 260.f, Wp), Fit), WalkInMaxDist);
+		Pos = Look - Fwd.RotateAngleAxis(YawSweep, Up) * Back + Up * FMath::Lerp(70.f, 30.f, Wp);
 		Speed = 4.5f;
 		break;
 	}
@@ -148,6 +156,15 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 		Speed = 1.5f;
 		break;
 	}
+	case EShot::Winner:		// the winner, chest up, from the front, a slow push round (the result card sits below)
+	{
+		const int32 Wn = FMath::Clamp(H.Winner, 0, 1);
+		const float T = Now - ShotStart;
+		Look = Head[Wn] - Up * 25.f;
+		Pos = Look - Fwd.RotateAngleAxis((Wn == 1 ? -38.f : 38.f) + 4.f * T, Up) * 165.f + Up * 5.f;
+		Speed = 2.f;
+		break;
+	}
 	case EShot::Replay:		// close on the replayed defender's head, orbiting
 	{
 		const float T = Now - ShotStart;
@@ -167,6 +184,7 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 	}
 	}
 	const FRotator Rot = Shot == EShot::Wide ? BaseRot : (Look - Pos).Rotation();
+
 	const float Dt = GetWorld()->GetDeltaSeconds();
 	FVector L = bCut ? Pos : FMath::VInterpTo(Cam->GetActorLocation(), Pos, Dt, Speed);
 	const FRotator R = bCut ? Rot : FMath::RInterpTo(Cam->GetActorRotation(), Rot, Dt, Speed * 1.5f);

@@ -1,0 +1,229 @@
+{
+ "files": {
+  "blue_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "e5736dc675dbdd05bc13db8fd3911a243315af23",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "blue_kim.wav": {
+   "placeholder": true,
+   "sha1": "d828c1d43a803acb22d250eff2d8e76b1bb839eb",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "blue_matt.wav": {
+   "placeholder": true,
+   "sha1": "fb6d686e5c47eed129ea2a58163c2ef9eea4ddcd",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "blue_mom.wav": {
+   "placeholder": true,
+   "sha1": "b28e4b36a3ded8a484da2e45748163db0e7d1aa1",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "champion_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "47005fa1536dcb34874eb8c6b16551d3023f40f7",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "champion_kim.wav": {
+   "placeholder": true,
+   "sha1": "3b27e3485b463eee5252704434616702f8da37f3",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "champion_matt.wav": {
+   "placeholder": true,
+   "sha1": "9f5cb9abf602747cec776eb850e983562085ee0e",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "champion_mom.wav": {
+   "placeholder": true,
+   "sha1": "c0b3c04f8a674b986d805383fd0297cfdcf729fa",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "draw.wav": {
+   "placeholder": true,
+   "sha1": "d0ef50ce65887e63b53cc6df40dfda9e58a31b08",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "finalbell.wav": {
+   "placeholder": true,
+   "sha1": "2520ef3dca81654bd0c3328f82cf63f9b7fb4682",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "knockdown.wav": {
+   "placeholder": true,
+   "sha1": "aef53b196da8c4a1b3d4cea74fde3a7945b57065",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "knockout.wav": {
+   "placeholder": true,
+   "sha1": "a8893ba742363a919907616133d0dcf319048da6",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "onemore.wav": {
+   "placeholder": true,
+   "sha1": "a680c2a79c60a5eeb8f08af8af3b09da3fe5edc1",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "red_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "ecf6de2f171dd13bcaa0fe04668c24a8eb1a55b4",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "red_kim.wav": {
+   "placeholder": true,
+   "sha1": "e0f5e4c2e2486fded9b35338a6a22377e0b73ee5",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "red_matt.wav": {
+   "placeholder": true,
+   "sha1": "a72bc809c2b41ab4e50f85b0ec5619e1ba674267",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "red_mom.wav": {
+   "placeholder": true,
+   "sha1": "491d3ec05f9eb260a9236ebc130753dd7b04d086",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "round1.wav": {
+   "placeholder": true,
+   "sha1": "1e8d05248a07c4871b6dac088f74b9e1f97bd521",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "round2.wav": {
+   "placeholder": true,
+   "sha1": "7a977323288acdff6d65177645e85782152c1877",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "round3.wav": {
+   "placeholder": true,
+   "sha1": "fff58cb647560e975f3cef207a48e40499ba4957",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "trouble_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "f7ffebd3ba70c565fc9c82307304e061fd6ce198",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "trouble_kim.wav": {
+   "placeholder": true,
+   "sha1": "7286bebf0bd02824233d9db615c6ae1ebab765ac",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "trouble_matt.wav": {
+   "placeholder": true,
+   "sha1": "4ad9a480e9db1bb22cfd24efa5f0a8538938d8e9",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "trouble_mom.wav": {
+   "placeholder": true,
+   "sha1": "34b8398bfb03ec72e046f697b67ff30e5c320393",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "welcome.wav": {
+   "placeholder": true,
+   "sha1": "d85a2837873a01810c9e22c9ac95c81a4545c099",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_dec_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "7d1c75fa21429667ea85b41d47e6b6965a970062",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_dec_kim.wav": {
+   "placeholder": true,
+   "sha1": "89d9499cc4113d349705ba22a8598365d780fa07",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_dec_matt.wav": {
+   "placeholder": true,
+   "sha1": "3ec9d59f75b6bf9aa78a67111d305c1cd66622d9",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_dec_mom.wav": {
+   "placeholder": true,
+   "sha1": "4e67232e43c4129e0466133fbe8e4579f0e31bbf",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ko_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "5b1266930ab15485ae3d4a4d6dbb662099ab4cf2",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ko_kim.wav": {
+   "placeholder": true,
+   "sha1": "4ee8de0cc283bb6788b021e98041c05686c8c611",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ko_matt.wav": {
+   "placeholder": true,
+   "sha1": "b9efa404a07fc4bceb2db8122da949a5cea34c33",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ko_mom.wav": {
+   "placeholder": true,
+   "sha1": "2f32c27ff9bb1322b3c0c1673d3408da320f017d",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_md_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "304c1497b40d001adda880288c68c62b00f4cb73",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_md_kim.wav": {
+   "placeholder": true,
+   "sha1": "24c375f7490ef465540b185c9aeb28ecbb503203",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_md_matt.wav": {
+   "placeholder": true,
+   "sha1": "ff8d399a6af7e360ae373ef0093f8a5fef9c122c",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_md_mom.wav": {
+   "placeholder": true,
+   "sha1": "5ad8c8f15b0ff23b7587c53976fb898ff89573fa",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_sd_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "94659820f241cc4b49d2a8aee01e38ea69972c33",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_sd_kim.wav": {
+   "placeholder": true,
+   "sha1": "b3df98c59edffcc9b1c1fbac0eb421788f415840",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_sd_matt.wav": {
+   "placeholder": true,
+   "sha1": "d1e99802b02e63d6e8daafcd3a328818d8911dce",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_sd_mom.wav": {
+   "placeholder": true,
+   "sha1": "2b561f632a6fbe8dc0efce11dc6b9da5c85b14b9",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ud_grandpa.wav": {
+   "placeholder": true,
+   "sha1": "3fed23d1a0b16feb8e8c79354c25aa8d692521a6",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ud_kim.wav": {
+   "placeholder": true,
+   "sha1": "acfdd86cb333dab63da506ebce8ff2d069bec380",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ud_matt.wav": {
+   "placeholder": true,
+   "sha1": "c972afead0260b92201094e10fff6eed838d0fe5",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  },
+  "win_ud_mom.wav": {
+   "placeholder": true,
+   "sha1": "835c1b0183e012452b2d75bd6a00b2b6a5a713c7",
+   "text": "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"en-US\"><prosody rate=\"-18%\" pitch=\"-2st\" volume=\"loud\"><emphasis level=\"strong\">Your winner, on the judges' scorecards... Mom!</emphasis></prosody></speak>"
+  }
+ }
+}

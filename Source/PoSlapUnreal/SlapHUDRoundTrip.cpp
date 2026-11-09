@@ -58,6 +58,12 @@ FString ASlapHUD::EloOf(const FString& Card) const
 	return R ? FString::Printf(TEXT("Elo %.0f  %d-%d"), R->Elo, R->W, R->L) : FString(TEXT("Elo 1000"));
 }
 
+double ASlapHUD::EloNum(const FString& Card) const
+{
+	const FRating* R = Ratings.Find(Card);
+	return R ? R->Elo : 1000.0;
+}
+
 void ASlapHUD::RoundTrip()
 {
 	if (!Controller.IsValid() || bTravelling) return;
@@ -95,12 +101,21 @@ void ASlapHUD::RoundTrip()
 			}
 			UE_LOG(LogSlap, Log, TEXT("SlapHUD: rated: %s"), *EloLine);
 		}
+		if (W >= 0 && H.KOd < 0)	// a decision (a KO already had its voices): the winner pleased, the loser not
+		{
+			Emote(W, EEmote::Happy, 4);
+			Emote(1 - W, EEmote::Angry, 4);
+		}
+		TourneyResult(W, H);
 	}
-	if (ResultAt >= 0.0 && !Controller->bAutoNext && Now - ResultAt >= ResultHold)	// the result has had its moment: back to the menu
+	// the result card stands until OK (user 2026-11-09: "click OK to go back to the main menu"); a tournament playing itself
+	// shows its bracket after ResultHold instead, and the unattended loop starts the next match by itself
+	if (ResultAt >= 0.0 && !Controller->bAutoNext && bTourney && Now - ResultAt >= ResultHold)
 	{
 		ResultAt = -1.0;
 		OpenMenu(true);
-		Tab = 0;
+		Controller->bRestand = true;	// both on their feet behind the bracket
+		Tab = bTourney || TourneyPend[0] >= 0 ? TabTourney : TabMatch;	// a tournament shows its bracket between matches
 		ActiveCornerSelect = 0;
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: result shown %.0f s: back to the menu"), ResultHold);
 	}

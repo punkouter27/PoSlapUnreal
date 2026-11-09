@@ -332,8 +332,13 @@ void ASlapHUD::RoundTripTest(const FSlapHud& H)
 	case 2:	// the result
 		if (!H.Result.IsEmpty()) { RtStep = 3; RtAt = Now; RtSeq = H.MatchSeq; UE_LOG(LogSlap, Log, TEXT("SlapHUD: round trip test: result \"%s\" (%s)"), *H.Result, *EloLine); }
 		return;
-	case 3:	// back to the menu by itself, the Elo saved
-		if (!bMenu) { if (Now - RtAt > ResultHold + 5.0) Done(false, TEXT("the menu did not come back after the result")); return; }
+	case 3:	// the result card stands until OK; OK opens the menu, the Elo saved
+		if (!bMenu)
+		{
+			if (Now - RtAt > 2.0 && !bRtOk) { bRtOk = true; if (!ClickHit(HitResultMenu)) { Done(false, TEXT("the OK tap missed the button")); return; } }
+			else if (Now - RtAt > 8.0) Done(false, TEXT("OK did not open the menu after the result"));
+			return;
+		}
 		if (Now - MenuAt < MenuSettle) return;
 		{
 			const FString Elo = EloOf(HereCard[0]) + TEXT(" / ") + EloOf(HereCard[1]);
@@ -364,5 +369,111 @@ void ASlapHUD::PairTest(const FSlapHud& H)
 	{
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: pair test: in %s, %s vs %s, brains %s / %s"), *Pairings[HerePairing].AssetName.ToString(), *H.Card[0], *H.Card[1], *H.Brain[0], *H.Brain[1]);
 		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+	}
+}
+
+void ASlapHUD::Tour(const FSlapHud& H)
+{
+	// -SlapTour: the whole journey as a player sees it, with real clicks at the real buttons and a screenshot at each stage
+	// (Saved/Screenshots/tour/NN_<stage>.png): the launch menu's four tabs, START, the walk-in and introductions, the match
+	// (one shot every 5 s and the first strikes), the result, the menu coming back, REMATCH, the next match. Then it quits
+	// with the flow it saw ("Menu > Gameplay > Result > Menu > Gameplay").
+	const double Now = GetWorld()->GetTimeSeconds(), Real = FPlatformTime::Seconds();
+	auto TakeShot = [&](const FString& Name)
+	{
+		if (Real - TourShotAt < 0.7) return false;	// one request in flight at a time
+		TourShotAt = Real;
+		const FString File = FPaths::ProjectSavedDir() / TEXT("Screenshots/tour") / FString::Printf(TEXT("%02d_%s.png"), TourShots++, *Name);
+		FScreenshotRequest::RequestScreenshot(File, true, false);
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: tour shot %s at %.1f s (match %d round %d, flow %s)"), *FPaths::GetBaseFilename(File), Now, H.Match, H.Round, FlowName((uint8)Flow()));
+		return true;
+	};
+	auto Done = [&](const TCHAR* Why)
+	{
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: tour done: %s; flow %s; %d shots; %d clicks ignored"), Why, *TourTrail, TourShots, TourIgnored);
+		bTour = false;
+		UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+	};
+	if (!bSceneReady) return;
+	const EFlow F = Flow();
+	if (F != EFlow::None && F != TourFlow)
+	{
+		TourTrail += (TourTrail.IsEmpty() ? TEXT("") : TEXT(" > ")) + FString(FlowName((uint8)F));
+		TourFlow = F;
+	}
+	if (TourStart < 0.0) TourStart = Now;
+	if (Now - TourStart > 900.0) { Done(TEXT("TIMEOUT after 15 min")); return; }
+	static const int32 TabHits[] = { HitTabBrains, HitTabView, HitTabTourney };
+	static const TCHAR* TabShots[] = { TEXT("menu_brains"), TEXT("menu_view"), TEXT("menu_tourney") };
+	switch (TourStep)
+	{
+	case 0:	// the launch menu
+		if (bMenu && Now - MenuAt > 2.0 && TakeShot(TEXT("menu_match"))) { TourStep = 1; TourAt = Now; }
+		break;
+	case 1: case 2: case 3:	// each other tab: click it, then the shot
+	{
+		static const int32 TabOf[] = { TabBrains, TabView, TabTourney };
+		if (TourAt >= 0.0 && Now - TourAt > 0.8) { ClickHit(TabHits[TourStep - 1]); TourAt = -Now; }
+		else if (TourAt < 0.0 && Now + TourAt > 0.6 && Tab != TabOf[TourStep - 1])
+		{
+			++TourIgnored;
+			UE_LOG(LogSlap, Warning, TEXT("SlapHUD: tour: CLICK IGNORED on tab %d (tab still %d): set directly"), TabOf[TourStep - 1], Tab);
+			Tab = TabOf[TourStep - 1];
+		}
+		else if (TourAt < 0.0 && Now + TourAt > 1.2 && TakeShot(TabShots[TourStep - 1])) { ++TourStep; TourAt = Now; }
+		break;
+	}
+	case 4:	// back to MATCH, START
+		if (Now - TourAt > 0.8) { ClickHit(HitTabMatch); TourStep = 5; TourAt = Now; }
+		break;
+	case 5:
+		if (Now - TourAt > 1.0 && TourSeq == 0) { if (Tab != TabMatch) { ++TourIgnored; UE_LOG(LogSlap, Warning, TEXT("SlapHUD: tour: CLICK IGNORED on MATCH tab")); Tab = TabMatch; } ClickHit(HitStart); TourSeq = H.MatchSeq + 1000; TourAt = Now; }
+		else if (TourSeq >= 1000 && Now - TourAt > 2.0)
+		{
+			if (!bTravelling && H.MatchSeq == TourSeq - 1000 && bMenu) { ++TourIgnored; UE_LOG(LogSlap, Warning, TEXT("SlapHUD: tour: CLICK IGNORED on START: Start() directly")); Start(); }
+			TourSeq -= 1000; TourStep = 6; TourAt = Now; TourEvery = Now;
+		}
+		break;
+	case 6:	// the match: every 5 s, the first two strikes, each caption, then the result
+	{
+		if (CapAt > TourCapSeen && Now - CapAt > 0.5 && Now - CapAt < CapFor)	// a new caption (ROUND, KNOCKDOWN, WINS ...)
+		{
+			FString Tag = CapBig.Left(14).Replace(TEXT(" "), TEXT("_")).Replace(TEXT("!"), TEXT("")).Replace(TEXT("'"), TEXT(""));
+			if (TakeShot(TEXT("cap_") + Tag)) TourCapSeen = CapAt;
+			break;
+		}
+		if (TurnBannerAt > 0.0 && Now - TurnBannerAt > 0.6 && Now - TurnBannerAt < 2.0 && !TourDone.Contains(TEXT("turn")) && Now - CapAt > CapFor && TakeShot(TEXT("turn_banner"))) { TourDone.Add(TEXT("turn")); break; }
+		if (H.StrikeSeq != TourStrike && StrikeAt > 0.0 && Now - StrikeAt > 0.15) { if (TourStrikes < 2 && TakeShot(FString::Printf(TEXT("strike%d"), TourStrikes + 1))) { ++TourStrikes; TourStrike = H.StrikeSeq; } else if (TourStrikes >= 2) TourStrike = H.StrikeSeq; break; }
+		if (!H.Result.IsEmpty() && H.MatchSeq != TourSeq)
+		{
+			if (TourResultAt < 0.0) TourResultAt = Now;
+			if (Now - TourResultAt > 0.6 && !TourDone.Contains(TEXT("result")) && TakeShot(TEXT("result"))) TourDone.Add(TEXT("result"));
+			else if (Now - TourResultAt > 3.5 && !TourDone.Contains(TEXT("result_late")) && TakeShot(TEXT("result_late"))) TourDone.Add(TEXT("result_late"));
+			if (!bMenu && Now - TourResultAt > 4.5 && !TourDone.Contains(TEXT("ok"))) { TourDone.Add(TEXT("ok")); ClickHit(HitResultMenu); }	// OK
+			else if (!bMenu && Now - TourResultAt > 6.0 && TourDone.Contains(TEXT("ok")) && !TourDone.Contains(TEXT("ok2")))
+			{
+				TourDone.Add(TEXT("ok2"));
+				++TourIgnored;
+				UE_LOG(LogSlap, Warning, TEXT("SlapHUD: tour: CLICK IGNORED on OK: the menu directly"));
+				OpenMenu(true);
+			}
+			if (bMenu && Now - MenuAt > 1.5 && TakeShot(TEXT("menu_after_result"))) { TourStep = 7; TourAt = Now; }
+			break;
+		}
+		const TCHAR* Stage = H.Match == 0 ? TEXT("waiting") : H.bWalkIn ? TEXT("walkin") : Now - TapeAt < 8.0 ? TEXT("intro") : TEXT("match");
+		if (Now - TourEvery >= 5.0 && TakeShot(FString::Printf(TEXT("%s_r%d"), Stage, H.Round))) TourEvery = Now;
+		break;
+	}
+	case 7:	// REMATCH from the menu, then the next match running
+		if (Now - TourAt > 1.0) { if (Tab != TabMatch) Tab = TabMatch; ClickHit(HitStart); TourStep = 8; TourAt = Now; TourSeq = H.MatchSeq; }
+		break;
+	case 8:
+		if (Now - TourAt > 2.0 && Now - TourAt < 2.1 && bMenu && H.MatchSeq == TourSeq) { ++TourIgnored; UE_LOG(LogSlap, Warning, TEXT("SlapHUD: tour: CLICK IGNORED on REMATCH: Start() directly")); Start(); }
+		if (H.MatchSeq != TourSeq && H.Result.IsEmpty() && !bMenu && Now - TourAt > 6.0 && TakeShot(TEXT("rematch_running"))) { TourStep = 9; TourAt = Now; }
+		else if (Now - TourAt > 30.0) Done(TEXT("FAIL: REMATCH did not start a match within 30 s"));
+		break;
+	case 9:
+		if (Now - TourAt > 1.5) Done(TEXT("PASS: menu -> match -> result -> menu -> rematch"));
+		break;
 	}
 }

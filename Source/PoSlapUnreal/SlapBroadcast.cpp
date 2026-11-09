@@ -89,8 +89,8 @@ void USlapController::Telemetry(const mjModel* m, const mjData* d, double HandSp
 	const double* Head = d->geom_xpos + 3 * Athletes[1 - Turn.Striker].Head;
 	const double Dt = m->opt.timestep * ControlEvery;
 	const double Vel[3] = { (Head[0] - TelHeadPrev[0]) / Dt, (Head[1] - TelHeadPrev[1]) / Dt, (Head[2] - TelHeadPrev[2]) / Dt };
-	if (bTelReady) TelHeadG = Dist(Vel, TelHeadVel, 3) / Dt / 9.81;
-	bTelReady = true;
+	if (TelSamples >= 2) TelHeadG = Dist(Vel, TelHeadVel, 3) / Dt / 9.81;	// two velocities inside this turn (a turn's reset teleports the head: 247 g)
+	++TelSamples;
 	FMemory::Memcpy(TelHeadPrev, Head, sizeof(TelHeadPrev));
 	FMemory::Memcpy(TelHeadVel, Vel, sizeof(TelHeadVel));
 	const FAthlete& S = Athletes[Turn.Striker];

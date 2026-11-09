@@ -76,7 +76,7 @@ void ASlapHUD::LoadLeague()
 		if (!O) continue;
 		LeagueElo.Add(FString(*B.Key), O->GetNumberField(TEXT("elo")));	// the scouting card between rounds
 		LeagueKO.Add(FString(*B.Key), O->GetNumberField(TEXT("ko_rate")));
-		Scout.Add(FString(*B.Key), FString::Printf(TEXT("ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),
+		Scout.Add(FString(*B.Key), FString::Printf(TEXT("BRAIN ELO %.0f   %d-%d-%d   KO %.0f%%   clean %.0f%%   %.1f m/s"), O->GetNumberField(TEXT("elo")),	// the brain's league Elo, not the character's
 			(int32)O->GetNumberField(TEXT("wins")), (int32)O->GetNumberField(TEXT("losses")), (int32)O->GetNumberField(TEXT("draws")),
 			100.0 * O->GetNumberField(TEXT("ko_rate")), 100.0 * O->GetNumberField(TEXT("clean_rate")), O->GetNumberField(TEXT("speed"))));
 	}

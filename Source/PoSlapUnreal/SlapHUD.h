@@ -34,19 +34,22 @@ class SWidget;
  * (scoreboard, name plates, momentum, telemetry, overlays, judges, result), SlapHUDScience.cpp (science, X-ray),
  * SlapHUDFx.cpp (strike / KO cues, skin wear and the cheek dent, lights, scuffs, dust, quality tiers, burst capture),
  * SlapHUDAudio.cpp (crowd, breathing, footsteps, reverb), SlapHUDCamera.cpp (the director), SlapHUDLive.cpp (second
- * screen, commentary, chat, league), SlapHUDRoundTrip.cpp (menu -> match -> result -> menu, Elo), SlapHUDTests.cpp.
+ * screen, commentary, chat, league), SlapHUDRoundTrip.cpp (menu -> match -> result -> menu, Elo), SlapHUDTourney.cpp
+ * (the tournament), SlapHUDTests.cpp.
  *
  * Screen (portrait, one viewport, nothing scrolls): Slate corner anchors inside the safe zone - TL title, TC FPS + MuJoCo
  * step counter, TR menu, BL live telemetry (+ physics debug with DBG), BR build stamp - and a grip at the bottom centre
  * that opens the menu under the thumb. The menu is a bottom sheet: tabs MATCH (status, the two picks, replay) / BRAINS
- * (each corner's brain, the roster cards) / VIEW (overlays, camera, quality), and START at its bottom centre. TAB toggles
+ * (each corner's brain, the roster cards) / VIEW (overlays, camera, quality) / TOURNEY (the 16-place bracket; START there
+ * plays it to a champion), and START at its bottom centre. TAB toggles
  * the detailed stats; by default the HUD is the scoreboard, the momentum bar and the name plates. A finished match shows
- * a result card (REMATCH / MENU); after ResultHold the menu comes back with the same two picked.
+ * a result card (winner, judges, a stats table, the Elo change; REMATCH / OK) that stands until OK, then the menu with the
+ * same two picked (a running tournament moves on by itself after ResultHold).
  *
  * Flags: -SlapShot=<s> (screenshot, quit; -SlapShotResult once a match ends), -SlapFxTest=<s> (a faked strike and KO),
  * -SlapMenu=<tab>, -SlapView=telemetry+science+xray+commentary+debug+noslow, -SlapCam=auto|wide|side|close,
  * -SlapTier=0|1|2, -SlapSafeZone=<top>+<bottom>, -SlapBurst, -SlapLive=<url>; checks -SlapUiTest, -SlapRoundTripTest,
- * -SlapLayoutTest, -SlapPairTest.
+ * -SlapLayoutTest, -SlapPairTest; -SlapTourney (a new bracket, played to the end; -SlapTourneyQuit: then quit).
  */
 UCLASS()
 class POSLAPUNREAL_API ASlapHUD : public AHUD
@@ -58,11 +61,11 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void DrawHUD() override;
 
-	enum ETab : int32 { TabMatch, TabBrains, TabView, NumTabs };
+	enum ETab : int32 { TabMatch, TabBrains, TabView, TabTourney, NumTabs };
 	enum class ECam : uint8 { Auto, Wide, Side, Close };	// the director (Auto) or a pinned shot (the VIEW tab, the C key)
 
 private:
-	enum class EShot : uint8 { WalkIn, Wide, Side, Tension, Strike, Impact, KO, Replay };	// escalating: a higher shot cuts in at once
+	enum class EShot : uint8 { WalkIn, Wide, Side, Tension, Strike, Impact, KO, Replay, Winner };	// escalating: a higher shot cuts in at once
 
 	// ---- frame loop (SlapHUD.cpp)
 	void LoadAssets();
@@ -194,6 +197,7 @@ private:
 	void BuildUi();
 	TSharedRef<SWidget> BuildAnchors();
 	TSharedRef<SWidget> BuildResultCard();
+	TSharedRef<SWidget> BuildResultStats();	// the match's numbers, red | what | blue
 	TSharedRef<SWidget> BuildSheet();
 	TSharedRef<SWidget> BuildMatchTab();
 	TSharedRef<SWidget> BuildBrainsTab();
@@ -222,15 +226,87 @@ private:
 	void SaveRatings() const;
 	void RoundTrip();
 	FString EloOf(const FString& Card) const;
+	double EloNum(const FString& Card) const;
 	static constexpr double ResultHold = 6.0;
+
+	// ---- the tournament (SlapHUDTourney.cpp; user 2026-11-09: "a 16 player (with byes) bracket tourney for the 1v1
+	// matches, play through the full tourney automatically and declare a winner"). Every character in the roster enters,
+	// seeded by Elo (1 v 16, 8 v 9, ...), the empty places are BYEs. PLAY runs each match in its pairing's level, one after
+	// another, until a champion; a pairing with no level in this build is a walkover (no Elo change); a draw is replayed
+	// (the third draw: the higher Elo goes through). Every played match moves the Elo as any match does. The state lives in
+	// Saved/PoSlap/tournament.json, so it survives the level changes between matches; an app launched cold pauses it.
+	static constexpr int32 TourneyRounds = 4;	// 16 -> 8 -> 4 -> 2 -> 1
+	static FString TourneyPath();
+	void LoadTourney();
+	void SaveTourney() const;
+	void NewTourney();						// reseed from the roster and the Elo now
+	void PlayTourney(bool bPlay);			// PLAY / PAUSE
+	FString TourneyEntrant(int32 Round, int32 Index, int32 Side) const;	// "" undecided, "BYE", or a card
+	bool NextTourneyMatch(int32& OutRound, int32& OutIndex);	// settles BYEs and walkovers; false when the champion is crowned
+	void StartTourneyMatch(int32 Round, int32 Index);
+	void TourneyTick(double Now);
+	void TourneyResult(int32 W, const FSlapHud& H);	// RoundTrip: the match just rated
+	FString TourneyStatus() const;
+	TSharedRef<SWidget> BuildTourneyTab();
+	TArray<FString> TourneySeeds;			// 16 bracket positions: a card or "BYE"
+	TArray<TArray<FString>> TourneyWon;		// per round: each match's winner ("" = not yet)
+	TArray<TArray<FString>> TourneyHow;		// per round: "KO", "DEC", "W/O", "BYE", "SEED" (third draw)
+	TArray<FString> TourneyChampions;		// "YYYY-MM-DD card", the history
+	bool bTourney = false;					// running
+	int32 TourneyPend[2] = { -1, -1 };		// the match being played (round, index)
+	int32 TourneyDraws = 0;
+	double TourneyNextAt = -1.0;			// game time of the next start (-1: waiting on a match)
+	static constexpr double TourneyShow = 4.0;	// s the bracket shows between matches
+	bool bTourneyAuto = false;				// -SlapTourney: a new bracket at launch, played to the end (+ -SlapTourneyQuit: then quit)
+	FTimerHandle TourneyQuitTimer;
+
+	// ---- commentary (SlapHUDCommentary.cpp; user 2026-11-09: make it clear what is happening, who wins, when it is over):
+	// the ring announcer (Scripts/announcer.py -> /Game/Audio/Announcer/S_A_<key>, one line at a time), big centre captions
+	// (ROUND 1, KNOCKDOWN, KNOCKOUT, the winner), the turn banner, play-by-play lines, danger calls, the judges' running
+	// score after each round, the plain-language result and the result card's summary. Display only.
+	void Announce(const FString& LineKey);			// queue a line (a missing one is logged once and skipped)
+	void AnnounceTick();						// plays the next queued line once the last has been said
+	void Commentate(const FSlapHud& H, double Now);	// every cue above, from the controller's counters
+	void Caption(const FString& Big, const FString& Small, FColor C, double Seconds);
+	void DrawCaptions(const FSlapHud& H);		// the caption, the turn banner, the score strip
+	void PlayByPlay(const FString& Line);		// a line in the commentary box (wrapped as the sidecar's)
+	FString ResultPlain(const FSlapHud& H) const;	// "GRANDPA wins by unanimous decision, 30-27 30-27 29-28"
+	FString WayKey(const FSlapHud& H) const;	// ko / ud / sd / md / dec, "" for a draw
+	FString Who(const FSlapHud& H, int32 a) const;	// the fighter's name, upper case
+	FString SummaryText() const;				// the result card's three lines: turning point, fastest slap, accuracy
+	TArray<FString> AnnounceQueue;
+	double AnnounceFree = 0.0;					// real time the announcer is free again
+	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> AnnounceSounds;
+	FString CapBig, CapSmall;
+	FColor CapColor = FColor::White;
+	double CapAt = -100.0, CapFor = 0.0;
+	FString TurnBanner;
+	FColor TurnBannerColor = FColor::White;
+	double TurnBannerAt = -100.0;
+	FString ScoreStrip;
+	double ScoreStripAt = -100.0;
+	int32 CmMatch = -1, CmRound = 0, CmStrike = 0, CmTurn = 0, CmKO = 0, CmScored = 0, CmDowns[2] = {}, CmTurnStrike = 0, CmTurnDef = 1;
+	FString CmTurnKey, CmResult;
+	bool bCmTrouble[2] = {}, bCmOneMore[2] = {};
+	int32 Attempts[2] = {}, Landed[2] = {};		// turns struck / strikes landed, this match
+	int32 FirstDownRound = 0, FirstDownWho = -1;	// the turning point: the first knockdown
+	int32 BigRound = 0, BigRoundMargin = 0, BigRoundWho = -1;	// or the round won by the most
 
 	// ---- checks (SlapHUDTests.cpp)
 	void UiTest(const FSlapHud& H);			// -SlapUiTest: every click target, then Menu -> Gameplay -> Win/Loss -> Menu -> Reset
 	void RoundTripTest(const FSlapHud& H);	// -SlapRoundTripTest: launch menu -> START -> result -> menu (Elo saved) -> REMATCH
 	void LayoutAudit();						// -SlapLayoutTest: the sheet against the budget, the safe zone, the anchors, the touch minimum
-	void PairTest(const FSlapHud& H);		// -SlapPairTest: open the next pairing, log what loaded
+	void PairTest(const FSlapHud& H);
+	void Tour(const FSlapHud& H);			// -SlapTour: menu tabs -> START -> walk-in -> match -> result -> menu -> REMATCH, a screenshot per stage
+	bool bTour = false;
+	int32 TourStep = 0, TourShots = 0, TourIgnored = 0, TourSeq = 0, TourStrike = 0, TourStrikes = 0;
+	double TourAt = 0.0, TourStart = -1.0, TourEvery = 0.0, TourResultAt = -1.0, TourShotAt = -100.0;
+	FString TourTrail;
+	double TourCapSeen = -1.0;
+	TSet<FString> TourDone;		// -SlapPairTest: open the next pairing, log what loaded
 	bool ClickHit(int32 Target);			// a synthetic click at a bound target, hit-tested in the game window; false = it hit something else
 	enum class EFlow : uint8 { None, Menu, Gameplay, Result, Reset };	// the state flow the UI test follows
+	EFlow TourFlow = EFlow::None;
 	EFlow Flow() const;
 
 	TWeakObjectPtr<USlapController> Controller;
@@ -275,7 +351,7 @@ private:
 	int32 SelectedFighter[2] = { 0, 1 };	// the picks: roster slot for red and blue
 	int32 ActiveCornerSelect = 0;			// the corner a tap on the grid assigns
 	int32 RosterSel = 0;
-	bool bMenu = false, bShowTelemetry = false, bShowCommentary = false, bShowDebug = false;
+	bool bMenu = false, bShowTelemetry = false, bShowCommentary = true, bShowDebug = false;	// COM: the play-by-play, on by default (2026-11-09)
 	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;
 	TArray<FAssetData> Brains;	// /Game/Brains in training/roster.json; a corner may pick those made for its character
 	int32 BrainPick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
@@ -283,7 +359,7 @@ private:
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;
 	bool bPairTest = false;
 	enum EHit { HitMenu, HitTabMatch, HitTabBrains, HitTabView, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad,
-		HitRematch, HitResultMenu, HitCamSide, HitCamAuto, HitCount };
+		HitRematch, HitResultMenu, HitCamSide, HitCamAuto, HitTabTourney, HitTourneyNew, HitCount };
 	TSharedPtr<SWidget> Hit[HitCount];	// click targets for the checks
 	bool bQuarter = false;	// the replay runs at 1/4 speed instead of 1/2
 	FVector2D PadDown = FVector2D::ZeroVector;	// where a press on the play area began
@@ -311,6 +387,7 @@ private:
 	int32 RtStep = 0, RtSeq = 0;
 	double RtAt = 0.0;
 	FString RtElo;
+	bool bRtOk = false;	// the round trip test has tapped OK on the result card
 
 	// cue state (game time)
 	int32 SeenStrike = 0, SeenKO = 0, SeenMatch = 0, SeenRound = 0, SeenTurn = 0, SeenDown = 0, SeenStep[2] = {};
@@ -453,6 +530,20 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundSubmixBase> ArenaIR;
 	FString BreathCard[2];	// the card each breathing loop is voiced for
 	USoundBase* Voice(const FString& Kind, const FString& Card);
+	// each character's voice pack (Scripts/voice_pack.py -> /Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
+	// four emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
+	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless).
+	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult };
+	void Emote(int32 Athlete, EEmote Kind, int32 Level);
+	void EmoteCues(const FSlapHud& H);	// HURT when struck, INSULT at the turn's start, HAPPY on a dodge or a KO, ANGRY on a knockdown
+	static constexpr double EmoteGap = 0.9;
+	static constexpr double IntroEach = 3.5;	// s per fighter's introduction card at the walk-in (SlapHUDDraw.cpp)
+	int32 IntroSaid = -1;	// the introduction that has had its taunt (0 red, 1 blue)
+	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> EmoteSounds;	// by asset name (null: not imported)
+	double EmoteAt[2] = { -100.0, -100.0 };
+	int32 EmoteTake[2] = { -1, -1 };
+	int32 EmoteSeenStrike = 0, EmoteSeenTurn = 0, EmoteSeenKO = 0, EmoteDowns[2] = {}, EmoteTurnStrike = 0, EmoteTurnDef = 1;
+	FString EmoteTurnKey;
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> Skin;	// red, blue
 	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> CrowdSkin;
 };

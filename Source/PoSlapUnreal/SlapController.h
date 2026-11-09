@@ -137,6 +137,7 @@ public:
 	/** Seconds both athletes walk from the aisle to the podium before Round 1 begins (display only: match.py parity holds). */
 	UPROPERTY(EditAnywhere, Category = "PoSlap")
 	double WalkInHold = 3.0;
+	static constexpr double IntroHold = 7.2;	// s: the walk-in lasts at least this long (ASlapHUD's 2 x 3.5 s introductions)
 
 	virtual void Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*>& ActuatorIdMap) override;
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
@@ -156,6 +157,8 @@ public:
 
 	/** HUD switches (game thread -> physics thread). */
 	std::atomic<bool> bXRay = false;	// brain X-ray: occlusion runs and the target-pose ghost (doubles inference while on)
+	std::atomic<bool> bRestand = false;	// OK on the result card: both stand again at the podium behind the menu
+	bool bResultStood = false;	// physics thread: that stand pose is placed
 	std::atomic<bool> bSlowMo = true;	// live slow motion around the touch and a falling defender
 	std::atomic<bool> bLiveFeed = false;	// second screen: keep match events for TakeEvents
 
@@ -242,7 +245,9 @@ private:
 public:
 	void MarkDrawn() const { HudAt.store(FPlatformTime::Seconds(), std::memory_order_relaxed); }	// ASlapHUD: a frame of the scene was drawn (curtain down)
 private:
-	bool HudLive() const { return FPlatformTime::Seconds() - HudAt.load(std::memory_order_relaxed) < 0.12; }
+	// the screen is drawing: the walk-in only moves while it is seen. 0.5 s (a frame is clamped at 0.4 s: any drawing screen) - at 0.12 a slow first walk-in
+	// (shaders still warming, a hot GPU at 6-8 fps) froze most frames and crawled 0 -> 7 % in 40 s (scene tour 2026-11-09)
+	bool HudLive() const { return FPlatformTime::Seconds() - HudAt.load(std::memory_order_relaxed) < 0.5; }
 	bool bWalkIn = true;	// -SlapWalkIn=0 disables pre-match walk-in
 	static int64 HoldSteps(double Seconds);
 	void StepWalkIn(const mjModel* m, mjData* d);
@@ -265,6 +270,7 @@ private:
 	bool bIdlePlaced = false, bStartNext = false;	// physics thread: StandIdle done; the menu asked for the next match
 	int64 IdlePlacedAt = 0;	// physics thread: the step StandIdle last ran (the menu re-stands both every IdleRestand s or on a fall)
 	double IdlePelvisZ[2] = { 0.0, 0.0 };	// pelvis heights in that stand pose
+	TArray<double> IdleQpos;	// physics thread: the stand pose the menu holds
 	bool PreStep(const mjModel* m, mjData* d);	// referee before the brains decide; false = the turn just ended
 	void PostStep(const mjModel* m, const mjData* d);
 	void EndTurn(const mjModel* m, mjData* d, const FString& End);
@@ -294,7 +300,7 @@ private:
 
 	// live telemetry, physics thread
 	double TelHeadPrev[3] = {}, TelHeadVel[3] = {}, TelHeadG = 0.0;
-	bool bTelReady = false;
+	int32 TelSamples = 0;	// head samples since the turn's reset: g needs two velocities from this turn
 
 	// broadcast science, physics thread
 	void Impact(const mjModel* m, const mjData* d);	// HIC15 / BrIC of the defender's head, every step after the touch

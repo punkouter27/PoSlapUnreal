@@ -102,6 +102,79 @@ USoundBase* ASlapHUD::Voice(const FString& Kind, const FString& Card)
 	return Snd;
 }
 
+void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
+{
+	static const TCHAR* Kinds[] = { TEXT("HAPPY"), TEXT("ANGRY"), TEXT("HURT"), TEXT("INSULT") };
+	if (a < 0 || a > 1 || Last.Card[a].IsEmpty() || !GetWorld()) return;
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Kind != EEmote::Hurt && Now - EmoteAt[a] < EmoteGap) return;	// one line at a time; the pain cuts in
+	Level = FMath::Clamp(Level, 1, 5);
+	int32 Take = FMath::RandHelper(5);
+	if (Take == EmoteTake[a]) Take = (Take + 1) % 5;	// never the same take twice running
+	const FString& Card = Last.Card[a];
+	const FString Name = FString::Printf(TEXT("S_V_%s_%s_%d_%d"), *Card, Kinds[(int32)Kind], Take + 1, Level);
+	USoundBase* Snd = nullptr;
+	if (const TObjectPtr<USoundBase>* Found = EmoteSounds.Find(Name)) Snd = Found->Get();
+	else
+	{
+		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Audio/Voice/") + Card), *Name);
+		EmoteSounds.Add(Name, Snd);
+		if (!Snd) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voice %s (Scripts/voice_pack.py, then voice_import.py)"), *Name);
+	}
+	if (!Snd) return;
+	EmoteAt[a] = Now;
+	EmoteTake[a] = Take;
+	if (Body[a].IsValid()) UGameplayStatics::PlaySoundAtLocation(this, Snd, Body[a]->GetBoneLocation(BoneHead), 0.9f, FMath::FRandRange(0.98f, 1.02f), 0.f, Ringside);
+	else UGameplayStatics::PlaySound2D(this, Snd, 0.8f);
+	SLAP_HUD_LOG(1, TEXT("SlapHUD: %s says %s"), *Card, *Name);
+}
+
+void ASlapHUD::EmoteCues(const FSlapHud& H)
+{
+	// the introductions: each fighter taunts the crowd as his card slides in
+	const double Ti = GetWorld()->GetTimeSeconds() - TapeAt;
+	if (TapeAt > 0.0 && Ti >= 0.0 && Ti < 2.0 * IntroEach)
+	{
+		const int32 Who = Ti < IntroEach ? 0 : 1;
+		if (Who > IntroSaid) { IntroSaid = Who; Emote(Who, EEmote::Insult, 3); }
+	}
+	else if (Ti >= 2.0 * IntroEach || Ti < 0.0) IntroSaid = -1;
+	// a new turn: the striker taunts; louder each round and once the defender has been down
+	const FString TurnKey = FString::Printf(TEXT("%d/%d/%s"), H.MatchSeq, H.Round, *H.Striker);
+	if (TurnKey != EmoteTurnKey && H.Round > 0 && !H.bWalkIn && H.Result.IsEmpty())
+	{
+		EmoteTurnKey = TurnKey;
+		EmoteTurnStrike = H.StrikeSeq;
+		EmoteTurnDef = Team(H.Defender);
+		Emote(1 - EmoteTurnDef, EEmote::Insult, H.Round + FMath::Min(H.Downs[EmoteTurnDef], 1) + FMath::RandHelper(2));
+	}
+	// a strike: the defender's pain, by the palm's speed (a clean slap ~ level 4)
+	if (H.StrikeSeq != EmoteSeenStrike)
+	{
+		EmoteSeenStrike = H.StrikeSeq;
+		const double K = FMath::Clamp(H.Speed / CleanSpeed, 0.0, 1.25);
+		Emote(FMath::Clamp(H.StrikeDefender, 0, 1), EEmote::Hurt, 1 + FMath::RoundToInt(3.2 * K));
+	}
+	// the turn ended with no strike: the defender enjoys it
+	if (H.TurnSeq != EmoteSeenTurn)
+	{
+		EmoteSeenTurn = H.TurnSeq;
+		if (H.StrikeSeq == EmoteTurnStrike && H.KOd < 0) Emote(EmoteTurnDef, EEmote::Happy, 2);
+	}
+	// a KO: the winner's big laugh
+	if (H.KOSeq != EmoteSeenKO)
+	{
+		EmoteSeenKO = H.KOSeq;
+		if (H.KOd >= 0) Emote(1 - H.KOd, EEmote::Happy, 5);
+	}
+	// a knockdown (not out cold): angry with himself, more with each one
+	for (int32 a = 0; a < 2; ++a)
+	{
+		if (H.Downs[a] > EmoteDowns[a] && H.KOd != a) Emote(a, EEmote::Angry, 2 + H.Downs[a]);
+		EmoteDowns[a] = H.Downs[a];	// a new match resets them to 0
+	}
+}
+
 void ASlapHUD::ReverbMix(double Now)
 {
 	// The hall vs the ringside: the closer the camera is to the contact, the drier it sounds. Both reverbs run; the

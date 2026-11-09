@@ -123,7 +123,7 @@ void USlapController::StartTurn(mjModel* m, mjData* d)
 		Turn.FaintAt[a] = (int64)std::nearbyint((1.0 + 9.0 * Mix({ Seed, (uint32)Round, (uint32)Turn.Striker, (uint32)a, 1u }) / 4294967296.0) / m->opt.timestep / 4.0) * 4;
 		Turn.FaintEnd[a] = Turn.FaintAt[a] + (int64)std::nearbyint(A.FaintSeconds / m->opt.timestep);
 	}
-	bTelReady = false;
+	TelSamples = 0;
 	ChainAt = ChainNum = 0;
 	PrevHandDist = -1.0;
 	Ttc = 99.0;

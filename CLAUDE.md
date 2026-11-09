@@ -66,6 +66,10 @@ UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/Scri
 UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
 ```
 
+Voices (per character card: HAPPY / ANGRY / HURT / INSULT x 5 sounds x 5 levels; placeholders are synthesised, a recording
+saved over a file under the same name is kept): `training/.venv/Scripts/python.exe Scripts/voice_pack.py [--report]`, then
+`UnrealEditor-Cmd.exe ... -run=pythonscript -script="<abs>/Scripts/voice_import.py"` → `/Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<n>_<level>`.
+
 Web: `cd Web && npm ci`, then `python Web/serve.py` (http://localhost:8080/Web/) or `python Web/build.py` → `Web/dist/`.
 Pushing changes under `Web/`, `training/models/` or `training/characters/` to `master` deploys the site.
 
@@ -75,4 +79,4 @@ Pushing changes under `Web/`, `training/models/` or `training/characters/` to `m
 - `training/match.py compare <onnx> <unreal match .jsonl> --mjb ...`: Unreal plays the same match events as Python.
 - `node Web/check.mjs [gg|kk|gk]` (from repo root): one turn each way through the browser engine; exits 1 if no turn ends.
 - `training/verify_realism.py`: card and model realism checks.
-- Unreal synthetic tests: launch with `-game -SlapUiTest` or `-SlapPairTest`; `-SlapBasicCpu` runs the Android brain path on desktop.
+- Unreal synthetic tests: launch with `-game -SlapUiTest` or `-SlapPairTest`; `-SlapTourney -SlapTourneyQuit` plays a whole 16-place bracket (TOURNEY tab, `Saved/PoSlap/tournament.json`) and quits on the champion (needs a window: under `-nullrhi` DrawHUD never runs, so neither does the bracket); `-SlapBasicCpu` runs the Android brain path on desktop.

@@ -191,23 +191,22 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 		if (bPendingMatch.exchange(false)) ApplyPending();	// the menu: new brains, a fresh match
 		if (bWaitForStart && MatchNo == 0)	// a normal launch: the menu first; both stand at the podium until START
 		{
-			// the match brains were trained on 30 s turns that end in a reset: idling past that, one tips over and nobody
-			// referees the menu, so both stand again every IdleRestand s, or at once when a pelvis drops below 60 % of its
-			// stand height (a fallen athlete also pulled the WIDE shot back into the stands). Menu only: no match runs here
-			constexpr double IdleRestand = 25.0;
-			bool bRestand = !bIdlePlaced || (StepCount - IdlePlacedAt) * m->opt.timestep > IdleRestand;
-			for (int32 a = 0; a < 2 && !bRestand; ++a)
-			{
-				bRestand = d->xpos[3 * Athletes[a].Pelvis + 2] < 0.6 * IdlePelvisZ[a];
-			}
-			if (bRestand)
+			// Both hold the stand pose at the podium until START. The match brain idling here ran its guard role off its
+			// training (30 s turns that end in a reset, no referee): it flailed and tipped over behind the menu (scene tour
+			// 2026-11-09), so the menu holds MuJoCo's stand pose instead. Menu only: no match runs here, nothing is scored,
+			// and START resets both to this same pose (StartMatch -> ResetToStand) before any brain acts.
+			if (!bIdlePlaced)
 			{
 				StandIdle(m, d);
 				bIdlePlaced = true;
 				IdlePlacedAt = StepCount;
 				for (int32 a = 0; a < 2; ++a) IdlePelvisZ[a] = d->xpos[3 * Athletes[a].Pelvis + 2];
+				IdleQpos.SetNumUninitialized(m->nq);
+				mju_copy(IdleQpos.GetData(), d->qpos, m->nq);
 			}
-			if (StepCount % ControlEvery == 0) Decide(m, d);
+			mju_copy(d->qpos, IdleQpos.GetData(), m->nq);
+			mju_zero(d->qvel, m->nv);
+			mj_forward(m, d);
 		}
 		else if (WalkInLeft > 0)
 		{
@@ -224,8 +223,29 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 					if (MatchNo > 0 && HoldLeft > 0) break;	// a turn or match just ended: let the crowd see it (StartTurn resets after)
 					if (MatchNo == 0 || Round > Rounds)
 					{
-						if (MatchNo > 0 && !bAutoNext && !bStartNext) break;	// the result stands until the menu asks for the next match
+						if (MatchNo > 0 && !bAutoNext && !bStartNext)	// the result stands until the menu asks for the next match
+						{
+							// OK on the result card (bRestand): both back on their feet at the podium behind the menu, held there
+							// (after a KO both lay on the floor and the wide shot framed the floor from among the props; tour
+							// 2026-11-09). The match is over and logged: nothing here is scored, and START resets anyway.
+							if (bRestand.load(std::memory_order_relaxed))
+							{
+								if (!bResultStood)
+								{
+									ResetToStand(m, d);
+									IdleQpos.SetNumUninitialized(m->nq);
+									mju_copy(IdleQpos.GetData(), d->qpos, m->nq);
+									bResultStood = true;
+								}
+								mju_copy(d->qpos, IdleQpos.GetData(), m->nq);
+								mju_zero(d->qvel, m->nv);
+								mj_forward(m, d);
+							}
+							break;
+						}
 						bStartNext = false;
+						bRestand = false;
+						bResultStood = false;
 						StartMatch(m, d);
 						if (WalkInLeft > 0) break;
 					}

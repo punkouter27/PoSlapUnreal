@@ -222,7 +222,9 @@ void USlapController::StepWalkIn(const mjModel* m, mjData* d)
 		const double Left = FMath::Abs(m->qpos0[A.RootQ] - d->xpos[3 * A.Pelvis]);
 		Walked = FMath::Min(Walked, A.WalkNet ? (A.bArrived || A.bFell ? 1.0 : FMath::Clamp(1.0 - Left / Aisle, 0.0, 1.0)) : Prog);
 	}
-	if (bDone && bReady) WalkInLeft = 1;	// StepPolicy's decrement ends it: the first turn starts on the next step
+	// StepPolicy's decrement ends it: the first turn starts on the next step - not before both introductions have run
+	// (the HUD's two IntroEach cards, 7 s): a 3 s walk-in had round 1 starting under the cards (scene tour 2026-11-09)
+	if (bDone && bReady && (WalkInTotal - WalkInLeft) * m->opt.timestep >= IntroHold) WalkInLeft = 1;
 	SetHud([&](FSlapHud& H)
 	{
 		H.bWalkIn = true;

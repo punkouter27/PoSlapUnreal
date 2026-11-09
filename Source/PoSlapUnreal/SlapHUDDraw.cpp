@@ -401,8 +401,28 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		if (P.Z > 0) Text(Tag, P.X, P.Y, bFeint ? Gold : (bNearMiss ? Amber : Green), 1.1f * S, true, GEngine->GetMediumFont());
 	}
 
-	// tale of the tape at the match's start and through the walk-in
-	if ((Now - TapeAt < 5.0 || H.bWalkIn) && H.Result.IsEmpty())
+	// the introductions as the walk-in begins: each fighter in turn (red, then blue), his card, his Elo, his taunt
+	const double Ti = Now - TapeAt;
+	if (H.Result.IsEmpty() && TapeAt > 0.0 && Ti >= 0.0 && Ti < 2.0 * IntroEach)
+	{
+		const int32 a = Ti < IntroEach ? 0 : 1;
+		const double Tin = Ti - a * IntroEach;
+		const float SlideIn = (float)FMath::Clamp(FMath::Min(Tin / 0.25, (IntroEach - Tin) / 0.25), 0.0, 1.0);	// in and out
+		const float Wk = Canvas->ClipX - 40.f * S, Hk = 104.f * S, Yk = Canvas->ClipY * 0.6f;
+		const float Xk = 20.f * S + (a ? 1.f : -1.f) * (1.f - SlideIn) * Canvas->ClipX;
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.88f), Xk, Yk, Wk, Hk);
+		DrawRect(FLinearColor(TeamColor[a]), Xk, Yk, 6.f * S, Hk);
+		DrawRect(FLinearColor(Gold), Xk, Yk, Wk, 2.f * S);
+		const float Tx = Xk + 18.f * S, Tw = Wk - 30.f * S;
+		TextBox(a ? TEXT("INTRODUCING  •  IN THE BLUE CORNER") : TEXT("INTRODUCING  •  IN THE RED CORNER"), Tx, Yk + 8.f * S, Tw, Gold, 0.9f * S);
+		TextBox(H.Name[a].IsEmpty() ? FString(a ? TEXT("BLUE") : TEXT("RED")) : H.Name[a].ToUpper(), Tx, Yk + 24.f * S, Tw, TeamColor[a], 1.6f * S, false, GEngine->GetLargeFont());
+		TextBox(H.Tape[a], Tx, Yk + 60.f * S, Tw, FColor::White, 0.9f * S);
+		TextBox(EloOf(HereCard[a]).ToUpper() + (H.Brain[a].IsEmpty() ? FString() : TEXT("   BRAIN ") + H.Brain[a]), Tx, Yk + 78.f * S, Tw, Grey, 0.85f * S);
+		TrackBox(TEXT("Introduction"), Xk, Yk, Wk, Hk);
+	}
+
+	// tale of the tape at the match's start and through the walk-in (the introductions run under it)
+	if ((Ti < 5.0 || H.bWalkIn) && H.Result.IsEmpty())
 	{
 		const float Y = PanelBottom;
 		const bool bScout = Scout.Contains(H.Brain[0]) || Scout.Contains(H.Brain[1]);
@@ -415,7 +435,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		for (int32 a = 0; a < 2; ++a)
 		{
 			const float Ya = Y + (32.f + Row * a) * S;
-			TextBox(H.Name[a], 16.f * S, Ya, CardW - 16.f * S, TeamColor[a], 1.2f * S);
+			TextBox(FString::Printf(TEXT("%s   ELO %.0f"), *H.Name[a], EloNum(HereCard[a])), 16.f * S, Ya, CardW - 16.f * S, TeamColor[a], 1.2f * S);	// the character's Elo (the menu's)
 			TextBox(H.Tape[a] + TEXT("  ") + H.Brain[a], 16.f * S, Ya + 17.f * S, CardW - 16.f * S, Grey, 0.85f * S);
 			if (const FString* L = Scout.Find(H.Brain[a])) TextBox(*L, 16.f * S, Ya + 31.f * S, CardW - 16.f * S, Gold, 0.85f * S);	// training/scouting.py
 		}
@@ -455,7 +475,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 	}
 
 	// commentary, bottom: the latest line for 8 s, wrapped at ~44 characters
-	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && Commentary.Num())
+	if (bShowCommentary && Now - CommentaryAt < 8.0 && CommentaryAt >= TurnAt && Commentary.Num() && H.Result.IsEmpty())
 	{
 		const float Y = Bot - 108.f * S - Commentary.Num() * 20.f * S;	// above the X-ray lines and the telemetry strips
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), 16.f * S, Y - 6.f * S, Canvas->ClipX - 32.f * S, (Commentary.Num() * 20.f + 10.f) * S);
@@ -542,13 +562,13 @@ void ASlapHUD::DrawWinner(const FSlapHud& H)
 	if (H.Result.IsEmpty()) return;
 	const float Cx = Canvas->ClipX * 0.5f, Yw = Top + 8.f * S, Ww = Canvas->ClipX - 20.f * S, Hw = 110.f * S;
 	const int32 Win = H.Winner;
-	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.90f), Cx - Ww * 0.5f, Yw, Ww, Hw);
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 1.f), Cx - Ww * 0.5f, Yw, Ww, Hw);	// opaque: the scoreboard under it showed through (scene tour 2026-11-09)
 	DrawRect(FLinearColor(Gold), Cx - Ww * 0.5f, Yw, Ww, 3.f * S);
 	DrawRect(FLinearColor(Gold), Cx - Ww * 0.5f, Yw + Hw - 3.f * S, Ww, 3.f * S);
 	Text(Win >= 0 ? TEXT("★ ★ ★ MATCH WINNER ★ ★ ★") : TEXT("★ ★ ★ MATCH RESULT ★ ★ ★"), Cx, Yw + 8.f * S, Gold, 1.15f * S, true);
 	const FString Name = Win >= 0 ? (H.Name[Win].IsEmpty() ? (Win ? TEXT("BLUE") : TEXT("RED")) : H.Name[Win].ToUpper()) : TEXT("DRAW");
 	TextBox(Name, Cx, Yw + 26.f * S, Ww - 20.f * S, Win >= 0 ? TeamColor[Win] : FColor::White, 1.5f * S, true, GEngine->GetLargeFont());
-	TextBox(H.Result, Cx, Yw + 58.f * S, Ww - 20.f * S, FColor::White, 1.05f * S, true);
+	TextBox(ResultPlain(H), Cx, Yw + 58.f * S, Ww - 20.f * S, FColor::White, 1.05f * S, true);
 	TextBox(FString::Printf(TEXT("STRIKES %d - %d   PEAK %.1f - %.1f m/s   KD %d - %d   SERIES %d - %d"), TotalStrikes[0], TotalStrikes[1], PeakSpeed[0], PeakSpeed[1],
 		H.Downs[0], H.Downs[1], H.Wins[0], H.Wins[1]), Cx, Yw + 82.f * S, Ww - 20.f * S, Grey, 0.9f * S, true);
 	TrackBox(TEXT("WinnerBanner"), Cx - Ww * 0.5f, Yw, Ww, Hw);

@@ -139,6 +139,8 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		SeenRound = H.ScoredRound;
 		if (H.ScoredRound > 0) CardAt = Now;
 	}
+	EmoteCues(H);
+	Commentate(H, Now);
 	PollSidecars(Now);
 	Stage(H, Now);
 }

@@ -225,6 +225,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		{
 			H.HandDist = HandDist;
 			H.HeadG = HeadG;
+			if (Turn.TouchStep >= 0) H.HeadPeak = Turn.HeadPeak;	// the snap so far (display; StartTurn clears it, the turn's end rounds it)
 			H.Hic = Turn.Hic;
 			H.Bric = Turn.Bric;
 			H.ChainOrder = Turn.ChainOrder;
