@@ -21,6 +21,12 @@ LABELS = ("Env_", "KeyLight", "TrussSpot", "HouseLight", "RimRed", "RimBlue", "A
 # blue +X) and stay put.
 CAM, CAM_YAW, SET_YAW = (0, 520, 130), -90.0, 180.0
 FIXED = ("FootBox_",)   # env meshes that keep the physics frame
+# Props dropped in after the dressing (user 2026-11-09: "flowers in a container, somewhere in the scene"): one glTF each
+# under Content/Art/Exports/Props/, placed in UE cm directly (no SET_YAW). The planter (50 x 40 x 12 cm, 500 k faces,
+# Nanite; its origin 3.5 cm above the base) sits on the judges' table across from the camera (Env_JudgesTable in UE:
+# x +-106, y -378..-280, top z = 107), at the red end so it shows beside the red athlete, not behind the podium.
+PROPS = "/Game/Arena/Props"
+PROP_LIST = {"Flowers": dict(src="Content/Art/Exports/Props/Flowers.glb", loc=(-72, -305, 110.5), yaw=200.0)}
 
 
 def log(msg):
@@ -54,6 +60,60 @@ def import_env(reimport=True):
     return meshes
 
 
+def import_prop(name, src, reimport=False):
+    """SM_<name> (+ MI_/T_ by UE prefixes) from one glTF, Nanite on; textures capped at 2048 (8 k scans). Reused unless asked."""
+    path = f"{PROPS}/{name}/SM_{name}"
+    if not reimport and ASSETS.does_asset_exist(path):
+        return ASSETS.load_asset(path)
+    if not os.path.isfile(os.path.join(PROJ, src)):
+        log(f"prop {name}: {src} missing: skipped")
+        return None
+    if ASSETS.does_directory_exist(f"{PROPS}/{name}"):
+        ASSETS.delete_directory(f"{PROPS}/{name}")
+    t = unreal.AssetImportTask()
+    t.filename, t.destination_path, t.automated, t.replace_existing, t.save = os.path.join(PROJ, src), f"{PROPS}/{name}", True, True, True
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
+    mesh = None
+    for p in list(t.imported_object_paths):
+        a = ASSETS.load_asset(p)
+        folder = a.get_path_name().rsplit("/", 1)[0]
+        if isinstance(a, unreal.StaticMesh):
+            ns = a.get_editor_property("nanite_settings")
+            ns.enabled = True
+            a.set_editor_property("nanite_settings", ns)
+            if a.get_name() != f"SM_{name}":
+                ASSETS.rename_loaded_asset(a, f"{folder}/SM_{name}")
+            mesh = a
+        elif isinstance(a, unreal.Texture2D):
+            a.set_editor_property("max_texture_size", 2048)
+            a.set_editor_property("lod_group", unreal.TextureGroup.TEXTUREGROUP_WORLD)
+            ASSETS.save_loaded_asset(a)
+        elif isinstance(a, (unreal.MaterialInstanceConstant, unreal.Material)) and not a.get_name().startswith(("MI_", "M_")):
+            ASSETS.rename_loaded_asset(a, f"{folder}/MI_{a.get_name()}")
+    if mesh is None:
+        log(f"prop {name}: no static mesh in {src}")
+        return None
+    if mesh.get_path_name().split(".")[0] != path:   # Interchange nests it (<name>/<name>/StaticMeshes/): the mesh goes to the flat path the reuse check reads
+        ASSETS.rename_loaded_asset(mesh, path)
+        mesh = ASSETS.load_asset(path)
+    ASSETS.save_loaded_asset(mesh)
+    unreal.get_editor_subsystem(unreal.EditorAssetSubsystem).save_directory(f"{PROPS}/{name}", only_if_is_dirty=True, recursive=True)
+    log(f"prop {name}: imported {src} -> {mesh.get_path_name()} (Nanite on)")
+    return mesh
+
+
+def place_props(spawn, reimport=False):
+    for name, p in PROP_LIST.items():
+        m = import_prop(name, p["src"], reimport)
+        if m is None:
+            continue
+        a = spawn(unreal.StaticMeshActor, f"Env_{name}", p["loc"], (0, p.get("yaw", 0.0), 0))   # "Env_": refreshed and twinned with the dressing
+        a.static_mesh_component.set_static_mesh(m)
+        a.static_mesh_component.set_mobility(unreal.ComponentMobility.STATIC)
+        a.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+        a.set_folder_path("ArenaEnv")
+
+
 def aim(frm, to):  # (pitch, yaw, roll) pointing a light's +X from frm to to (UE cm)
     d = [b - a for a, b in zip(frm, to)]
     return (math.degrees(math.atan2(d[2], math.hypot(d[0], d[1]))), math.degrees(math.atan2(d[1], d[0])), 0)
@@ -68,6 +128,7 @@ def build(spawn, reimport=True):
         if not m.get_name().removeprefix("SM_").startswith(FIXED):
             a.set_actor_rotation(unreal.Rotator(roll=0.0, pitch=0.0, yaw=SET_YAW), False)   # baked at the origin: turns about the centre
         a.set_folder_path("ArenaEnv")
+    place_props(spawn, reimport or os.environ.get("SLAP_REIMPORT_PROPS") == "1")   # the props alone, without redoing the dressing
 
     def spot(label, loc, lumens, cone, to=(0, 0, 100), color=None, beams=0.6, shadows=True):
         s = spawn(unreal.SpotLight, label, loc, aim(loc, to))

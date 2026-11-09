@@ -341,6 +341,7 @@ private:
 	int32 LayoutFails = 0, LayoutStep = 0, LayoutWait = 0;
 	float DpiScale = 1.f;
 	float SafeBottomSlate = 0.f;	// the bottom safe inset in Slate units: the sheet sits above it and the anchor row
+	float SafeTopSlate = 0.f;		// the top one: the menu screen starts under it and the top anchor row
 	int32 Tab = TabMatch;
 	int32 TextOverflows = 0, TextShrunk = 0;	// lines that did not fit even at the smallest scale / that were shrunk
 	struct FCanvasBox { FString Name; FIntRect Rect; };

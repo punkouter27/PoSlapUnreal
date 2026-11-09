@@ -283,13 +283,15 @@ void ASlapHUD::Layout()
 	TickerY = Bot - 18.f * S;	// the event ticker's row, right above the bottom anchors: what hangs low starts above it
 	if (bPass) Bot = TickerY - 2.f * S;
 
-	// The menu sheet's height budget, in Slate units. The layer's own height is measured, so the budget follows the safe
-	// zone and any resize; the sheet's content is clipped inside it, so no tab can run off the screen and nothing scrolls.
-	// The sheet sits above the corner anchors' row (and the platform's bottom inset), so the build stamp stays visible.
+	// The menu screen's height budget, in Slate units. The layer's own height is measured, so the budget follows the safe
+	// zone and any resize; the tab's content is clipped inside it, so no tab can run off the screen and nothing scrolls.
+	// The screen fills the space between the two anchor rows (and the platform's insets): the title, FPS, menu icon and
+	// build stamp stay visible around it, and the arena is not seen behind it (user 2026-11-09: menu and scene apart).
 	const float LayerH = Ui.IsValid() ? Ui->GetCachedGeometry().GetLocalSize().Y : 0.f;
 	const float ScreenSlate = LayerH > 1.f ? LayerH : View.Y / FMath::Max(Dpi, 0.01f);
 	SafeBottomSlate = Safe.Bottom / FMath::Max(Dpi, 0.01f);
-	SheetBudget = FMath::Max(160.f, FMath::Min(ScreenSlate * 0.78f, ScreenSlate - SafeBottomSlate - BottomBar - 24.f));
+	SafeTopSlate = Safe.Top / FMath::Max(Dpi, 0.01f);
+	SheetBudget = FMath::Max(160.f, ScreenSlate - SafeTopSlate - TopBar - SafeBottomSlate - BottomBar - SheetPad);
 }
 
 void ASlapHUD::Keys()
@@ -395,7 +397,7 @@ void ASlapHUD::DrawHUD()
 	AutoTier();
 	Live(H);
 	if (Camera.IsValid()) Direct(Camera.Get(), H);
-	if (H.Match > 0 && !(bMenu && !H.Result.IsEmpty()))	// the menu over a finished match: the arena and the menu, nothing else
+	if (H.Match > 0 && !bMenu)	// the menu is its own screen: nothing of the match is drawn under it
 	{
 		Boxes.Reset();
 		TextOverflows = TextShrunk = 0;
@@ -418,6 +420,7 @@ void ASlapHUD::DrawHUD()
 		if (Now < ReplayEnd && bAutoReplay) DrawStrikeReplayCaption(H);
 		else if (Now < ReplayEnd) Text(bQuarter ? TEXT("REPLAY   1/4 SPEED") : TEXT("REPLAY   1/2 SPEED"), Canvas->ClipX * 0.5f, PanelBottom + 6.f * S, Gold, 1.4f * S, true, GEngine->GetMediumFont());
 	}
+	else Boxes.Reset();	// no canvas boxes under the menu screen (the layout audit reads them)
 
 	if (bUiTest) UiTest(H);
 	if (bRoundTripTest) RoundTripTest(H);

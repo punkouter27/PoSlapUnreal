@@ -1,5 +1,7 @@
-// ASlapHUD's Slate layer: the corner anchors, the result card and the menu sheet (MATCH / BRAINS / VIEW, START at its
-// bottom centre). Sizes are Slate units (DPI-scaled); every touch target is at least 44 units; nothing scrolls.
+// ASlapHUD's Slate layer: the corner anchors, the result card and the menu screen (MATCH / BRAINS / VIEW / TOURNEY,
+// START at its bottom centre). The menu is its own screen over an opaque backdrop between the two anchor rows: the
+// arena is never seen behind it (user 2026-11-09: the menu first, the scene apart from it). Sizes are Slate units
+// (DPI-scaled); every touch target is at least 44 units; nothing scrolls.
 
 #include "SlapHUD.h"
 
@@ -39,8 +41,12 @@ namespace
 {
 	const FLinearColor White = FLinearColor::White, Dim(Grey), Hi(Gold);
 	const FLinearColor RedTeam(0.85f, 0.22f, 0.18f), BlueTeam(0.2f, 0.45f, 0.9f), Panel(0.18f, 0.18f, 0.22f);
-	const FSlateRoundedBoxBrush& SheetBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.02f, 0.02f, 0.03f, 0.95f), FVector4(18.f, 18.f, 0.f, 0.f)); return B; }
+	const FSlateRoundedBoxBrush& SheetBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.05f, 0.05f, 0.07f, 1.f), 12.f); return B; }	// the menu screen's panel
+	const FSlateColorBrush& BackdropBrush() { static const FSlateColorBrush B(FLinearColor(0.02f, 0.02f, 0.03f, 1.f)); return B; }	// under the menu: the arena is not seen
 	const FSlateColorBrush& ScrimBrush() { static const FSlateColorBrush B(FLinearColor(0.f, 0.f, 0.f, 0.5f)); return B; }
+	const FSlateRoundedBoxBrush& TabOnBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.16f, 0.16f, 0.2f, 1.f), FVector4(8.f, 8.f, 0.f, 0.f)); return B; }
+	const FSlateRoundedBoxBrush& TabOffBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.09f, 0.09f, 0.11f, 1.f), FVector4(8.f, 8.f, 0.f, 0.f)); return B; }
+	const FSlateRoundedBoxBrush& ByeBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(1.f, 1.f, 1.f, 0.04f), 10.f); return B; }
 	const FSlateRoundedBoxBrush& OnBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.55f, 0.42f, 0.1f, 0.9f), 10.f); return B; }
 	const FSlateRoundedBoxBrush& OffBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(1.f, 1.f, 1.f, 0.08f), 10.f); return B; }
 	const FSlateRoundedBoxBrush& CardBrush() { static const FSlateRoundedBoxBrush B(FLinearColor(0.f, 0.f, 0.f, 0.8f), 14.f); return B; }
@@ -200,6 +206,8 @@ void ASlapHUD::BuildUi()
 				return FReply::Handled();
 			})
 		]
+		+ SOverlay::Slot()	// the menu's backdrop, under the anchors: the whole viewport, opaque, so the scene stays its own thing
+		[SAssignNew(Hit[HitScrim], SBorder).BorderImage(&BackdropBrush()).Visibility_Lambda([Self] { return Self.IsValid() && Self->bMenu ? EVisibility::Visible : EVisibility::Collapsed; })]
 		+ SOverlay::Slot()[BuildAnchors()]
 		+ SOverlay::Slot()[BuildSheet()];
 	VC->AddViewportWidgetContent(Ui.ToSharedRef(), 10);
@@ -256,7 +264,7 @@ TSharedRef<SWidget> ASlapHUD::BuildAnchors()
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)	// BL: the live telemetry (with DBG: the physics clock too)
 			[
 				SAssignNew(Anchor[3], SBox).HeightOverride(BottomBar).VAlign(VAlign_Center).Padding(FMargin(16.f, 0.f))
-				.Visibility_Lambda([Self] { return Self.IsValid() && (Self->Last.Match > 0 || Self->bShowDebug) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				.Visibility_Lambda([Self] { return Self.IsValid() && !Self->bMenu && (Self->Last.Match > 0 || Self->bShowDebug) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })	// live numbers: not on the menu screen
 				[SNew(SBorder).BorderImage(&ScrimBrush()).Padding(FMargin(6.f, 2.f))[Label(TAttribute<FText>::CreateLambda([Self]
 				{
 					if (!Self.IsValid()) return FText();
@@ -370,46 +378,73 @@ TSharedRef<SWidget> ASlapHUD::BuildResultStats()
 
 TSharedRef<SWidget> ASlapHUD::BuildSheet()
 {
-	// The bottom sheet over a scrim: the tab row on top (secondary settings), the tab's content capped to the measured
-	// budget, START at the bottom centre under the thumb. Tapping the scrim or X closes it.
+	// The menu screen: a panel filling the space between the two anchor rows (the backdrop under it hides the arena). Top
+	// to bottom: the league header, the tab row (the lit tab carries a gold bar), the tab's content in the measured budget,
+	// START at the bottom centre under the thumb. X (or the menu icon) closes it; START closes it and plays.
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	auto TabButton = [this, Self](int32 i, const TCHAR* Name)
 	{
-		return Button(FText::FromString(Name), 17, [Self, i] { if (Self.IsValid()) Self->Tab = i; return FReply::Handled(); }, Targets,
-			&Hit[i == TabMatch ? HitTabMatch : i == TabBrains ? HitTabBrains : i == TabView ? HitTabView : HitTabTourney],
-			TAttribute<FSlateColor>::CreateLambda([Self, i] { return FSlateColor(Self.IsValid() && Self->Tab == i ? Hi : Dim); }), Panel);
+		auto bOn = [Self, i] { return Self.IsValid() && Self->Tab == i; };
+		return SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBorder).Padding(0.f).BorderImage_Lambda([bOn] { return bOn() ? &TabOnBrush() : &TabOffBrush(); })
+				[Button(FText::FromString(Name), 16, [Self, i] { if (Self.IsValid()) Self->Tab = i; return FReply::Handled(); }, Targets,
+					&Hit[i == TabMatch ? HitTabMatch : i == TabBrains ? HitTabBrains : i == TabView ? HitTabView : HitTabTourney],
+					TAttribute<FSlateColor>::CreateLambda([bOn] { return FSlateColor(bOn() ? Hi : Dim); }), FLinearColor(0.f, 0.f, 0.f, 0.f))]
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			[SNew(SBox).HeightOverride(3.f)[SNew(SImage).Image(&BarBrush()).ColorAndOpacity_Lambda([bOn] { return bOn() ? FSlateColor(Hi) : FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.08f)); })]];
+	};
+	auto Header = [Self]	// the league line: what this screen is, and how the 16 places are filled today
+	{
+		return SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)[FitLabel(FText::FromString(TEXT("POWER SLAP LEAGUE")), 20, Hi)]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[Label(TAttribute<FText>::CreateLambda([Self]
+				{
+					if (!Self.IsValid()) return FText();
+					int32 Fighters = 0;
+					for (const FString& C : Self->SlotCards) Fighters += !C.IsEmpty();
+					return FText::FromString(FString::Printf(TEXT("16 PLACES  ·  %d FIGHTERS  ·  %d BYES"), Fighters, RosterSize - Fighters));
+				}), 13, Dim)]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
+			[SNew(SBox).HeightOverride(1.f)[SNew(SImage).Image(&BarBrush()).ColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.12f)))]];
 	};
 	return SNew(SOverlay)
 		.Visibility_Lambda([Self] { return Self.IsValid() && Self->bMenu ? EVisibility::Visible : EVisibility::Collapsed; })
-		+ SOverlay::Slot()
-		[SAssignNew(Hit[HitScrim], SBorder).BorderImage(&ScrimBrush()).OnMouseButtonDown_Lambda([Self](const FGeometry&, const FPointerEvent&) { if (Self.IsValid()) Self->OpenMenu(false); return FReply::Handled(); })]
-		+ SOverlay::Slot().VAlign(VAlign_Bottom)
-		// the sheet sits above the corner anchors' row (and the platform's bottom inset): the build stamp stays visible
-		.Padding(TAttribute<FMargin>::CreateLambda([Self] { return FMargin(0.f, 0.f, 0.f, BottomBar + (Self.IsValid() ? Self->SafeBottomSlate : 0.f)); }))
+		+ SOverlay::Slot().VAlign(VAlign_Fill)
+		// between the anchor rows (and the platform's insets): the title, FPS, menu icon and build stamp stay around it
+		.Padding(TAttribute<FMargin>::CreateLambda([Self] { return FMargin(0.f, TopBar + (Self.IsValid() ? Self->SafeTopSlate : 0.f), 0.f, BottomBar + (Self.IsValid() ? Self->SafeBottomSlate : 0.f)); }))
 		[
 			SAssignNew(SheetRoot, SBorder).BorderImage(&SheetBrush()).Padding(FMargin(12.f, 10.f, 12.f, 8.f))
 			[
-				SNew(SBox).Padding(TAttribute<FMargin>::CreateLambda([Self]	// the side insets; the sheet already sits above the bottom one
+				SNew(SBox).Padding(TAttribute<FMargin>::CreateLambda([Self]	// the side insets
 				{
 					const float K = Self.IsValid() ? 1.f / FMath::Max(Self->DpiScale, 0.01f) : 0.f;
 					return Self.IsValid() ? FMargin(Self->Safe.Left * K, 0.f, Self->Safe.Right * K, 0.f) : FMargin(0.f);
 				}))
 				[
-					// the height budget: the box is capped to it and clips the tab's content, never the tabs or START
-					SAssignNew(SheetBody, SBox).MaxDesiredHeight_Lambda([Self] { return FOptionalSize(Self.IsValid() ? FMath::Max(120.f, Self->SheetBudget) : 600.f); })
+					// the height budget (the whole screen between the rows): the tab's content is clipped inside it, never the tabs or START
+					SAssignNew(SheetBody, SBox).HeightOverride_Lambda([Self] { return FOptionalSize(Self.IsValid() ? FMath::Max(120.f, Self->SheetBudget) : 600.f); })
 					[
 						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(4.f, 2.f, 4.f, 8.f))[Header()]
 						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SAssignNew(SheetTabs, SHorizontalBox)
-							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabMatch, TEXT("MATCH"))]
-							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabBrains, TEXT("BRAINS"))]
-							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f)[TabButton(TabView, TEXT("VIEW"))]
-							+ SHorizontalBox::Slot().FillWidth(1.2f).Padding(2.f)[TabButton(TabTourney, TEXT("TOURNEY"))]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(2.f)
-							[Button(FText::FromString(TEXT("X")), 18, [Self] { if (Self.IsValid()) Self->OpenMenu(false); return FReply::Handled(); }, Targets, &Hit[HitClose])]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f, 0.f)[TabButton(TabMatch, TEXT("MATCH"))]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f, 0.f)[TabButton(TabBrains, TEXT("BRAINS"))]
+							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(2.f, 0.f)[TabButton(TabView, TEXT("VIEW"))]
+							+ SHorizontalBox::Slot().FillWidth(1.2f).Padding(2.f, 0.f)[TabButton(TabTourney, TEXT("TOURNEY"))]
+							+ SHorizontalBox::Slot().AutoWidth().Padding(6.f, 0.f, 2.f, 0.f)
+							[Button(FText::FromString(TEXT("X")), 18, [Self] { if (Self.IsValid()) Self->OpenMenu(false); return FReply::Handled(); }, Targets, &Hit[HitClose], Dim, FLinearColor(0.f, 0.f, 0.f, 0.f))]
 						]
-						+ SVerticalBox::Slot().FillHeight(1.f).Padding(FMargin(4.f, 8.f, 4.f, 8.f))
+						+ SVerticalBox::Slot().FillHeight(1.f).Padding(FMargin(4.f, 10.f, 4.f, 8.f))
 						[
 							SAssignNew(SheetContent, SWidgetSwitcher).WidgetIndex_Lambda([Self] { return Self.IsValid() ? Self->Tab : 0; })
 							+ SWidgetSwitcher::Slot()[BuildMatchTab()]
@@ -419,7 +454,7 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 						]
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)	// START, bottom centre: one thumb
 						[
-							SNew(SBox).WidthOverride(300.f).MinDesiredHeight(56.f)
+							SNew(SBox).WidthOverride(340.f).MinDesiredHeight(58.f)
 							[Button(TAttribute<FText>::CreateLambda([Self]
 							{
 								if (!Self.IsValid()) return FText();
@@ -432,7 +467,7 @@ TSharedRef<SWidget> ASlapHUD::BuildSheet()
 								if (Self->Tab == TabTourney) Self->PlayTourney(!Self->bTourney);	// the TOURNEY tab: START runs the bracket
 								else Self->Start();
 								return FReply::Handled();
-							}, Targets, &Hit[HitStart], White, RedTeam, 300.f)]
+							}, Targets, &Hit[HitStart], White, RedTeam, 340.f)]
 						]
 					]
 				]
@@ -459,7 +494,9 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 				TAttribute<FLinearColor>::CreateLambda([Self, a] { return Self.IsValid() && Self->ActiveCornerSelect == a ? (a ? BlueTeam : RedTeam) : Panel; }))]
 			+ SHorizontalBox::Slot().AutoWidth()[Button(FText::FromString(TEXT(">")), 18, [Self, a] { if (Self.IsValid()) Self->StepFighter(a, 1); return FReply::Handled(); }, Targets)];
 	};
-	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(2.f)).MinDesiredSlotHeight(Touch).MinDesiredSlotWidth(Touch);
+	// the 16 places of the league, 4 x 4: a fighter's tile (place, name, Elo and record) or a BYE (an open place: the
+	// bracket gives it away as a bye, user 2026-11-09: show the 16 players / byes)
+	TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(3.f)).MinDesiredSlotHeight(52.f).MinDesiredSlotWidth(Touch);
 	for (int32 i = 0; i < RosterSize; ++i)
 	{
 		if (Playable(i))
@@ -490,14 +527,14 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 				}), 12, White)]
 			];
 		}
-		else	// an open slot, or a character with no arena yet (Matt: still in training) - not a pick
+		else	// an open place (a BYE in the bracket), or a character with no arena level in this build - not a pick
 		{
 			const bool bOpen = Slots[i].Key.IsEmpty();
 			Grid->AddSlot(i % 4, i / 4)
 			[
-				SNew(SBorder).BorderImage(&OffBrush()).Padding(0.f).HAlign(HAlign_Center).VAlign(VAlign_Center)
-				[SNew(SBox).MinDesiredHeight(Touch).MinDesiredWidth(Touch).HAlign(HAlign_Center).VAlign(VAlign_Center)
-					[FitLabel(FText::FromString(bOpen ? FString::Printf(TEXT("%d"), i + 1) : FString::Printf(TEXT("%d. %s\nin training"), i + 1, *Slots[i].Key)), 12, Dim * (bOpen ? 0.8f : 0.95f))]]
+				SNew(SBorder).BorderImage(bOpen ? &ByeBrush() : &OffBrush()).Padding(0.f).HAlign(HAlign_Center).VAlign(VAlign_Center)
+				[SNew(SBox).MinDesiredHeight(52.f).MinDesiredWidth(Touch).HAlign(HAlign_Center).VAlign(VAlign_Center)
+					[FitLabel(FText::FromString(bOpen ? FString::Printf(TEXT("%d.\nBYE"), i + 1) : FString::Printf(TEXT("%d. %s\nno arena"), i + 1, *Slots[i].Key)), 12, Dim * (bOpen ? 0.55f : 0.95f))]]
 			];
 		}
 	}
@@ -521,12 +558,17 @@ TSharedRef<SWidget> ASlapHUD::BuildMatchTab()
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(4.f, 0.f))[Label(FText::FromString(TEXT("VS")), 14, Dim)]
 			+ SHorizontalBox::Slot().FillWidth(1.f)[Corner(1)]
 		]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f).HAlign(HAlign_Center)
-		[Label(TAttribute<FText>::CreateLambda([Self]
-		{
-			return FText::FromString(Self.IsValid() && Self->ActiveCornerSelect == 1 ? TEXT("A tap picks BLUE") : TEXT("A tap picks RED"));
-		}), 13, Hi)]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 6.f)[Grid]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 2.f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)[Heading(TEXT("THE 16 PLACES"))]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[Label(TAttribute<FText>::CreateLambda([Self]
+			{
+				return FText::FromString(Self.IsValid() && Self->ActiveCornerSelect == 1 ? TEXT("a tap picks BLUE") : TEXT("a tap picks RED"));
+			}), 13, TAttribute<FSlateColor>::CreateLambda([Self] { return FSlateColor(Self.IsValid() && Self->ActiveCornerSelect == 1 ? BlueTeam : RedTeam); }))]
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 8.f)[Grid]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			SNew(SHorizontalBox)
@@ -664,7 +706,7 @@ TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
 				if (c > 0 && N != TEXT("BYE") && Self.IsValid() && Self->TourneyHow[c - 1].IsValidIndex(j) && Self->TourneyHow[c - 1][j] != TEXT("BYE"))
 					T += TEXT(" ") + Self->TourneyHow[c - 1][j];	// how he got here: KO, DEC, W/O, SEED
 				return FText::FromString(T);
-			}), 12, TAttribute<FSlateColor>::CreateLambda([Self, NameOf, IsPending, c, j]
+			}), c >= TourneyRounds ? 20 : 15, TAttribute<FSlateColor>::CreateLambda([Self, NameOf, IsPending, c, j]
 			{
 				const FString N = NameOf();
 				if (!Self.IsValid() || N.IsEmpty() || N == TEXT("BYE")) return FSlateColor(Dim * 0.5f);
@@ -673,28 +715,30 @@ TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
 				return FSlateColor(W.IsEmpty() ? White * 0.85f : W == N ? Hi : Dim * 0.6f);
 			}))];
 	};
-	TSharedRef<SHorizontalBox> Bracket = SNew(SHorizontalBox);
-	for (int32 c = 0; c <= TourneyRounds; ++c)
+	// Two-sided (user 2026-11-09): places 1-8 start on the left, 9-16 on the right, each half narrows toward the centre
+	// and the champion sits in the middle. Column order: L16 QF SF FINAL | CHAMP | FINAL SF QF L16.
+	static const TCHAR* const ColName[] = { TEXT("LAST 16"), TEXT("QF"), TEXT("SF"), TEXT("FINAL"), TEXT("CHAMPION") };
+	TSharedRef<SHorizontalBox> Bracket = SNew(SHorizontalBox), Heads = SNew(SHorizontalBox);
+	auto AddColumn = [&](int32 c, int32 Side)	// Side 0 left half, 1 right half, -1 the champion
 	{
 		TSharedRef<SVerticalBox> Col = SNew(SVerticalBox);
-		const int32 Rows = 16 >> c;
-		for (int32 j = 0; j < Rows; ++j)	// equal shares of the height: each winner sits level with the pair that fed it
-			Col->AddSlot().FillHeight(1.f).VAlign(VAlign_Center).Padding(0.f, 1.f, 0.f, j % 2 && j + 1 < Rows ? 3.f : 1.f)[SNew(SBox).HeightOverride(17.f)[Cell(c, j)]];
-		Bracket->AddSlot().FillWidth(c == 0 ? 1.15f : 1.f).Padding(c ? 3.f : 0.f, 0.f, 0.f, 0.f)[Col];
-	}
+		const int32 Rows = c >= TourneyRounds ? 1 : (16 >> c) / 2, First = Side == 1 ? Rows : 0;
+		for (int32 k = 0; k < Rows; ++k)	// equal shares of the half's height: each winner sits level with the pair that fed it
+			Col->AddSlot().FillHeight(1.f).VAlign(VAlign_Center).Padding(0.f, 1.f, 0.f, k % 2 && k + 1 < Rows ? 3.f : 1.f)
+				[SNew(SBox).HeightOverride(c >= TourneyRounds ? 44.f : c == 0 ? 30.f : 34.f)[Cell(c, First + k)]];
+		const float W = c >= TourneyRounds ? 1.25f : c == 0 ? 1.1f : 1.f;
+		const bool bFirst = Bracket->NumSlots() == 0;
+		Bracket->AddSlot().FillWidth(W).Padding(bFirst ? 0.f : 3.f, 0.f, 0.f, 0.f)[Col];
+		Heads->AddSlot().FillWidth(W).Padding(bFirst ? 0.f : 3.f, 0.f, 0.f, 0.f).HAlign(HAlign_Center)[FitLabel(FText::FromString(ColName[c]), 12, Hi)];
+	};
+	for (int32 c = 0; c < TourneyRounds; ++c) AddColumn(c, 0);
+	AddColumn(TourneyRounds, -1);
+	for (int32 c = TourneyRounds - 1; c >= 0; --c) AddColumn(c, 1);
 	return SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->TourneyStatus() : FString()); }), 14,
 			TAttribute<FSlateColor>::CreateLambda([Self] { return FSlateColor(Self.IsValid() && Self->TourneyWon.Num() == TourneyRounds && !Self->TourneyWon.Last()[0].IsEmpty() ? Hi : White); }), true)]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 2.f)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.15f)[Label(FText::FromString(TEXT("LAST 16")), 12, Hi)]
-			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("QF")), 12, Hi)]
-			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("SF")), 12, Hi)]
-			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("FINAL")), 12, Hi)]
-			+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)[Label(FText::FromString(TEXT("CHAMP")), 12, Hi)]
-		]
-		+ SVerticalBox::Slot().AutoHeight()[SNew(SBox).HeightOverride(16.f * 19.f + 7.f * 2.f)[Bracket]]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 4.f)[Heads]
+		+ SVerticalBox::Slot().AutoHeight()[SNew(SBox).HeightOverride(8.f * 46.f + 3.f * 3.f)[Bracket]]	// 8 rows a side: room for 14-point names
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 4.f)[Label(TAttribute<FText>::CreateLambda([Self]
 		{
 			if (!Self.IsValid()) return FText();

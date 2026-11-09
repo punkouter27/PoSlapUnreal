@@ -42,6 +42,9 @@ git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
 git -C Plugins/UnrealRoboticsLab submodule update --recursive   # the patch moves MuJoCo's gitlink to 3.10.0
 Push-Location Plugins/UnrealRoboticsLab/third_party; powershell -ExecutionPolicy Bypass -File .\build_all.ps1; Pop-Location   # MuJoCo, CoACD, ZMQ; must run from its own folder
 # or all of the above in one go: powershell -ExecutionPolicy Bypass -File Scripts/setup_urlab.ps1
+# setup_urlab.ps1 also pip-installs trimesh numpy scipy networkx Pillow into UE 5.8's bundled Python and writes
+# Plugins/UnrealRoboticsLab/Config/LocalUnrealRoboticsLab.ini (PythonPath=): URLab's MJCF importer asks for both in a dialog,
+# and under -unattended that dialog cancels the import (build_scene.py dies with StopIteration at the arena import)
 uv venv training/.venv --python 3.11; uv pip install --python training/.venv -r training/requirements.txt   # + torch cu128, trimesh scipy networkx Pillow
 git lfs pull   # brains and Web/assets/*.glb
 ```

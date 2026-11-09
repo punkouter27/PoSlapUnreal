@@ -182,7 +182,7 @@ void ASlapHUD::UiTest(const FSlapHud& H)
 		{ HitTelemetry, true, TabView, true, None },
 		{ HitCamSide, true, TabView, true, CamSide },
 		{ HitCamAuto, true, TabView, true, CamAuto },
-		{ HitScrim, false, TabView, true, None },
+		{ HitClose, false, TabView, true, None },		// the menu is a whole screen now: X closes it (the backdrop is under the sheet)
 		{ HitMenu, true, TabView, true, None },
 		{ HitTabBrains, true, TabBrains, true, None },
 		{ HitRedNext, true, TabBrains, true, BrainPicked },

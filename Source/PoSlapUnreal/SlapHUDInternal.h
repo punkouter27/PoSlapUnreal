@@ -28,6 +28,7 @@ namespace SlapUi
 	inline const FColor Gold(255, 220, 120), Grey(200, 200, 200);
 	inline constexpr float TopBar = 56.f, BottomBar = 40.f;	// Slate units: the corner anchors' rows (BuildAnchors)
 	inline constexpr float Touch = 44.f;	// the minimum touch target (Slate units, ~7 mm on a phone)
+	inline constexpr float SheetPad = 18.f;	// the menu screen's own vertical padding (BuildSheet: 10 above, 8 below), inside the budget
 	inline constexpr int32 MinSlateFont = 12;	// the smallest Slate text (readable on a 6" phone)
 	inline constexpr float MinTextScale = 0.8f;	// a canvas line shrinks to fit its box down to this share of its scale
 	inline constexpr double SnapSeconds = 2.0;	// the head-snap sparkline's window after each strike

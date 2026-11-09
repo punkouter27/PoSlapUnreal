@@ -65,11 +65,31 @@ def athlete(card):
     for old, new in ((f"SK_{Name}_Skeleton", f"SKEL_{Name}"), ("Material_001", f"MI_{Name}_Default"), ("Material", f"MI_{Name}_Default")):
         if ASSETS.does_asset_exist(f"{folder}/{old}") and not ASSETS.does_asset_exist(f"{folder}/{new}"):   # the importer's names -> UE prefixes
             ASSETS.rename_asset(f"{folder}/{old}", f"{folder}/{new}")
-    # skin material from the scan's PBR textures (Interchange drops the FBX's texture links)
+    # skin material from the scan's PBR textures (Interchange drops the FBX's texture links). A scan with no PBR set in
+    # Content/Art/Exports/<Name>_tex/ (Matt, Mom: their textures travel inside the FBX) keeps the textures the importer
+    # extracted beside the mesh: "normal" in the name is the normal map, "metallic"/"roughness" the mask, the rest the colour.
     tex = {}
-    for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
-                       ("mr", "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness")):
-        t = import_file(f"Content/Art/Exports/{Name}_tex/{fname}.png", f"{folder}/Textures", name=f"T_{Name}_{key}")[0]
+    if os.path.isfile(os.path.join(PROJ, f"Content/Art/Exports/{Name}_tex/texture_pbr_20250901.png")):
+        for key, fname in (("color", "texture_pbr_20250901"), ("normal", "texture_pbr_20250901_normal"),
+                           ("mr", "texture_pbr_20250901_metallic-texture_pbr_20250901_roughness")):
+            tex[key] = import_file(f"Content/Art/Exports/{Name}_tex/{fname}.png", f"{folder}/Textures", name=f"T_{Name}_{key}")[0]
+    else:
+        for p in sorted(ASSETS.list_assets(folder, recursive=True)):
+            path = p.split(".")[0]
+            short = path.rsplit("/", 1)[-1]
+            if short.startswith(f"T_{Name}_") or not isinstance(ASSETS.load_asset(path), unreal.Texture2D):
+                continue
+            n = short.lower()
+            key = "normal" if "normal" in n else "mr" if ("metallic" in n or "roughness" in n) else "color"
+            if key in tex:
+                continue
+            target = f"{folder}/Textures/T_{Name}_{key}"
+            if ASSETS.does_asset_exist(target):
+                ASSETS.delete_asset(target)
+            ASSETS.rename_asset(path, target)
+            tex[key] = ASSETS.load_asset(target)
+        log(f"{Name}: no {Name}_tex/ PBR set; textures embedded in the FBX: " + (", ".join(f"{k}={t.get_name()}" for k, t in tex.items()) or "none"))
+    for key, t in tex.items():
         if key == "normal":
             t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
         if key == "mr":
@@ -77,7 +97,6 @@ def athlete(card):
             t.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
         t.set_editor_property("lod_group", unreal.TextureGroup.TEXTUREGROUP_CHARACTER)   # Android caps the group at 2048 (DefaultDeviceProfiles.ini)
         ASSETS.save_loaded_asset(t)
-        tex[key] = t
     mask = None   # the cheek mask (linear, UV0): the whole cheek reddens with damage (broadcast_fx.add_wear's CheekFlush)
     if os.path.isfile(os.path.join(PROJ, f"Content/Art/Exports/{Name}_tex/T_{Name}_CheekMask.png")):
         mask = import_file(f"Content/Art/Exports/{Name}_tex/T_{Name}_CheekMask.png", f"{folder}/Textures", name=f"T_{Name}_CheekMask")[0]
@@ -92,6 +111,16 @@ def athlete(card):
     for i, (key, prop, out) in enumerate((("color", unreal.MaterialProperty.MP_BASE_COLOR, "RGB"),
                                           ("normal", unreal.MaterialProperty.MP_NORMAL, "RGB"),
                                           ("mr", unreal.MaterialProperty.MP_ROUGHNESS, "G"))):
+        if key not in tex:   # a scan without this map: a flat skin tone, or a matte dielectric (the normal input stays flat)
+            if key == "color":
+                c = MEL.create_material_expression(skin, unreal.MaterialExpressionConstant3Vector, -400, i * 250)
+                c.set_editor_property("constant", unreal.LinearColor(0.55, 0.38, 0.30, 1.0))
+                MEL.connect_material_property(c, "", prop)
+            elif key == "mr":
+                c = MEL.create_material_expression(skin, unreal.MaterialExpressionConstant, -400, i * 250)
+                c.set_editor_property("r", 0.55)
+                MEL.connect_material_property(c, "", prop)
+            continue
         smp = MEL.create_material_expression(skin, unreal.MaterialExpressionTextureSample, -400, i * 250)
         smp.set_editor_property("texture", tex[key])
         if key == "normal":

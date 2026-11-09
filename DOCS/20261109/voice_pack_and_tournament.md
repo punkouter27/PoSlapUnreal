@@ -106,3 +106,81 @@ Also: HEAD g read 247 g at turn starts (the reset teleports the head; the first 
 needs two velocities from the same turn. Walk-in liveness 0.5 s. Checks: `-SlapTour`, `-SlapRoundTripTest`, `-SlapUiTest`
 all PASS. Screenshots `SCREENSHOTS/261109_commentary/`. Known: on the first launch after a rebuild the first walk-in
 can run at ~2.5 fps for ~20 s (shader / cache warm-up on a hot GPU); warm runs are 100–155 fps.
+
+## Afternoon: every character in the bracket for real, and a prop
+
+User (2026-11-09 14:00): "in the 16 brackets there should be 4 human characters and the rest are bye. put all 4 players
+in the tourney bracket no matter their level of training." The bracket already seeded all four cards (4 fighters +
+12 BYEs); what was missing were the Unreal arena levels for any pairing with Matt or Mom, so those matches went through
+as walkovers (`W/O`). Now every pairing has a level and the walkover rule is a safety net only.
+
+### Policies touched
+
+None retrained. Matt plays `matt_final` (L2 never graduated: he falls on a podium brace ~1.3 s into a strike turn,
+tasks.md K13) and Mom plays `mom_L0_candidate` (L0 at 0.83 of target, nothing above it). Both are 136-input brains on
+the shipped physics, so the controller runs them unchanged; expect them to lose. Grandpa and Kim face them with their
+self-play generalists (`grandpa_final`, `kim_final`), not the `_vs_` brains trained on each other.
+
+### Levels (Scripts/build_scene.py, then Scripts/arena_mobile_level.py for the phone twins)
+
+| Level | Red brain | Blue brain |
+|---|---|---|
+| `L_Arena_grandpa_vs_matt` | grandpa_final | matt_final |
+| `L_Arena_grandpa_vs_mom` | grandpa_final | mom_L0_candidate |
+| `L_Arena_kim_vs_matt` | kim_final | matt_final |
+| `L_Arena_kim_vs_mom` | kim_final | mom_L0_candidate |
+| `L_Arena_matt_vs_mom` | matt_final | mom_L0_candidate |
+
+`PairingFor` takes either corner order, so one level per pair is enough. Android weights: `export_cpu_brains.py` wrote
+`matt_final.bin` and `mom_L0_candidate.bin` (max diff vs onnxruntime < 1e-6). `training/roster.json`: MOM's brain was
+`mom_final.onnx`, which does not exist; it is `mom_L0_candidate.onnx` now.
+
+### Two things that broke on the way
+
+1. **URLab's MJCF import cancelled itself.** The importer runs a mesh-cleaning step in UE's bundled Python and, on the
+   first import, opens a dialog asking to install `trimesh numpy scipy networkx Pillow` and to confirm the interpreter;
+   under `-unattended` the dialog returns Cancel, the import yields no Blueprint and `build_scene.py` dies with
+   `StopIteration` (leaving an empty level behind). The fresh URLab clone had neither the packages nor the stored path
+   (`Plugins/UnrealRoboticsLab/Config/LocalUnrealRoboticsLab.ini`, untracked with the plugin). `Scripts/setup_urlab.ps1`
+   now installs the packages and writes the ini; CLAUDE.md says so.
+2. **Matt's and Mom's textures live inside their FBX.** `build_scene.py` wanted `Content/Art/Exports/<Name>_tex/
+   texture_pbr_20250901*.png` (Grandpa's and Kim's layout). Without that set it now keeps the textures the FBX importer
+   extracts beside the mesh (name with "normal" -> normal map, "metallic"/"roughness" -> mask, the rest -> colour), and a
+   missing map falls back to a constant (flat skin tone / roughness 0.55). Matt: colour + normal; Mom: `Material_Diffuse`
+   + `Material_Normal`. Both get the cheek ripple and wear nodes as before; Matt also has his cheek mask.
+
+### Flowers (user: "add this model somewhere in the scene. it is flowers in a container")
+
+`model.glb` + `tex_u0_v0_diffuse.jpg` / `_normal.jpg` (8 k scan, 500 k faces, a 50 x 48 x 12 cm planter) ->
+`Content/Art/Raw/Flowers/` (raw) and `Content/Art/Exports/Props/Flowers.glb` (+ the two JPEGs beside it: the glTF
+references them by file name, not embedded). `Scripts/arena_env.py` gained `PROP_LIST`: props imported once to
+`/Game/Arena/Props/<name>/SM_<name>` (Nanite on, textures capped at 2048) and spawned as `Env_<name>` in UE
+coordinates, no `SET_YAW`. The planter sits on the judges' table across from the camera at UE (-72, -305, 110.5): the
+table top is at z = 107 in UE (the first guess, 75 from the glTF bounds, buried it 32 cm deep; checked with an editor
+script against `Env_JudgesTable`'s bounds), the red end, so it shows beside the red athlete rather than behind the podium. In every desktop level; the phone twins keep it
+as-is (no mobile mesh: Nanite's fallback mesh draws there). `*.jpg` joined the LFS patterns.
+
+### Check: the bracket plays through (`-SlapTourney -SlapTourneyQuit`, 14:27, 3.3 min)
+
+New tournament: 4 fighters, 12 BYEs (grandpa, matt, mom, kim). Semi-finals Grandpa beat Kim (DEC), Matt beat Mom (DEC);
+final Matt beat Grandpa (DEC); champion Matt (Elo 1035). No walkover anywhere (`Saved/PoSlap/tournament.json` "how":
+BYE / DEC only; the earlier bracket with its W/O rows is kept beside it as `tournament_261109_walkovers.json.bak`).
+Screenshots of the new pairings in play: `SCREENSHOTS/261109_roster_levels/` (Matt vs Mom, Kim vs Matt, Grandpa vs Mom).
+Also found on the way: the `/Game/Brains/grandpa_final` asset was a stale 108-input import (the HUD logged "reads 108
+inputs" while its `.onnx` and Android `.bin` have 136); re-imported with `set_brain.py` (SLAP_CORNER=none). `grandpa_L0`
+is 108 inputs in its `.onnx` too, so it stays.
+
+## Menu screen rework (user: "fix main menu to show up first without the main scene. keep them separate / make main menu ui layout more professional and showing the 16 players/byes")
+
+Policies touched: none (display only). The menu is now its own screen: an opaque backdrop over the whole viewport and a
+panel filling the space between the anchor rows (`SheetBudget` = layer height minus both safe insets, both anchor rows
+and the panel padding); no canvas overlay or live telemetry is drawn while it is open. A league header ("16 PLACES ·
+4 FIGHTERS · 12 BYES"), underlined tabs, open places labelled BYE in the MATCH grid. The backdrop has no close-on-tap
+(there is no outside to tap); `-SlapUiTest` step 7 now closes with X. Checks: `-SlapUiTest` PASS (0 of 17 clicks wrong),
+`-SlapLayoutTest` 4 tabs 0 fails. Before/after: `SCREENSHOTS/261109_menu/index.html`. Note: a `-SlapShot` launch runs
+unattended and skips the launch menu (as before), so its shot shows the walk-in; a normal launch logs
+"launch menu (waiting for START)".
+
+Follow-up (user: "winner in the middle and 8 players on the left side and 8 players on the right side"): the TOURNEY
+bracket is two-sided, LAST 16 / QF / SF / FINAL | CHAMPION | FINAL / SF / QF / LAST 16; places 1-8 (seeds 0-7) on the
+left, 9-16 on the right, rows 30-44 dp, names 15 pt (champion 20). Layout audit tab 3: 0 fails.

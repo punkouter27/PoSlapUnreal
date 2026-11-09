@@ -27,6 +27,6 @@
  {
   "name": "MOM",
   "card": "mom",
-  "brain": "models/brains/mom_final.onnx"
+  "brain": "models/brains/mom_L0_candidate.onnx"
  }
 ]
