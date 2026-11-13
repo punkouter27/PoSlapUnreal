@@ -1,8 +1,0 @@
-ok   a landed strike starts a replay
-ok   the replay ends by itself (~1.1 s): 1087 ms
-ok   the match ran on underneath (physics steps per wall second): 194
-ok   a tap skips the replay
-ok   the scouting card comes up between rounds
-ok   a tap closes it
-ok   no page errors
-PASS
