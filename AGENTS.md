@@ -5,7 +5,7 @@ MuJoCo Warp / URLab.
 ### 1. Workflow & Setup
 - **Target Engine:** Unreal Engine exclusively. Built-in engine physics (Chaos) is strictly disabled; UE5 serves solely
   as an audiovisual rendering, camera tracking, and input layer.
-- **Git:** Work on `master`. Commit before syncing or pulling. Check `/DOCS` first.
+- **Git:** Work on `master`. Commit before syncing or pulling.
 - **Automation:** Set up levels, actors, and MJCF bindings via CLI and headless Blender. UI changes require
   before/after screenshots and an HTML report in `SCREENSHOTS/`.
 - **Build stamp:** Render the build date (`YYMMDD`) in the bottom-right corner.

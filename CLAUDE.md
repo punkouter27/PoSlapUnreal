@@ -3,10 +3,11 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 @AGENTS.md
-@BLUEPRINT.md
 
-Build checklist and current phase: [tasks.md](tasks.md). Brain input/output layout: [DOCS/BRAIN_IO.md](DOCS/BRAIN_IO.md).
-Project summary: [DOCS/SUMMARY.md](DOCS/SUMMARY.md). Dated reports and dashboards: `DOCS/<YYYYMMDD>/`.
+`BLUEPRINT.md`, `tasks.md`, `DOCS/` (including `BRAIN_IO.md`, the brain input/output contract) and `SCREENSHOTS/` were
+removed from the tree on 2026-11-13 (commit 4e8308e); they are in git history at `cb01401`. The brain I/O layout now
+lives only in code: `training/constants.py`, `training/brain_cpu.py` (`Athlete.obs`), `SlapControllerInternal.h` and `Web/sim.js`.
+New dated reports go in `DOCS/<YYYYMMDD>/`, created when needed.
 
 ## Architecture: one match, three engines
 
@@ -20,7 +21,7 @@ or fatigue has to land in all three, or the parity checks below break:
 | Browser (MuJoCo WASM + onnxruntime-web) | `Web/sim.js`, `Web/loader.js` | Spectator site, auto-deployed to Azure on push to `master` |
 
 Training envs (`training/envs/locomotion.py` S2 (walk-in), `slap.py` L0–L3, `arena.py` L4) run on GPU via `mujoco-warp`
-and build the same 136-dim observation. `OBS`, `LAGS` and the fatigue floors are constants duplicated in each file.
+and build the same observation (140 floats, interface 4; shipped brains read their first 136). `OBS`, `LAGS` and the fatigue floors are constants duplicated in each file.
 
 **Body pipeline:** character card `training/characters/<name>.json` + Blender skeleton `<name>_skeleton.json`
 → `training/build_body.py` → `training/models/<name>_solo.xml`, `<red>_vs_<blue>_arena.xml`, `<name>_fingerprint.json`
@@ -85,7 +86,7 @@ Pushing changes under `Web/`, `training/models/` or `training/characters/` to `m
 
 ## Checks (no unit-test suite; these are the tests)
 
-- `training/replay_check.py record|compare`: MuJoCo vs URLab replay, every body ≤ 1 mm (Blueprint §8). Pass `--mjb Saved/URLab/scene_compiled.mjb`.
+- `training/replay_check.py record|compare`: MuJoCo vs URLab replay, every body ≤ 1 mm. Pass `--mjb Saved/URLab/scene_compiled.mjb`.
 - `training/match.py compare <onnx> <unreal match .jsonl> --mjb ...`: Unreal plays the same match events as Python.
 - `node Web/check.mjs [gg|kk|gk]` (from repo root): one turn each way through the browser engine; exits 1 if no turn ends.
 - `training/verify_realism.py`: card and model realism checks.

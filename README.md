@@ -70,18 +70,3 @@ UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena -game -SlapUiTest
 # Verify bit-identical match event sequence against Python MuJoCo reference
 training/.venv/Scripts/python.exe training/match.py compare training/models/brains/grandpa_final.onnx Saved/URLab/live_ue.json --mjb Saved/URLab/scene_compiled.mjb
 ```
-
----
-
-## Documentation Suite (`/DOCS/20261025/`)
-
-Comprehensive technical and design documentation is maintained in [`DOCS/20261025/`](file:///DOCS/20261025/):
-
-* [**Architecture Overview**](file:///DOCS/20261025/architecture_overview.md): Core architecture, 200 Hz URLab loop, NNE inference, 30-DoF control map, and scoring rules.
-* [**Creatures Dashboard**](file:///DOCS/20261025/creatures_dashboard.html): Interactive HTML dashboard featuring Executive scorecards and Technical joint actuator curves.
-* [**Model & Rig Summary**](file:///DOCS/20261025/model_summary.md): ONNX policy inventory, 136-dim sensory observation vector, and MuJoCo body-to-bone hierarchy.
-* [**Scene & Arena Layout**](file:///DOCS/20261025/scene_layout.html): Spatial coordinate transforms, podium obstacles, footboxes, and Chaos vs. MuJoCo collision matrix.
-* [**Creature Benchmarks**](file:///DOCS/20261025/creature_benchmarks.html): Performance comparison, strike velocity profiles, and Stat Unit thread profiling.
-* [**Training Metrics Guide**](file:///DOCS/20261025/training_metrics_guide.md): Plain-English breakdown of TensorBoard scalars, PPO loss behavior, and multi-agent curriculum ladder.
-* [**Agent Abilities Grid**](file:///DOCS/20261025/agent_abilities_grid.md): Biomechanical abilities matrix, proficiency grades (S/A/B), and behavioral servos.
-* [**Training Telemetry Visual Report**](file:///DOCS/20261025/training_telemetry_report.html): Top 3 training metric visualizations and stabilization checkpoints.
