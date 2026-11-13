@@ -24,9 +24,10 @@ def main():
     assert j_cfg["physics_engine"]["physics_hz"] == 200 and j_cfg["physics_engine"]["control_hz"] == 50
     assert j_cfg["joint_firmness_and_damping"]["damping_ratio_zeta"] == 0.8
     assert j_cfg["anthropometric_mass_distribution_pct"]["total_pct"] == 100.0
-    from constants import OBS, OBS_V3   # one source for the observation count
+    from constants import OBS, OBS_V3, OBS_V4   # one source for the observation count
     assert s_cfg["proprioception_observation_space"]["base_dimension"] == OBS_V3
-    assert s_cfg["proprioception_observation_space"]["interface_4_dimension"] == OBS
+    assert s_cfg["proprioception_observation_space"]["interface_4_dimension"] == OBS_V4
+    assert s_cfg["proprioception_observation_space"]["interface_5_dimension"] == OBS
     assert "Stage_2_Steady_Natural_Walk" in t_cfg["step_by_step_learning_milestones"]["locomotion_foundation_stages"]
     print("  [PASS] All 3 realism configuration files verified.")
 
@@ -189,16 +190,16 @@ def main():
         assert torch.isfinite(obs).all() and torch.isfinite(rew).all(), f"NaN in {stage}"
         print(f"  [PASS] Stage {stage} (136-dim BRAIN_IO): {sps:,.0f} agent-steps/s, mean_rew={rew.mean().item():.3f}, stamina_min={env136.stamina.min().item():.3f}")
 
-    # Interface 4 (DOCS/BRAIN_IO.md, 2026-11-04; the unused 148 extension was retired): 136 + heel/toe contacts, the
-    # standing athlete reads all four bits set, and a 136-wide (shipped) brain's env stays 136 wide
-    env140 = LocomotionEnv("kim", level="S2", num_envs=128, seed=42)
+    # Interface 5 (DOCS/BRAIN_IO.md): 142 floats (foot contacts + command vector), the
+    # standing athlete reads all four foot bits set, and a 136-wide (shipped) brain's env stays 136 wide
+    env142 = LocomotionEnv("kim", level="S2", num_envs=128, seed=42)
     for _ in range(10):
-        obs140, rew140, _, _ = env140.step(torch.zeros(128, env140.A, device="cuda"))
-    assert obs140.shape == (128, 140) and torch.isfinite(obs140).all(), obs140.shape
-    feet = obs140[:, 136:140].mean(0)
+        obs142, rew142, _, _ = env142.step(torch.zeros(128, env142.A, device="cuda"))
+    assert obs142.shape == (128, OBS) and torch.isfinite(obs142).all(), obs142.shape
+    feet = obs142[:, 136:140].mean(0)
     assert (feet > 0.5).all(), f"a standing athlete's heel/toe bits should be set: {feet.tolist()}"
-    assert env140.lpf and not env136.lpf, "the low-pass belongs to interface 4 only"
-    print(f"  [PASS] Interface 4 (Kim S2): shape={tuple(obs140.shape)}, heel/toe contact share {[round(x, 2) for x in feet.tolist()]}, "
+    assert env142.lpf and not env136.lpf, "the low-pass belongs to interface >= 4 only"
+    print(f"  [PASS] Interface 5 (Kim S2): shape={tuple(obs142.shape)}, heel/toe contact share {[round(x, 2) for x in feet.tolist()]}, "
           f"low-pass on (136-wide env: off).")
 
     # The obstacle course (S3) and the aisle lap (S4): the course is laid out, the obstacles are in the path,

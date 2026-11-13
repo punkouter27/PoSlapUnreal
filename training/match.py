@@ -21,6 +21,13 @@ Fatigue (character card, BRAIN_IO 128-129): every turn struck costs the striker 
 floor 0.7); a defender who absorbs a strike loses neck_damage_per_snap per m/s of head snap from his neck motors' strength
 (floor 0.5). Memory (BRAIN_IO 126-127): the defender remembers that strike's touch time and palm speed for his next turns.
 Both reset each match; a "condition" event after every turn logs them.
+Rules 2 (models of physics 4 on; the numbers are rules.json): no impulse is added at the touch (the contact is the blow);
+a head speed peak over the stun threshold in the first 0.25 s slackens the defender's motors (the "stun" event); a
+defender down after the strike is counted ("count", "count_end"): back on his soles at 85 % of his stand height for
+1 s inside 10 s he fights on and the round is 10-8 against him, else KO; a get-up brain (G1) takes him over while
+he is down. New fouls: "flinch" (the defender's head moves flinch_m while the palm is swinging) and "clubbing" (the first
+touch is not a palm). Every judge's weights vary +-15 % a round from the match's seed; a hurt neck adds up to 4
+decisions to the defender's reaction.
 Logs: Logs/Gameplay/<YYMMDD>/match_<HHMMSS>_<first>.jsonl (AGENTS.md): events, turn/round summaries, and every 5th
 brain step (10 Hz) both athletes' pelvis, head and actions.
 """
@@ -34,13 +41,17 @@ import numpy as np
 from brain_cpu import MIN_NECK, MIN_STAMINA, REACT, Athlete, card, muscle_step, muscle_vmax, onnx_policy, settle_muscles
 from constants import OBS_V3, lpf_on
 from constants import (FEINT_AFTER_S, FEINT_MIN_PEAK, FEINT_PULLBACK, FEINT_REARM, FEINT_REARM_S, GAZE_GAIN, GAZE_MAX_STEP,
-                       GAZE_ON, WATCH_MAX_STEP, models_dir)
+                       GAZE_ON, RULES, WATCH_MAX_STEP, daze_lag, models_dir, rules2)
 
 HERE = Path(__file__).parent
-ROUNDS, STRIKE_CLOCK, RECOVERY = 3, 30.0, 5.0
-BOX = (0.20, 0.25)
-WEIGHTS = ((2, 1, 1, 1), (1, 2, 1, 1), (1, 1, 2, 2))   # speed, head, stagger, defence
-KICK_STEPS = 2      # the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
+# the rules are training/rules.json (constants.RULES): the same file Unreal's and the browser's generated copies come from
+ROUNDS, STRIKE_CLOCK, RECOVERY = RULES["rounds"], RULES["strike_clock"], RULES["recovery"]
+BOX = tuple(RULES["box"])
+WEIGHTS = tuple(tuple(w) for w in RULES["judge_weights"])   # speed, head, stagger, defence
+KICK_STEPS = RULES["kick_steps"]      # rules 1: the impact impulse lasts 10 ms (as envs/slap.py's scripted slap)
+# Rules 2 (physics 4 on, rules.json): no scripted kick - the blow is the contact's; the stun (head speed against the
+# card's chin slackens every motor); a count for a defender down after the strike (up again = 10-8, else KO); the
+# flinch and clubbing fouls; judge noise from the match's dice; a damaged neck sees the hand later (constants.daze_lag).
 # physics 3: the kick's reaction (momentum conservation, DOCS/20261104/physics3.md). The kick hands the defender's head
 # strike_mass x v of momentum nobody gave up: physics 1/2 created it. On physics 3 the striker's touching part and the arm
 # above it (up to the shoulder: hand, forearm, upper arm) take -f, split by their masses - the arm that drove the
@@ -142,8 +153,9 @@ def stand_both(m, d, sides):
 class Side:
     """One athlete in the arena: brain I/O (brain_cpu.Athlete) plus the geoms the referee watches."""
 
-    def __init__(self, m, fp, prefix, policy):
+    def __init__(self, m, fp, prefix, policy, getup=None):
         self.a, self.policy, self.card, self.fp, self.prefix = Athlete(m, fp, prefix), policy, card(fp), fp, prefix
+        self.getup = getup   # rules 2: the get-up brain (G1) that takes over while he is down under a count, or None
         self.a.lpf = lpf_on(getattr(policy, "n_in", OBS_V3))   # interface 4 brains only (unknown width: the shipped 136)
         self.fr0 = m.actuator_forcerange[self.a.neck].copy()
         self.fr_all = m.actuator_forcerange[self.a.act].copy()   # every motor's own force (fainting slackens them all)
@@ -160,7 +172,7 @@ class Side:
 
 
 class Match:
-    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None, seed=None, jitter=0.0):
+    def __init__(self, m, fps, prefixes, policies, first, log=None, brains=None, seed=None, jitter=0.0, getups=(None, None)):
         """fps: both corners' fingerprints (a mixed pairing has one per athlete; a mirror match passes the same twice).
         brains: both corners' brain names, logged with match_start (training/scouting.py credits them; compare skips it).
         jitter: each turn's start angles get ± this many rad per joint from the seed (exam only: Unreal has none, so
@@ -168,7 +180,7 @@ class Match:
         self.m, self.first, self.log, self.brains, self.jitter = m, first, log, brains, jitter
         self.seed = random.getrandbits(31) if seed is None else seed   # the match's dice (fainting); Unreal logs its own
         self.d = mujoco.MjData(m)
-        self.sides = [Side(m, fp, p, pol) for fp, p, pol in zip(fps, prefixes, policies)]
+        self.sides = [Side(m, fp, p, pol, g) for fp, p, pol, g in zip(fps, prefixes, policies, getups)]
         # eye-contact state: each athlete stares at the OTHER'S head (indices into its own joint_order)
         for i, sd in enumerate(self.sides):
             opp = self.sides[1 - i]
@@ -178,21 +190,29 @@ class Match:
             sd.i_yaw = sd.a.order.index("neck_turn")
         self.surface = {m.geom(i).id for i in range(m.ngeom) if m.geom(i).name.endswith(("floor", "podium"))}
         self.podium = next(i for i in range(m.ngeom) if m.geom(i).name.endswith("podium"))
+        self.floor = self.surface - {self.podium}
         self.blowup = False
         self.vmax = muscle_vmax(m, [x.a for x in self.sides])
         # physics 2 (build_body.py): the strike impulse and speed come from the part that touched, not hand_r's
         self.physics = int(fps[0].get("physics", 1))
+        self.r2 = rules2(self.physics)   # rules 2 (rules.json): physics 4 on
+
+    def slack(self, x, gain):
+        """Every motor of x at `gain` x its own force (a stun); 1.0 = back, with the neck's damage on top."""
+        self.m.actuator_forcerange[x.a.act] = x.fr_all * gain
+        if gain == 1.0:
+            self.m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength
 
     def emit(self, **k):
         if self.log:
             self.log.write(json.dumps(k) + "\n")
 
-    def down(self, side, defender=False):
+    def down(self, side, defender=False, floor_only=False):
         """Blueprint 9: a non-foot geom of this athlete on floor or podium (from the last step's contacts); the defender's
-        palms may rest on the podium (his brace, 2026-10-22)."""
+        palms may rest on the podium (his brace, 2026-10-22). floor_only (rules 2's count): the floor alone."""
         for c in self.d.contact[:self.d.ncon]:
             g = {c.geom[0], c.geom[1]}
-            if g & self.surface:
+            if g & (self.floor if floor_only else self.surface):
                 o = (g - self.surface)
                 if o and (x := o.pop()) in side.geoms and x not in side.feet:
                     if defender and self.podium in g and x in side.hands:
@@ -276,12 +296,21 @@ class Match:
         head_prev = d.geom_xpos[D.head].copy()
         rec = dict(round=rnd, striker=S.name, touch=None, part=None, palm=False, speed=0.0, head_peak=0.0, stagger=False,
                    fouls=[], ko=False, end=None)
+        r2 = self.r2
+        if r2:   # rules 2's own fields (rules 1 logs are unchanged, field for field)
+            rec.update(kd=False, stun=0.0)
         touch_k, com0 = None, None
+        # rules 2: the defender's head and pelvis at the turn's start (the flinch foul, the count's "up"), the count
+        # (the step it began, the step he was first up again), the stun's end, the daze
+        head0, stand_z = d.geom_xpos[D.head].copy(), float(d.xpos[D.a.pelvis][2])
+        count_k, up_k, stun_end, flinched, s_down = None, None, None, False, False
+        react_n = REACT + (daze_lag(D.a.neck_strength) if r2 else 0)
+        stun_steps = int(round(RULES["stun_window_s"] / m.opt.timestep))
         seen = []   # the striker's hand at the last REACT + 1 decisions: the defender sees the oldest (0.12 s late)
         vh_prev, w_prev, head_g, head_alpha = np.zeros(3), np.zeros(3), 0.0, 0.0   # head readout (the "head" event)
         # realism readout (the "realism" event, realism_stats.py): action jerk, kinetic chain (the trunk's twist should
         # peak before the shoulder's swing), foot slide
-        rz = rec["_rz"] = dict(jerk=0.0, n=0, swing=deque(maxlen=100), slide=0.0)   # swing: the last 0.5 s before the touch
+        rz = rec["_rz"] = dict(jerk=0.0, n=0, swing=deque(maxlen=100), slide=0.0, head_off=0.0)   # swing: the last 0.5 s before the touch
         pa = {id(x): [x.a.prev.copy()] * 2 for x in self.sides}
         iw, ish = S.a.va[S.a.order.index("waist_twist")], S.a.va[S.a.order.index("shoulder_swing_r")]
         kick = np.zeros(6)   # the slap's impact on the defender's head: force, torque for KICK_STEPS physics steps
@@ -302,9 +331,54 @@ class Match:
                 elif k == k1:
                     m.actuator_forcerange[x.a.act] = x.fr_all
                     m.actuator_forcerange[x.a.neck] = x.fr0 * x.a.neck_strength
+            if touch_k is not None and k - touch_k == stun_steps:
+                rz["head_window"] = rec["head_peak"]   # readout (calibrate_rules.py): what the stun line reads, any rules
+            if r2 and touch_k is not None:   # rules 2: the stun, read once the window after the touch has run
+                if k - touch_k == stun_steps:
+                    sev = rec["head_peak"] / (RULES["stun_speed"] * D.card.get("chin", 1.0))
+                    if sev >= 1.0:
+                        sev = min(sev, RULES["stun_max"])
+                        rec["stun"] = round(sev, 2)
+                        stun_end = k + int(RULES["stun_s"] * sev / m.opt.timestep + 0.5)
+                        self.slack(D, RULES["stun_strength"])
+                        self.emit(type="stun", t=round(t, 3), athlete=D.name, severity=rec["stun"])
+                elif k == stun_end:
+                    self.slack(D, 1.0)
             if k % 4 == 0:   # the referee looks every brain step, before the brains decide (as Unreal)
                 for x in (D, S):
                     part = self.down(x, x is D)
+                    if r2 and touch_k is not None:   # rules 2: after the strike a fall is counted, not called at once
+                        if x is D:
+                            # down = a part other than a sole on the FLOOR, or the pelvis under up_height x his stand
+                            # height (folded over the podium, on his knees). A belly or a forearm brushing the podium while
+                            # he stands is not a knockdown here (rules 1 calls it one): that contact flickers from step to
+                            # step, and a count hung on it ran a different length in each engine (2026-11-13 parity run).
+                            part = self.down(x, True, floor_only=True)
+                            low = float(d.xpos[D.a.pelvis][2]) < RULES["up_height"] * stand_z
+                            if (part or low) and count_k is None:
+                                count_k = k
+                                self.emit(type="knockdown", t=round(t, 3), athlete=x.name,
+                                          part=re.sub(r"^.*?(red|blue)_", "", part) if part else "pelvis")
+                                self.emit(type="count", t=round(t, 3), athlete=x.name)
+                            if count_k is not None:
+                                up = part is None and not low
+                                up_k = (k if up_k is None else up_k) if up else None
+                                beat = up_k is not None and (k - up_k) * m.opt.timestep >= RULES["up_hold_s"]
+                                if beat or (k - count_k) * m.opt.timestep >= RULES["count_s"]:
+                                    self.emit(type="count_end", t=round(t, 3), athlete=x.name, up=beat,
+                                              count=round((k - count_k) * m.opt.timestep, 3))
+                                    if beat:
+                                        rec["kd"], rec["end"] = True, "beat the count"
+                                    else:
+                                        rec["ko"], rec["end"] = True, "KO"
+                                    return self.finish(rec, S, D, com0)
+                            continue
+                        if count_k is not None:   # the striker down while the count runs: his foul, the count goes on
+                            if part and not s_down:
+                                s_down = True
+                                self.emit(type="knockdown", t=round(t, 3), athlete=x.name, part=re.sub(r"^.*?(red|blue)_", "", part))
+                                rec["fouls"].append((x.name, "knocked down"))
+                            continue
                     if part:
                         self.emit(type="knockdown", t=round(t, 3), athlete=x.name, part=re.sub(r"^.*?(red|blue)_", "", part))
                         if x is D and touch_k is not None:
@@ -314,6 +388,8 @@ class Match:
                             rec["end"] = "knockdown"
                         return self.finish(rec, S, D, com0)
                 for x in self.sides:
+                    if count_k is not None and (x is D or s_down):
+                        continue   # rules 2: a man down is not held to his foot box
                     off = np.abs(np.array([d.geom_xpos[f][:2] for f in x.feet]) - feet0[id(x)])
                     rz["slide"] = max(rz["slide"], float(np.linalg.norm(off, axis=1).max()))
                     if (off[:, 0] > BOX[0]).any() or (off[:, 1] > BOX[1]).any():
@@ -321,11 +397,22 @@ class Match:
                         rec["end"] = "out of the box"
                         self.emit(type="foul", t=round(t, 3), athlete=x.name, why="out of the box")
                         return self.finish(rec, S, D, com0)
+                if touch_k is None:
+                    # the flinch line: where the defender's head was when the palm last was slow (under FEINT_MIN_PEAK: no
+                    # swing on) is his set position - a brace, a lean on the podium are his to take before the swing; how
+                    # far the head is from it while the palm is fast is the flinch (readout in "realism": head_off_m)
+                    if speed <= FEINT_MIN_PEAK:
+                        head0 = d.geom_xpos[D.head].copy()
+                    rz["head_off"] = max(rz["head_off"], dist(d.geom_xpos[D.head], head0))
+                if r2 and touch_k is None and not flinched and dist(d.geom_xpos[D.head], head0) > RULES["flinch_m"]:
+                    flinched = True   # rules 2: he moved his head out of the swing's way (once a turn; the turn goes on)
+                    rec["fouls"].append((D.name, "flinch"))
+                    self.emit(type="foul", t=round(t, 3), athlete=D.name, why="flinch")
             if touch_k is None and t >= STRIKE_CLOCK:
                 rec["fouls"].append((S.name, "no strike in 30 s"))
                 rec["end"] = "clock"
                 return self.finish(rec, S, D, com0)
-            if touch_k is not None and (k - touch_k) * m.opt.timestep >= RECOVERY:
+            if touch_k is not None and count_k is None and (k - touch_k) * m.opt.timestep >= RECOVERY:
                 rec["end"] = "recovered"
                 return self.finish(rec, S, D, com0)
             if k % 4 == 0 and touch_k is None:   # the feint read, every brain step until the touch
@@ -334,12 +421,17 @@ class Match:
                 mujoco.mj_kinematics(m, d)
                 clock = 1.0 - t / STRIKE_CLOCK
                 hs, hd = d.geom_xpos[S.head].copy(), d.geom_xpos[D.head].copy()
-                S.a.decide(S.policy(S.a.obs(d, 1.0, clock, hd)))
-                if DEFENDER_ROLE < 0:
-                    seen = (seen or [d.geom_xpos[S.hand].copy()] * REACT)[-REACT:] + [d.geom_xpos[S.hand].copy()]
-                    D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, seen[0])))
+                cmd = getattr(self, "cmd", None) or (float(os.environ.get("SLAP_CMD_POWER", "0")), float(os.environ.get("SLAP_CMD_BRACE", "0")))
+                S.a.decide(S.policy(S.a.obs(d, 1.0, clock, hd, cmd=cmd)))
+                if count_k is not None and D.getup is not None:
+                    # the director's hand-over (AGENTS.md 3): down under a count, the get-up brain drives him from the body
+                    # as it is - same inputs (role 0: his own foot box), the last action carried, no pose snapped
+                    D.a.decide(D.getup(D.a.obs(d)))
+                elif DEFENDER_ROLE < 0:
+                    seen = (seen or [d.geom_xpos[S.hand].copy()] * react_n)[-react_n:] + [d.geom_xpos[S.hand].copy()]
+                    D.a.decide(D.policy(D.a.obs(d, DEFENDER_ROLE, clock, hs, seen[0], cmd=cmd)))
                 else:
-                    D.a.decide(D.policy(D.a.obs(d)))
+                    D.a.decide(D.policy(D.a.obs(d, cmd=cmd)))
                 for x in self.sides:
                     p1, p2 = pa[id(x)]
                     rz["jerk"] += float(((x.a.prev - 2 * p1 + p2) ** 2).sum())
@@ -390,8 +482,9 @@ class Match:
                         other = c.geom[1] if c.geom[0] in D.face else c.geom[0]
                         if other in S.geoms and (self.physics < 3 or in_face_zone(m, d, D.face_zone, c.pos)):
                             sign = 1.0 if c.geom[0] == other else -1.0   # normal from the striker's part to the head
-                            z = d.geom_xmat[S.hand]                      # palm = the hand box's -z axis (column 2)
-                            palm = bool(other == S.hand and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
+                            ph = other if r2 and other in S.hands else S.hand   # rules 2: either hand's palm (rules 1: the right)
+                            z = d.geom_xmat[ph]                          # palm = the hand box's -z axis (column 2)
+                            palm = bool(other == ph and -sign * (c.frame[0] * z[2] + c.frame[1] * z[5] + c.frame[2] * z[8]) > 0.5)   # numpy bool is not JSON
                             touch_k, com0 = k, d.subtree_com[D.a.pelvis][:2].copy()
                             hand_speed = speed
                             if gprev is not None:   # physics 2: the velocity of the part that touched (v1: hand_r's)
@@ -399,16 +492,20 @@ class Match:
                                 speed = dist(d.geom_xpos[other], gprev[other]) / m.opt.timestep
                             # the body behind the palm: the arm's motors are too soft to pass on more than the hand's
                             # own mass, so the rest of the striker's mass driving through it comes as an impulse
-                            f = vel * (S.card["strike_mass"] / (KICK_STEPS * m.opt.timestep))
-                            kick = np.concatenate([f, np.cross(c.pos - d.xipos[D.head_body], f)])
-                            if self.physics >= 3 and KICK_REACTION:
-                                react = list(zip(*reaction_chain(m, other)))
+                            if not r2:   # rules 2: nothing added - what the contact passes on is the blow
+                                f = vel * (S.card["strike_mass"] / (KICK_STEPS * m.opt.timestep))
+                                kick = np.concatenate([f, np.cross(c.pos - d.xipos[D.head_body], f)])
+                                if self.physics >= 3 and KICK_REACTION:
+                                    react = list(zip(*reaction_chain(m, other)))
                             rec.update(touch=round(k * m.opt.timestep, 3), part=re.sub(r"^.*?(red|blue)_", "", m.geom(other).name),
                                        palm=palm, speed=round(speed, 2), feint=fe["n"] > 0)
                             # hand_speed (striker's right palm, m/s) and the feint read are additive fields (DOCS/20261103/
                             # events.md): compare() ignores them when the other engine does not log them yet
                             self.emit(type="strike", t=rec["touch"], striker=S.name, part=rec["part"], palm=palm, speed=rec["speed"],
                                       hand_speed=round(hand_speed, 2), feint=fe["n"] > 0, feints=fe["n"])
+                            if r2 and not palm:   # rules 2: a strike that is not a palm is clubbing (it still lands)
+                                rec["fouls"].append((S.name, "clubbing"))
+                                self.emit(type="foul", t=rec["touch"], athlete=S.name, why="clubbing")
                             break
 
     def feint_read(self, fe, speed, t, S):
@@ -437,7 +534,8 @@ class Match:
         self.emit(type="realism", striker=S.name, touched=rec["touch"] is not None, jerk=round(rz["jerk"] / max(1, rz["n"]), 4),
                   chain_ms=round((max(rz["swing"], key=lambda r: r[2])[0] - max(rz["swing"], key=lambda r: r[1])[0])
                                  * self.m.opt.timestep * 1000) if rec["touch"] is not None and rz["swing"] else None,
-                  slide_m=round(rz["slide"], 3))
+                  slide_m=round(rz["slide"], 3), head_off_m=round(rz["head_off"], 3),
+                  head_window=round(rz["head_window"], 2) if "head_window" in rz else None)
         self.emit(type="turn_end", **{k: v for k, v in rec.items() if k not in ("fouls", "feint")}, fouls=[f"{a}: {w}" for a, w in rec["fouls"]])
         S.a.stamina = max(MIN_STAMINA, S.a.stamina - S.card["stamina_per_strike"])
         if rec["touch"] is not None:
@@ -449,7 +547,8 @@ class Match:
 
     def play(self):
         names = [x.name for x in self.sides]
-        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY), seed=self.seed,
+        self.emit(type="match_start", first=names[self.first], rules=dict(rounds=ROUNDS, strike_clock=STRIKE_CLOCK, recovery=RECOVERY,
+                                                                          **({"version": 2} if self.r2 else {})), seed=self.seed,
                   **({"brains": dict(zip(names, self.brains))} if self.brains else {}), **({"jitter": self.jitter} if self.jitter else {}))
         cards = [[0, 0] for _ in WEIGHTS]
         turns = []
@@ -465,18 +564,22 @@ class Match:
                     self.emit(**res)
                     return res, turns
             for j, w in enumerate(WEIGHTS):
+                if self.r2:   # rules 2: the judge's taste this round, from the match's dice
+                    w = [w[i] * (1.0 + RULES["judge_noise"] * (2.0 * (mix(self.seed, rnd, j, i, 7) / 4294967296.0) - 1.0)) for i in range(4)]
                 eff = [0.0, 0.0]
                 stag = [False, False]
+                kd = [False, False]   # rules 2: he put the other down and the other beat the count
                 for s, r in recs:   # in turn order (Unreal adds in the same order)
                     if r["touch"] is not None:
                         eff[s] += w[0] * r["speed"] + w[1] * 5 * r["head_peak"] + w[2] * 10 * r["stagger"]
                         stag[s] = r["stagger"]
+                        kd[s] = r.get("kd", False)
                         if not r["ko"]:   # the defender absorbed it: stayed put, small head snap
                             eff[1 - s] += w[3] * (10 * (not r["stagger"]) + max(0.0, 10.0 - 5 * r["head_peak"]))
                 hi = int(eff[1] > eff[0])
                 pts = [10, 10]
                 if abs(eff[0] - eff[1]) > 0.05 * max(eff):
-                    pts[1 - hi] = 8 if stag[hi] and eff[hi] >= 2 * eff[1 - hi] else 9
+                    pts[1 - hi] = 8 if (stag[hi] and eff[hi] >= 2 * eff[1 - hi]) or kd[hi] else 9
                 for s, r in recs:
                     for who, _ in r["fouls"]:
                         pts[names.index(who)] -= 1
@@ -516,16 +619,28 @@ def log_path(first):
     day = time.strftime("%y%m%d")
     p = HERE.parent / "Logs" / "Gameplay" / day
     p.mkdir(parents=True, exist_ok=True)
-    return p / f"match_{time.strftime('%H%M%S')}_{first}_{time.perf_counter_ns() % 100000}.jsonl"
+    return p / f"match_{time.strftime('%H%M%S')}_{first}_{os.getpid()}_{time.perf_counter_ns() % 100000}.jsonl"
 
 
-def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None, seed=None, jitter=0.0):
+def getup_brain(character):
+    """The character's graduated get-up brain (G1) for the physics in play, or None: models/brains/<char>_G1[_v<n>].onnx."""
+    from constants import physics
+    for v in range(physics(), 0, -1):
+        p = HERE / "models" / "brains" / (f"{character}_G1_v{v}.onnx" if v > 1 else f"{character}_G1.onnx")
+        if p.exists():
+            return onnx_policy(str(p))
+    return None
+
+
+def play(onnx, first, mjb=None, log=True, blue=None, character="grandpa", blue_character=None, seed=None, jitter=0.0, getup=True):
     m, fps, pre = load(mjb, character, blue_character)
     f = open(log_path(first), "w") if log else None
     red = onnx_policy(onnx)
+    # rules 2: each corner's own get-up brain, when it has graduated one (getup=False: nobody gets help up)
+    gu = tuple(getup_brain(c) for c in (character, blue_character or character)) if getup and rules2(fps[0].get("physics", 1)) else (None, None)
     try:
         res, turns = Match(m, fps, pre, (red, onnx_policy(blue) if blue else red), first, f, (Path(onnx).stem, Path(blue or onnx).stem), seed,
-                           jitter).play()
+                           jitter, gu).play()
     finally:
         if f:
             f.close()
@@ -553,6 +668,8 @@ def exam(onnx, matches, mjb=None, character="grandpa", blue_character=None, jitt
           f"{np.mean([t['speed'] for t in landed] or [0]):.1f} m/s, decisions: "
           f"{ {h: sum(r['how'] == h for r, _, _ in out) for h in sorted({r['how'] for r, _, _ in out})} }, "
           f"KO per landed strike {sum(t['ko'] for t in landed) / max(1, len(landed)):.0%} (L4 band 10-40 %), "
+          f"rules 2: {sum(t.get('stun', 0) > 0 for t in landed)} stuns, {sum(t.get('kd', False) for t in landed)} beat the count, "
+          f"fouls { {w: sum(any(x == w for _, x in t['fouls']) for t in strikes) for w in ('flinch', 'clubbing')} }, "
           f"striker self-falls {sum(any(w == 'knocked down' for _, w in t['fouls']) for t in strikes) / max(1, len(strikes)):.0%}, "
           f"distinct matches {len({json.dumps(r['cards']) + str([(t['touch'], t['speed']) for t in ts]) for r, ts, _ in out})}")
     ok = blowups == 0
@@ -567,7 +684,7 @@ def compare(onnx, ue_log, mjb, blue=None, character="grandpa", blue_character=No
     res, turns, path = play(onnx, ["red", "blue"].index(start["first"]), mjb, blue=blue, character=character, blue_character=blue_character,
                             seed=start.get("seed"))
     py = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
-    keys = ("strike", "faint", "knockdown", "foul", "turn_end", "condition", "round", "result")
+    keys = ("strike", "faint", "knockdown", "foul", "turn_end", "condition", "round", "result", "stun", "count", "count_end")
     a = [e for e in py if e["type"] in keys]
     b = [e for e in ue if e["type"] in keys]
     for x, y in zip(a, b):   # the additive fields (DOCS/20261103/events.md) count only once the other engine logs them
@@ -592,7 +709,7 @@ if __name__ == "__main__":
     ap.add_argument("--char", default="grandpa", help="red's character (<char>_vs_<char>_arena.xml)")
     ap.add_argument("--blue-char", default=None, help="blue's own character for a mixed pairing (default: the same as red's)")
     ap.add_argument("--defender-role", type=float, default=DEFENDER_ROLE, help="-1 absorb (brains from L3), 0 guard (Unreal's DefenderRole)")
-    ap.add_argument("--physics", type=int, default=None, help="the physics version's models (1 shipped, 2 = models/v2); default SLAP_PHYSICS or 1")
+    ap.add_argument("--physics", type=int, default=None, help="the physics version's models (1 shipped, n = models/v<n>; 4 plays rules 2); default SLAP_PHYSICS or 1")
     x = ap.parse_args()
     if x.physics is not None:   # before the exam's worker processes start: they read it from the environment
         os.environ["SLAP_PHYSICS"] = str(x.physics)

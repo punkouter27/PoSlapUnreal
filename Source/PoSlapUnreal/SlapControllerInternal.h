@@ -1,31 +1,33 @@
 #pragma once
 
 // USlapController's own helpers, shared by its .cpp files (SlapController*.cpp, SlapBrainIO.cpp, SlapMatch.cpp, ...).
-// Not a public header: nothing outside the controller includes it. Every number here is one of the three engines'
-// shared constants (training/constants.py, brain_cpu.py, match.py; training/verify_constants.py checks the values).
+// Not a public header: nothing outside the controller includes it. The three engines' shared numbers are not typed
+// here: they come from SlapShared.gen.h (namespace SlapGen), which training/gen_constants.py writes from
+// training/constants.py and training/rules.json; training/verify_constants.py fails when that file is stale.
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 #include "SlapController.h"
 #include "SlapNames.h"
+#include "SlapShared.gen.h"
 
 #include <cmath>
 #include <initializer_list>
 
 namespace SlapCtl
 {
-	inline constexpr int32 ControlEvery = 4;	// 50 Hz brain over 200 Hz physics
-	inline constexpr int32 NumObs = 140;		// DOCS/BRAIN_IO.md, interface 4: 136 + heel/toe contact per foot (136-139); a brain reads its first NumIn
+	inline constexpr int32 ControlEvery = SlapGen::Decim;	// 50 Hz brain over 200 Hz physics
+	inline constexpr int32 NumObs = SlapGen::Obs;		// interface 4: 136 + heel/toe contact per foot (136-139); a brain reads its first NumIn
 	// the action low-pass (interface 4 only: brains >= LpfFromObs wide; training/constants.py LPF_*): before the rate limit,
 	// target = goal + alpha (target - goal), alpha = 1 - exp(-2 pi LpfHz / 50). The same maths in brain_cpu, the envs and sim.js
-	inline constexpr double LpfHz = 8.0;
-	inline constexpr int32 LpfFromObs = 140;
-	inline double LowPass(double Tgt, double Goal) { return Goal + (1.0 - std::exp(-2.0 * PI * LpfHz / 50.0)) * (Tgt - Goal); }
-	inline constexpr int32 Lags[3] = { 5, 10, 15 };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
-	inline constexpr double HillK = 0.25;	// Hill's force-velocity curvature (brain_cpu.HILL_K)
-	inline constexpr int32 React = 6;	// the defender sees the striker's hand 6 decisions (0.12 s) late (brain_cpu.REACT)
-	inline constexpr double BoxX = 0.20, BoxY = 0.25;	// the foot box's half extents (match.py)
-	inline constexpr int64 KickSteps = 2;	// the slap's impact impulse lasts 10 ms (match.py KICK_STEPS)
+	inline constexpr double LpfHz = SlapGen::LpfHz;
+	inline constexpr int32 LpfFromObs = SlapGen::LpfFromObs;
+	inline double LowPass(double Tgt, double Goal) { return Goal + (1.0 - std::exp(-2.0 * PI * LpfHz / (double)SlapGen::ControlHz)) * (Tgt - Goal); }
+	inline constexpr int32 Lags[3] = { SlapGen::Lags[0], SlapGen::Lags[1], SlapGen::Lags[2] };	// memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
+	inline constexpr double HillK = SlapGen::HillK;	// Hill's force-velocity curvature (brain_cpu.HILL_K)
+	inline constexpr int32 React = SlapGen::React;	// the defender sees the striker's hand 6 decisions (0.12 s) late (brain_cpu.REACT)
+	inline constexpr double BoxX = SlapGen::BoxX, BoxY = SlapGen::BoxY;	// the foot box's half extents (rules.json)
+	inline constexpr int64 KickSteps = SlapGen::KickSteps;	// rules 1: the slap's impact impulse lasts 10 ms (rules.json kick_steps)
 	using Slap::Rounds, Slap::MinStamina, Slap::MinNeck, Slap::StrikeClock, Slap::Recovery;
 
 	/** brain_cpu.settle_muscles: each muscle's filter state at its joint's angle. */

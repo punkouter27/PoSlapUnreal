@@ -715,8 +715,10 @@ class LocomotionEnv:
             self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),
         ], -1)
 
-        obs = torch.cat([obs, common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4)], -1)   # 136-139
-        obs = obs[:, :self.obs_dim]   # an older interface's width (obs_dim 136: no foot contacts)
+        obs = torch.cat([obs,
+                         common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4),   # 136-139
+                         torch.zeros((self.N, 2), device=self.device)], -1)                                 # 140-141: cmd_power, cmd_brace (0 in walk)
+        obs = obs[:, :self.obs_dim]   # an older interface's width (136: no foot contacts; 140: no command vector)
 
         if self.randomize:
             noise = torch.zeros(obs.shape[-1], device=self.device)

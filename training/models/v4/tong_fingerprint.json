@@ -1,0 +1,525 @@
+{
+ "mujoco": "3.10.0",
+ "model": "tong_solo.xml",
+ "physics": 4,
+ "sha256": "411eb28395e0ca466752577b58fff6f01508538f3432762269543a81d281fd34",
+ "option": {
+  "timestep": 0.005,
+  "integrator": 3,
+  "solver": 2,
+  "iterations": 20,
+  "gravity": [
+   0.0,
+   0.0,
+   -9.81
+  ]
+ },
+ "sizes": {
+  "nq": 37,
+  "nv": 36,
+  "nu": 30,
+  "nbody": 19,
+  "ngeom": 24
+ },
+ "mass_kg": 75.0,
+ "body_mass": {
+  "target": 3.254,
+  "pelvis": 10.65,
+  "belly": 10.425,
+  "chest": 16.2,
+  "neck": 0.9,
+  "head": 5.175,
+  "upperarm_l": 2.1,
+  "forearm_l": 1.2,
+  "hand_l": 0.45,
+  "upperarm_r": 2.1,
+  "forearm_r": 1.2,
+  "hand_r": 0.45,
+  "thigh_l": 7.5,
+  "shin_l": 3.487,
+  "foot_l": 1.087,
+  "thigh_r": 7.5,
+  "shin_r": 3.487,
+  "foot_r": 1.087
+ },
+ "control_hz": 50,
+ "physics_hz": 200,
+ "joint_order": [
+  "waist_twist",
+  "waist_flex",
+  "waist_side",
+  "neck_turn",
+  "neck_nod",
+  "neck_tilt",
+  "shoulder_swing_l",
+  "shoulder_raise_l",
+  "shoulder_twist_l",
+  "elbow_l",
+  "wrist_flex_l",
+  "wrist_dev_l",
+  "shoulder_swing_r",
+  "shoulder_raise_r",
+  "shoulder_twist_r",
+  "elbow_r",
+  "wrist_flex_r",
+  "wrist_dev_r",
+  "hip_flex_l",
+  "hip_abd_l",
+  "hip_rot_l",
+  "knee_l",
+  "ankle_flex_l",
+  "ankle_roll_l",
+  "hip_flex_r",
+  "hip_abd_r",
+  "hip_rot_r",
+  "knee_r",
+  "ankle_flex_r",
+  "ankle_roll_r"
+ ],
+ "ctrl_range_rad": [
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -0.3490658402442932,
+   1.0471975803375244
+  ],
+  [
+   -0.5235987901687622,
+   0.5235987901687622
+  ],
+  [
+   -1.2217304706573486,
+   1.2217304706573486
+  ],
+  [
+   -0.6981316804885864,
+   0.8726646304130554
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -2.268928050994873,
+   0.6981316804885864
+  ],
+  [
+   -1.6580628156661987,
+   1.3962633609771729
+  ],
+  [
+   -1.3962633609771729,
+   1.3962633609771729
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -1.0471975803375244,
+   1.2217304706573486
+  ],
+  [
+   -0.4363323152065277,
+   0.4363323152065277
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   1.919862151145935
+  ],
+  [
+   -0.4363323152065277,
+   0.6981316804885864
+  ],
+  [
+   -0.6981316804885864,
+   0.6981316804885864
+  ],
+  [
+   0.0,
+   2.4434609413146973
+  ],
+  [
+   -0.7853981852531433,
+   0.3490658402442932
+  ],
+  [
+   -0.3490658402442932,
+   0.3490658402442932
+  ]
+ ],
+ "torque_limit_nm": [
+  58.5,
+  97.5,
+  104.0,
+  23.399999618530273,
+  23.399999618530273,
+  23.399999618530273,
+  58.5,
+  58.5,
+  39.0,
+  45.5,
+  13.0,
+  9.75,
+  58.5,
+  58.5,
+  39.0,
+  45.5,
+  13.0,
+  9.75,
+  97.5,
+  104.0,
+  39.0,
+  84.5,
+  32.5,
+  26.0,
+  97.5,
+  104.0,
+  39.0,
+  84.5,
+  32.5,
+  26.0
+ ],
+ "torque_limit_neg_nm": [
+  58.5,
+  130.0,
+  104.0,
+  23.399999618530273,
+  23.399999618530273,
+  23.399999618530273,
+  58.5,
+  58.5,
+  39.0,
+  35.75,
+  13.0,
+  9.75,
+  58.5,
+  58.5,
+  39.0,
+  35.75,
+  13.0,
+  9.75,
+  143.0,
+  104.0,
+  39.0,
+  143.0,
+  117.0,
+  26.0,
+  143.0,
+  104.0,
+  39.0,
+  143.0,
+  117.0,
+  26.0
+ ],
+ "max_joint_speed_rad_s": [
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  18.0,
+  18.0,
+  18.0,
+  22.5,
+  22.5,
+  22.5,
+  18.0,
+  18.0,
+  18.0,
+  22.5,
+  22.5,
+  22.5,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8,
+  10.8
+ ],
+ "stand_pose_deg": {
+  "shoulder_raise_l": -60,
+  "elbow_l": 30,
+  "shoulder_raise_r": -60,
+  "elbow_r": 30,
+  "knee_l": 15.0,
+  "knee_r": 15.0,
+  "hip_flex_l": -6.0,
+  "hip_flex_r": -6.0,
+  "hip_abd_l": 6,
+  "hip_abd_r": 6,
+  "ankle_flex_l": 11.0,
+  "ankle_flex_r": 11.0,
+  "ankle_roll_l": -5,
+  "ankle_roll_r": -5,
+  "waist_flex": 4.0,
+  "shoulder_swing_l": -10,
+  "shoulder_twist_l": 0,
+  "shoulder_swing_r": -10,
+  "shoulder_twist_r": 10
+ },
+ "stand_pose_rad": {
+  "shoulder_raise_l": -1.0471975511965976,
+  "elbow_l": 0.5235987755982988,
+  "shoulder_raise_r": -1.0471975511965976,
+  "elbow_r": 0.5235987755982988,
+  "knee_l": 0.2617993877991494,
+  "knee_r": 0.2617993877991494,
+  "hip_flex_l": -0.10471975511965978,
+  "hip_flex_r": -0.10471975511965978,
+  "hip_abd_l": 0.10471975511965978,
+  "hip_abd_r": 0.10471975511965978,
+  "ankle_flex_l": 0.19198621771937624,
+  "ankle_flex_r": 0.19198621771937624,
+  "ankle_roll_l": -0.08726646259971647,
+  "ankle_roll_r": -0.08726646259971647,
+  "waist_flex": 0.06981317007977318,
+  "shoulder_swing_l": -0.17453292519943295,
+  "shoulder_twist_l": 0.0,
+  "shoulder_swing_r": -0.17453292519943295,
+  "shoulder_twist_r": 0.17453292519943295
+ },
+ "root_height_m": 0.7870221702521436,
+ "geom_scale": {
+  "belly": 0.8573749999999999,
+  "neck": 0.95,
+  "upperarm_l": 0.95,
+  "upperarm_r": 0.95,
+  "chest": 0.6983372960937497,
+  "jaw_l": 0.8573749999999999,
+  "jaw_r": 0.8573749999999999,
+  "pelvis": 0.95
+ },
+ "balance_offset_m": [
+  0.002170760743960942,
+  0.00012466013143914032
+ ],
+ "drop_test_upright_s": 1.4849999999999903,
+ "card": {
+  "name": "tong",
+  "display": "TONG",
+  "slot": 5,
+  "mesh": "Content/Art/Exports/Tong_rigged.fbx",
+  "skeleton": "characters/tong_skeleton.json",
+  "height_m": 1.75,
+  "mass_kg": 75.0,
+  "strength": 0.65,
+  "speed": 0.9,
+  "flexibility": 1.0,
+  "toughness": 0.9,
+  "stamina_per_strike": 0.04,
+  "neck_damage_per_snap": 0.045,
+  "strike_mass": 2.88,
+  "notes": "Fifth roster athlete (user, 2026-11-09: Tong.glb, an AI-rigged baby model, \"do 1\": a full-size fighter, the baby look a costume). Rigged by Scripts/rig_glb.py (the model's own 19-bone skin kept, renamed to Mixamo, arms straightened to Grandpa's rest) then Scripts/rig_mixamo.py at 1.75 m (x2.30 from 0.761 m). Card values picked by Claude (user gave none): quick and supple (speed 0.9 between Grandpa 0.75 and Kim 0.95, flexibility 1.0 like Kim), middling power (strength 0.65), a lighter neck than the adults (toughness 0.9, neck damage 0.045) and average stamina (0.04). The scan keeps a baby's proportions at adult size: a big head and short legs, so its own balance and reach. Strike mass scaled to body mass (3.0 kg per 78 kg). Same rules as grandpa.json otherwise.",
+  "style": {
+   "summary": "Balance: square and planted, knees softly bent, hands low (Mom's stance as the start; rebalanced at build time). Slap: a quick upward chop with a full hip and trunk turn (Mom's guess as the start; re-searched for Tong's body).",
+   "stance_deg": {
+    "knee_l": 15.0,
+    "knee_r": 15.0,
+    "hip_flex_l": -6.0,
+    "hip_flex_r": -6.0,
+    "hip_abd_l": 6,
+    "hip_abd_r": 6,
+    "ankle_flex_l": 11.0,
+    "ankle_flex_r": 11.0,
+    "ankle_roll_l": -5,
+    "ankle_roll_r": -5,
+    "waist_flex": 4.0,
+    "shoulder_swing_l": -10,
+    "shoulder_raise_l": -60,
+    "shoulder_twist_l": 0,
+    "elbow_l": 30,
+    "shoulder_swing_r": -10,
+    "shoulder_raise_r": -60,
+    "shoulder_twist_r": 10,
+    "elbow_r": 30
+   },
+   "slap": {
+    "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Mom: quick, because every athlete drifts onto the podium ~0.75 s into stand targets and her slow joints (speed 0.7) need the time; a high arm (the face is ~30 cm above her shoulder) with a full trunk/hip turn and a lean, because her reach is short like Kim's (hand 17 cm short of the face in the best static pose vs Grandpa 4, Matt 1, Kim 16); the lead arm hangs at her side (in front it hit the podium in the wind-up); short follow-through.",
+    "guess_deg": {
+     "waist_twist": [
+      -25,
+      30,
+      30
+     ],
+     "waist_flex": [
+      4,
+      14,
+      10
+     ],
+     "waist_side": [
+      0,
+      2,
+      2
+     ],
+     "shoulder_swing_r": [
+      12,
+      -70,
+      -72
+     ],
+     "shoulder_raise_r": [
+      60,
+      55,
+      45
+     ],
+     "shoulder_twist_r": [
+      -25,
+      -45,
+      -42
+     ],
+     "elbow_r": [
+      85,
+      15,
+      25
+     ],
+     "wrist_flex_r": [
+      -30,
+      20,
+      10
+     ],
+     "wrist_dev_r": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_swing_l": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_raise_l": [
+      -80,
+      -80,
+      -80
+     ],
+     "elbow_l": [
+      10,
+      10,
+      10
+     ],
+     "hip_flex_l": [
+      3,
+      10,
+      10
+     ],
+     "hip_flex_r": [
+      3,
+      10,
+      10
+     ],
+     "knee_l": [
+      15,
+      20,
+      20
+     ],
+     "knee_r": [
+      15,
+      20,
+      20
+     ],
+     "hip_rot_l": [
+      -10,
+      12,
+      12
+     ],
+     "hip_rot_r": [
+      -10,
+      12,
+      12
+     ]
+    },
+    "times_s": [
+     0.25,
+     0.18,
+     0.2
+    ],
+    "delays_s": {
+     "hip_rot_l": 0.0,
+     "hip_rot_r": 0.0,
+     "waist_twist": 0.03,
+     "waist_flex": 0.03,
+     "shoulder_swing_r": 0.06,
+     "shoulder_raise_r": 0.06,
+     "shoulder_twist_r": 0.09,
+     "elbow_r": 0.12,
+     "wrist_flex_r": 0.15
+    },
+    "search_sigma_deg": 15.0
+   }
+  },
+  "length_ratio": {
+   "thigh": [
+    0.16,
+    0.28
+   ]
+  },
+  "length_ratio_note": "A baby scan scaled to adult height (user 2026-11-09, option 1): thigh 0.18 H against the adult 0.20-0.28. The physics body follows the mesh, so Tong's legs are short on purpose.",
+  "sparring": {
+   "head": [
+    0.8,
+    0.0,
+    0.78
+   ],
+   "shorter_max": 0.15,
+   "lean": 1.0,
+   "note": "Practice opponent: Grandpa's face from Tong's start pelvis (Mom's 0.72 m plus the 6 cm Tong's pelvis sits lower: 0.787 vs 0.847 m); up to 15 cm lower for Kim; leaning in when braced"
+  }
+ }
+}

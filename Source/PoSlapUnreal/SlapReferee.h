@@ -35,6 +35,15 @@ namespace Slap
 		int32 Feints = 0;
 		// physics 3: the kick's reaction on the striker's arm (match.py reaction_chain): (body, mass share)
 		TArray<TPair<int32, double>> React;
+		// rules 2 (training/rules.json, match.py turn()): the defender beat a count (the judges' 10-8), the stun's
+		// severity (0 = none); the count (the step it began, the step he was first up again), the step the stun ends,
+		// the flinch foul given, the striker down during the count; the defender's set head position (the flinch
+		// line) and his pelvis height at the turn's start (the count's "up")
+		bool bKd = false;
+		double Stun = 0.0;
+		int64 CountStep = -1, UpStep = -1, StunEnd = -1;
+		bool bFlinched = false, bStrikerDown = false;
+		double Head0[3] = {}, StandZ = 0.0;
 	};
 
 	/** The three judges and the round they are scoring. */
@@ -59,8 +68,10 @@ namespace Slap
 		 * The round's points: Out[j] is the pair (red, blue) judge j awarded, and the judge's running total grows by
 		 * it. The same arithmetic as training/match.py's score_round, in the same order: a 10-point must, and the
 		 * three judges weigh speed, head snap, stagger and defence differently.
+		 * Rules 2 (Noise != null): judge j's four weights are scaled by Noise[j][i] this round (the controller rolls
+		 * them from the match's dice, match.py play()), and a defender who beat a count gives the striker the 10-8.
 		 */
-		void Score(int32 (&Out)[3][2]);
+		void Score(int32 (&Out)[3][2], const double (*Noise)[4] = nullptr);
 
 		/**
 		 * The match decision: the wording and the winner (the corner's index). A judges' draw is broken as

@@ -113,7 +113,7 @@ class Athlete:
         self.mem = (0.0, 0.0)                # the opponent's last strike this match: touch time / 30, palm speed / 10
         self.stamina, self.neck_strength = 1.0, 1.0
 
-    def obs(self, d, role=0.0, clock=0.0, target=None, hand=None):
+    def obs(self, d, role=0.0, clock=0.0, target=None, hand=None, cmd=(0.0, 0.0)):
         o = np.zeros(OBS)
         N = len(self.order)
         o[:N] = d.qpos[self.qa] - self.stand
@@ -146,6 +146,8 @@ class Athlete:
         o[130:133] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         o[133:136] = [c * n[0] + s * n[1], -s * n[0] + c * n[1], n[2]]
         o[136:140] = foot_contacts(self.m, d, self.feet)
+        o[140] = float(cmd[0]) if role > 0 else 0.0
+        o[141] = float(cmd[1]) if role < 0 else 0.0
         return o.astype(np.float32)
 
     def decide(self, action):

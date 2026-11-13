@@ -347,15 +347,15 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 		const double* P = d->geom_xpos + 3 * Opp->Head;	// the opponent's head centre - pelvis
 		const double Rel[3] = { P[0] - Pelvis[0], P[1] - Pelvis[1], P[2] - Pelvis[2] };
 		Heading(Rel, O + 12 + N);
-		if (Role < 0.f)	// defender: the striker's right hand as it was React decisions ago - pelvis
+		if (Role < 0.f)	// defender: the striker's right hand as it was SeenLag (React, + the daze) decisions ago - pelvis
 		{
 			const double* H = d->geom_xpos + 3 * Opp->Hand;
 			if (A.bFresh)
 				for (double* Row : A.Seen) FMemory::Memcpy(Row, H, 3 * sizeof(double));
 			else
 			{
-				FMemory::Memmove(A.Seen[0], A.Seen[1], React * 3 * sizeof(double));
-				FMemory::Memcpy(A.Seen[React], H, 3 * sizeof(double));
+				FMemory::Memmove(A.Seen[0], A.Seen[1], A.SeenLag * 3 * sizeof(double));
+				FMemory::Memcpy(A.Seen[A.SeenLag], H, 3 * sizeof(double));
 			}
 			const double Rh[3] = { A.Seen[0][0] - Pelvis[0], A.Seen[0][1] - Pelvis[1], A.Seen[0][2] - Pelvis[2] };
 			Heading(Rh, O + 15 + N);
@@ -391,6 +391,10 @@ void USlapController::BuildObs(const mjModel* m, const mjData* d, FAthlete& A, f
 
 	// interface 4 (136-139): heel/toe contact per foot. Always written; a brain reads only its own width (shipped: 136)
 	FootContacts(m, d, A, O + 46 + N);
+
+	// interface 5 (140-141): player command vector (strike power/accuracy, defence brace timing); 0 outside active role
+	O[50 + N] = Role > 0.f ? CmdPower.load(std::memory_order_relaxed) : 0.f;
+	O[51 + N] = Role < 0.f ? CmdBrace.load(std::memory_order_relaxed) : 0.f;
 }
 
 void USlapController::FootContacts(const mjModel* m, const mjData* d, const FAthlete& A, float* Out)

@@ -2,30 +2,31 @@
 // decide, the referee and judges are training/match.py's (Unreal's USlapController mirrors the same rules).
 // Each corner reads its own fingerprint and character card, as Unreal does for Grandpa vs Kim.
 
-export const OBS = 140;                    // DOCS/BRAIN_IO.md, interface 4 (136 + heel/toe contacts); a brain reads its own width
-// the action low-pass (interface 4 only: brains >= LPF_FROM_OBS wide), constants.LPF_*: target = goal + alpha (target - goal)
-const LPF_HZ = 8.0, LPF_FROM_OBS = 140, LPF_ALPHA = 1 - Math.exp(-2 * Math.PI * LPF_HZ / 50);
-const LAGS = [5, 10, 15];                  // memory: inputs 102-107 as they were 0.1, 0.2, 0.3 s ago
-const REACT = 6;
-const HILL_K = 0.25;                       // Hill's force-velocity curvature (brain_cpu.HILL_K)
+// Every shared number comes from shared.gen.js, which training/gen_constants.py writes from training/constants.py and
+// training/rules.json (the one source of truth; Unreal reads SlapShared.gen.h from the same run). Nothing is retyped here.
+import { OBS, LPF_HZ, LPF_FROM_OBS, LAGS, REACT, HILL_K, MIN_STAMINA, MIN_NECK, DECIM, CONTROL_HZ, GAZE_GAIN, GAZE_MAX_STEP,
+  WATCH_MAX_STEP, FEINT_MIN_PEAK, FEINT_AFTER_S, FEINT_PULLBACK, FEINT_REARM, FEINT_REARM_S, RULES } from "./shared.gen.js";
+export { OBS };                            // interface 4 (136 + heel/toe contacts); a brain reads its own width
+// the action low-pass (interface 4 only: brains >= LPF_FROM_OBS wide): target = goal + alpha (target - goal)
+const LPF_ALPHA = 1 - Math.exp(-2 * Math.PI * LPF_HZ / CONTROL_HZ);
+// LAGS: memory, inputs 102-107 as they were 0.1, 0.2, 0.3 s ago. REACT: the defender sees the striker's hand 6 decisions late.
+// HILL_K: Hill's force-velocity curvature (brain_cpu.HILL_K)
 // brain_cpu.hill on actuator a's forcerange: pushing the way the joint already turns, F0 (1 - u) / (1 + u / K), u = |v| / top speed
 const hill = (fr, a, v, vmax) => {
   const u = Math.min(Math.abs(v) / vmax, 1), h = (1 - u) / (1 + u / HILL_K);
   if (v < 0) fr[2 * a] *= h; else if (v > 0) fr[2 * a + 1] *= h;
-};                           // the defender sees the striker's hand 6 decisions (0.12 s) late
-const MIN_STAMINA = 0.7, MIN_NECK = 0.5;   // fatigue floors
-export const ROUNDS = 3, STRIKE_CLOCK = 30, RECOVERY = 5, HOLD = 2, WALKIN = 3;
-const BOX = [0.20, 0.25], KICK_STEPS = 2;
-// the feint read (training/constants.py FEINT_*, Unreal's SlapHUD F10): the striker's palm peaked above FEINT_MIN_PEAK
+};
+// MIN_STAMINA, MIN_NECK: the fatigue floors. The match rules are training/rules.json (RULES); HOLD and WALKIN are the page's own
+export const ROUNDS = RULES.rounds, STRIKE_CLOCK = RULES.strike_clock, RECOVERY = RULES.recovery, HOLD = 2, WALKIN = 3;
+const BOX = RULES.box, KICK_STEPS = RULES.kick_steps;
+// the feint read (FEINT_*, Unreal's SlapHUD F10): the striker's palm peaked above FEINT_MIN_PEAK
 // and FEINT_AFTER_S later, untouched, is under FEINT_PULLBACK x the peak; back up to FEINT_REARM x it re-arms the read
-const FEINT_MIN_PEAK = 2.5, FEINT_AFTER_S = 0.12, FEINT_PULLBACK = 0.55, FEINT_REARM = 0.95, FEINT_REARM_S = 0.2;
-const WEIGHTS = [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]];      // judges: speed, head, stagger, defence
+const WEIGHTS = RULES.judge_weights;      // judges: speed, head, stagger, defence
 // Eye contact (2026-10-24): match.py's GAZE_*/WATCH_* constants and Unreal's ApplyGaze run IDENTICAL maths.
 // The bias lives in WORLD space (a great-circle walk toward the eye line) and is turned into a neck goal in the
 // chest frame; the pitch is NOT driven (turn only, 2026-10-29: the nod tilted Kim's face up off her target).
-const GAZE_GAIN = 1.0;      // the bias OWNS the neck goal pre-touch (the mandate beats the brain's habit)
-const GAZE_MAX_STEP = 0.08; // rad per decision the bias may walk: the deliberate head turn of a man squaring up
-const WATCH_MAX_STEP = 0.25;// rad per decision while PLANTED: re-acquiring a snapping head inside a short window
+// GAZE_GAIN: the bias OWNS the neck goal pre-touch. GAZE_MAX_STEP: rad per decision the bias may walk (squaring up).
+// WATCH_MAX_STEP: rad per decision while PLANTED (re-acquiring a snapping head inside a short window)
 const GAZE_ON = typeof window !== "undefined"
   ? !new URLSearchParams(location.search).has("nogaze")
   : true;                  // ?nogaze=1 turns it off (the browser's SLAP_EYE_CONTACT=0)
@@ -93,7 +94,7 @@ class Athlete {
     this.lo = fp.ctrl_range_rad.map(r => r[0]); this.hi = fp.ctrl_range_rad.map(r => r[1]);
     const s = fp.max_joint_speed_rad_s;
     this.vmax = this.order.map((_, i) => (Array.isArray(s) ? s[i] : s));   // Hill's top speed per joint
-    this.maxStep = this.vmax.map(v => v * 0.02);
+    this.maxStep = this.vmax.map(v => v / CONTROL_HZ);
     this.neck = this.act.filter((_, i) => this.order[i].startsWith("neck"));
     this.fr0 = this.neck.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);
     this.frAll = this.act.map(a => [m.actuator_forcerange[2 * a], m.actuator_forcerange[2 * a + 1]]);   // fainting slackens them all
@@ -139,7 +140,7 @@ class Athlete {
     this.goal[this.iYaw] = clamp(blend, this.lo[this.iYaw], this.hi[this.iYaw]);
   }
 
-  obs(d, role = 0, clock = 0, target = null, hand = null) {
+  obs(d, role = 0, clock = 0, target = null, hand = null, cmdPower = 0, cmdBrace = 0) {
     const o = new Float64Array(OBS), N = this.order.length, q = d.qpos, v = d.qvel;
     for (let i = 0; i < N; i++) { o[i] = q[this.qa[i]] - this.standPose[i]; o[N + i] = v[this.va[i]] * 0.1; }
     const R = quatMat(q[this.rq + 3], q[this.rq + 4], q[this.rq + 5], q[this.rq + 6]);
@@ -163,6 +164,8 @@ class Athlete {
     o.set(hd(H[0] - P[0], H[1] - P[1], H[2] - P[2]), 130);
     o.set(hd(-X[b + 2], -X[b + 5], -X[b + 8]), 133);   // own palm: the hand box's -z axis
     o.set(this.footContacts(d), 136);
+    o[140] = role > 0 ? cmdPower : 0;   // interface 5: strike command (power +1 vs accuracy -1)
+    o[141] = role < 0 ? cmdBrace : 0;   // interface 5: defence brace timing (+1 brace, 0 neutral)
     return Float32Array.from(o);
   }
 
@@ -185,20 +188,33 @@ export class Match {
   constructor(mj, m, d, corners, emit, defenderRole = 0) {
     this.mj = mj; this.m = m; this.d = d; this.emit = emit; this.defenderRole = defenderRole;
     this.sides = corners.map(c => new Athlete(m, c.fp, c.card, c.prefix, c.policy));
+    // rules 2: the get-up brain (G1) that takes a corner over while he is down under a count; null = his own brain goes on
+    this.sides.forEach((x, i) => { x.getup = corners[i].getup ?? null; });
     const gid = n => { const a = m.geom(n); const i = a.id; a.delete(); return i; };
     this.floor = gid("floor"); this.podium = gid("podium"); this.surface = new Set([this.floor, this.podium]);
     this.dt = m.opt.timestep; this.series = [0, 0]; this.matchNo = 0;
     // physics 2 (build_body.py --physics 2): the strike impulse and speed come from the part that touched, not hand_r's
     this.physics = Number(corners[0].fp.physics ?? 1);
+    // Rules 2 (training/rules.json, match.py): from physics 4 on. No scripted kick, the stun, the count, the flinch and
+    // clubbing fouls, judge noise, the daze. Below it every line of rules 1 runs as before. Match.forceRules2 is the
+    // checks' A/B switch (python's SLAP_RULES=2); Match.rules lets a check play with other numbers (never the page).
+    this.r2 = this.physics >= RULES.rules2_from_physics || Match.forceRules2 === true;
+    this.cmd = [0, 0];   // interface 5 player command [power (-1..+1), brace (0..+1)]
     this.autoNext = true;   // after the result hold: a new match (the unattended loop); the page sets false (back to the menu)
-    this.newMatch();
+    this.newMatch(Match.first, Match.seed);
   }
 
-  newMatch() {
-    this.matchNo++; this.first = Math.random() < 0.5 ? 0 : 1; this.round = 1; this.turnInRound = 0;
+  setCommand(power = 0, brace = 0) {
+    this.cmd[0] = clamp(Number(power) || 0, -1, 1);
+    this.cmd[1] = clamp(Number(brace) || 0, 0, 1);
+  }
+
+  // first, seed: a check replaying a logged match (Web/parity.mjs); the page leaves both to chance
+  newMatch(first = null, seed = null) {
+    this.matchNo++; this.first = first ?? (Math.random() < 0.5 ? 0 : 1); this.round = 1; this.turnInRound = 0;
     this.cards = WEIGHTS.map(() => [0, 0]); this.recs = []; this.result = null; this.lastWinner = null;
     for (const x of this.sides) { x.mem = [0, 0]; x.stamina = 1; x.neckStrength = 1; }
-    this.seed = Math.floor(Math.random() * 2147483648);   // the match's dice (fainting)
+    this.seed = seed ?? Math.floor(Math.random() * 2147483648);   // the match's dice (fainting, rules 2's judges)
     this.emit({ type: "match_start", match: this.matchNo, first: this.sides[this.first].name, seed: this.seed });
     if (typeof window !== "undefined" && !new URLSearchParams(location.search).has("nowalkin")) {
       this.stand();
@@ -243,6 +259,14 @@ export class Match {
     const S = this.sides[this.s], D = this.sides[1 - this.s];
     this.handPrev = v3(d.geom_xpos, S.hand); this.headPrev = v3(d.geom_xpos, D.head);
     this.rec = { round: this.round, striker: S.name, touch: null, part: null, palm: false, speed: 0, head_peak: 0, stagger: false, fouls: [], ko: false, end: null };
+    // rules 2 (match.py turn()): its own record fields; the defender's head and pelvis height at the start (the flinch
+    // line, the count's "up"); the count (the step it began, the step he was first up again); the stun's end; the daze
+    const R = Match.rules;
+    if (this.r2) Object.assign(this.rec, { kd: false, stun: 0 });
+    this.head0 = v3(d.geom_xpos, D.head); this.standZ = d.xpos[3 * D.pelvis + 2];
+    this.countK = null; this.upK = null; this.stunEnd = null; this.flinched = false; this.sDown = false;
+    this.reactN = REACT + (this.r2 ? Math.floor(R.daze_react * (1 - D.neckStrength) / (1 - MIN_NECK) + 0.5) : 0);
+    this.stunSteps = Math.round(R.stun_window_s / this.dt);
     this.touchK = null; this.com0 = null; this.seen = []; this.kick = [0, 0, 0, 0, 0, 0]; this.k = 0; this.phase = "turn";
     this.fe = { peak: 0, at: 0, swing: false, tagged: false, n: 0 }; this.speedNow = 0; this.react = []; this.glast = d.geom_xpos.slice();
     this.faints = [];
@@ -253,13 +277,15 @@ export class Match {
     this.emit({ type: "turn_start", round: this.round, striker: S.name, defender: D.name });
   }
 
-  down(x, defender) {   // Blueprint 9: a non-sole geom on floor or podium; the defender's palms may rest on the podium
+  // Blueprint 9: a non-sole geom on floor or podium; the defender's palms may rest on the podium.
+  // floorOnly (rules 2's count, match.py down(floor_only=True)): the floor alone
+  down(x, defender, floorOnly = false) {
     const cs = this.d.contact, n = this.d.ncon;
     let part = null;
     for (let i = 0; i < n && !part; i++) {
       const c = cs.get(i), g0 = c.geom1, g1 = c.geom2; c.delete();
       const sg = this.surface.has(g0) ? g0 : this.surface.has(g1) ? g1 : -1;
-      if (sg < 0) continue;
+      if (sg < 0 || (floorOnly && sg !== this.floor)) continue;
       const o = sg === g0 ? g1 : g0;
       if (this.surface.has(o) || !x.geoms.has(o) || x.feet.includes(o)) continue;
       if (defender && sg === this.podium && x.hands.includes(o)) continue;
@@ -282,9 +308,54 @@ export class Match {
       if (this.k === k1) x.neck.forEach((a, i) => { m.actuator_forcerange[2 * a] = x.fr0[i][0] * x.neckStrength; m.actuator_forcerange[2 * a + 1] = x.fr0[i][1] * x.neckStrength; });
       else this.emit({ type: "faint", t, athlete: x.name });
     }
-    if (this.k % 4 === 0) {
+    const r2 = this.r2, R = Match.rules;
+    if (r2 && this.touchK !== null) {   // rules 2: the stun, read once the window after the touch has run
+      if (this.k - this.touchK === this.stunSteps) {
+        let sev = rec.head_peak / (R.stun_speed * (D.card.chin ?? 1));
+        if (sev >= 1) {
+          sev = Math.min(sev, R.stun_max);
+          rec.stun = Math.round(sev * 100) / 100;
+          this.stunEnd = this.k + Math.floor(R.stun_s * sev / dt + 0.5);
+          this.slack(D, R.stun_strength);
+          this.emit({ type: "stun", t, athlete: D.name, severity: rec.stun });
+        }
+      } else if (this.k === this.stunEnd) this.slack(D, 1);
+    }
+    if (this.k % DECIM === 0) {
       for (const x of [D, S]) {
-        const part = this.down(x, x === D);
+        let part = this.down(x, x === D);
+        if (r2 && this.touchK !== null) {   // rules 2: after the strike a fall is counted, not called at once
+          if (x === D) {
+            // down = a part other than a sole on the FLOOR, or the pelvis under up_height x his stand height. The podium
+            // alone is not a knockdown here (match.py: that contact flickers, and the count ran a different length per engine)
+            part = this.down(x, true, true);
+            const low = d.xpos[3 * D.pelvis + 2] < R.up_height * this.standZ;
+            if ((part || low) && this.countK === null) {
+              this.countK = this.k;
+              this.emit({ type: "knockdown", t, athlete: x.name, part: part || "pelvis" });
+              this.emit({ type: "count", t, athlete: x.name });
+            }
+            if (this.countK !== null) {
+              const up = !part && !low;
+              this.upK = up ? (this.upK === null ? this.k : this.upK) : null;
+              const beat = this.upK !== null && (this.k - this.upK) * dt >= R.up_hold_s;
+              if (beat || (this.k - this.countK) * dt >= R.count_s) {
+                this.emit({ type: "count_end", t, athlete: x.name, up: beat, count: (this.k - this.countK) * dt });
+                if (beat) { rec.kd = true; rec.end = "beat the count"; } else { rec.ko = true; rec.end = "KO"; }
+                return this.finish();
+              }
+            }
+            continue;
+          }
+          if (this.countK !== null) {   // the striker down while the count runs: his foul, the count goes on
+            if (part && !this.sDown) {
+              this.sDown = true;
+              this.emit({ type: "knockdown", t, athlete: x.name, part });
+              rec.fouls.push([x.name, "knocked down"]);
+            }
+            continue;
+          }
+        }
         if (!part) continue;
         this.emit({ type: "knockdown", t, athlete: x.name, part });
         if (x === D && this.touchK !== null) { rec.ko = true; rec.end = "KO"; }
@@ -293,21 +364,37 @@ export class Match {
       }
       for (let a = 0; a < 2; a++) {
         const x = this.sides[a];
+        if (this.countK !== null && (x === D || this.sDown)) continue;   // rules 2: a man down is not held to his foot box
         const out = x.feet.some((f, j) => Math.abs(d.geom_xpos[3 * f] - this.feet0[a][j][0]) > BOX[0] || Math.abs(d.geom_xpos[3 * f + 1] - this.feet0[a][j][1]) > BOX[1]);
         if (out) { rec.fouls.push([x.name, "out of the box"]); rec.end = "out of the box"; this.emit({ type: "foul", t, athlete: x.name, why: "out of the box" }); return this.finish(); }
       }
+      if (this.touchK === null) {
+        // the flinch line (match.py): where the defender's head was when the palm last was slow is his set position;
+        // how far it is from there while the palm is fast is the flinch (rules 2: a foul, once a turn; the turn goes on)
+        const hd = v3(d.geom_xpos, D.head);
+        if (this.speedNow <= FEINT_MIN_PEAK) this.head0 = hd;
+        if (r2 && !this.flinched && dist(hd, this.head0) > R.flinch_m) {
+          this.flinched = true;
+          rec.fouls.push([D.name, "flinch"]);
+          this.emit({ type: "foul", t, athlete: D.name, why: "flinch" });
+        }
+      }
     }
     if (this.touchK === null && t >= STRIKE_CLOCK) { rec.fouls.push([S.name, "no strike in 30 s"]); rec.end = "clock"; return this.finish(); }
-    if (this.touchK !== null && (this.k - this.touchK) * dt >= RECOVERY) { rec.end = "recovered"; return this.finish(); }
-    if (this.k % 4 === 0 && this.touchK === null) this.feintRead(this.speedNow, t, S);   // every brain step until the touch
-    if (this.k % 4 === 0) {
+    if (this.touchK !== null && this.countK === null && (this.k - this.touchK) * dt >= RECOVERY) { rec.end = "recovered"; return this.finish(); }
+    if (this.k % DECIM === 0 && this.touchK === null) this.feintRead(this.speedNow, t, S);   // every brain step until the touch
+    if (this.k % DECIM === 0) {
       mj.mj_kinematics(m, d);
       const clock = 1 - t / STRIKE_CLOCK, hd = v3(d.geom_xpos, D.head);
       // one brain at a time: the browser's ONNX Runtime refuses a second run while one is in flight
       const h = v3(d.geom_xpos, S.hand);   // the striker's hand at the last REACT + 1 decisions: the defender sees the oldest
-      this.seen = (this.seen.length ? this.seen : Array(REACT).fill(h)).slice(-REACT).concat([h]);
-      const dObs = this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), this.seen[0]) : D.obs(d, 0);
-      const aS = await S.policy(S.obs(d, 1, clock, hd)), aD = await D.policy(dObs);
+      // (rules 2: reactN = REACT + the daze of a damaged neck, constants.daze_lag; rules 1: REACT)
+      const getup = this.countK !== null && D.getup;   // the director's hand-over: down under a count, the get-up brain (role 0)
+      const n = this.reactN;
+      if (!getup && this.defenderRole < 0) this.seen = (this.seen.length ? this.seen : Array(n).fill(h)).slice(-n).concat([h]);
+      const [cmdPower, cmdBrace] = this.cmd;
+      const dObs = getup ? D.obs(d, 0) : this.defenderRole < 0 ? D.obs(d, this.defenderRole, clock, v3(d.geom_xpos, S.head), this.seen[0], cmdPower, cmdBrace) : D.obs(d, 0, 0, null, null, cmdPower, cmdBrace);
+      const aS = await S.policy(S.obs(d, 1, clock, hd, null, cmdPower, cmdBrace)), aD = await (getup ? D.getup : D.policy)(dObs);
       S.decide(aS); D.decide(aD);
       if (GAZE_ON) {   // match.py: eye contact until the slap lands, then the striker watches the verdict
         if (this.touchK === null) D.gazeApply(d, S.head, GAZE_MAX_STEP);
@@ -369,8 +456,9 @@ export class Match {
       const c = cs.get(i), g0 = c.geom1, g1 = c.geom2;
       const other = D.face.has(g0) ? g1 : D.face.has(g1) ? g0 : -1;
       if (other >= 0 && S.geoms.has(other) && (this.physics < 3 || this.inFaceZone(D.faceZone, c.pos))) {
-        const sign = g0 === other ? 1 : -1, F = c.frame, b = 9 * S.hand, X = d.geom_xmat;
-        const palm = other === S.hand && -sign * (F[0] * X[b + 2] + F[1] * X[b + 5] + F[2] * X[b + 8]) > 0.5;
+        const ph = this.r2 && S.hands.includes(other) ? other : S.hand;   // rules 2: either hand's palm (rules 1: the right)
+        const sign = g0 === other ? 1 : -1, F = c.frame, b = 9 * ph, X = d.geom_xmat;
+        const palm = other === ph && -sign * (F[0] * X[b + 2] + F[1] * X[b + 5] + F[2] * X[b + 8]) > 0.5;
         const pos = [c.pos[0], c.pos[1], c.pos[2]];
         c.delete();
         const a = m.geom(other), part = a.name.replace(/^.*?(red|blue)_/, ""); a.delete();
@@ -385,7 +473,11 @@ export class Match {
         // hand_speed / feint / feints: additive fields (DOCS/20261103/events.md)
         this.emit({ type: "strike", t: this.k * dt, striker: S.name, part, palm, speed, pos,
           hand_speed: Math.round(handSpeed * 100) / 100, feint, feints: this.fe.n });
-        // the body behind the palm (card strike_mass): an impulse on the head over KICK_STEPS physics steps
+        if (this.r2) {   // rules 2: nothing added - what the contact passes on is the blow; a touch that is not a palm is clubbing
+          if (!palm) { this.rec.fouls.push([S.name, "clubbing"]); this.emit({ type: "foul", t: this.k * dt, athlete: S.name, why: "clubbing" }); }
+          break;
+        }
+        // rules 1: the body behind the palm (card strike_mass): an impulse on the head over KICK_STEPS physics steps
         const k = S.card.strike_mass / (KICK_STEPS * dt), f = vel.map(v => v * k), C = v3(d.xipos, D.headBody);
         const r = [pos[0] - C[0], pos[1] - C[1], pos[2] - C[2]];
         this.kick = [f[0], f[1], f[2], r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
@@ -399,6 +491,13 @@ export class Match {
 
   applyCtrl() { for (const x of this.sides) x.act.forEach((a, i) => { this.d.ctrl[a] = x.goal[i]; }); }
 
+  // match.py slack: every motor of x at gain x its own force (a stun); 1 = back, with the neck's damage on top
+  slack(x, gain) {
+    const fr = this.m.actuator_forcerange;
+    x.act.forEach((a, i) => { fr[2 * a] = x.frAll[i][0] * gain; fr[2 * a + 1] = x.frAll[i][1] * gain; });
+    if (gain === 1) x.neck.forEach((a, i) => { fr[2 * a] = x.fr0[i][0] * x.neckStrength; fr[2 * a + 1] = x.fr0[i][1] * x.neckStrength; });
+  }
+
   finish() {
     const { d } = this, rec = this.rec, S = this.sides[this.s], D = this.sides[1 - this.s];
     if (this.com0) rec.stagger = Math.hypot(d.subtree_com[3 * D.pelvis] - this.com0[0], d.subtree_com[3 * D.pelvis + 1] - this.com0[1]) > 0.05;
@@ -408,6 +507,7 @@ export class Match {
       D.mem = [rec.touch / 30, rec.speed / 10];
       if (!rec.ko) D.neckStrength = Math.max(MIN_NECK, D.neckStrength - D.card.neck_damage_per_snap * rec.head_peak);
     }
+    if (this.r2) this.slack(D, 1);   // a stun still on at the turn's end: his motors back for the hold (the next turn resets them anyway)
     this.recs.push([this.s, rec]);
     if (rec.touch !== null)   // the strike's outcome, once the recovery window has measured it (match.py strike_result)
       this.emit({ type: "strike_result", t: rec.touch, striker: S.name, defender: D.name, part: rec.part, speed: rec.speed,
@@ -453,7 +553,7 @@ export class Match {
 
   async holdStep() {   // the crowd sees the result: both stand (guard role) before the next turn resets them
     const { mj, m, d } = this;
-    if (this.holdLeft % 4 === 0) {
+    if (this.holdLeft % DECIM === 0) {
       mj.mj_kinematics(m, d);
       for (const x of this.sides) x.decide(await x.policy(x.obs(d, 0)));
       // Unreal's ApplyGaze runs through the hold too (display-only: the next turn resets everybody)
@@ -474,16 +574,19 @@ export class Match {
   scoreRound() {   // match.py play(): three judges, 10-point must, the defender scores for absorbing
     const recs = this.recs.slice(-2), names = this.sides.map(x => x.name);
     WEIGHTS.forEach((w, j) => {
-      const eff = [0, 0], stag = [false, false];
+      // rules 2: the judge's taste this round, from the match's dice (match.py: the same arithmetic, the same order)
+      if (this.r2) w = w.map((x, i) => x * (1.0 + Match.rules.judge_noise * (2.0 * (mix(this.seed, this.round, j, i, 7) / 4294967296.0) - 1.0)));
+      const eff = [0, 0], stag = [false, false], kd = [false, false];   // kd (rules 2): he put the other down, who beat the count
       for (const [s, r] of recs) {
         if (r.touch !== null) {
           eff[s] += w[0] * r.speed + w[1] * 5 * r.head_peak + w[2] * 10 * r.stagger;
           stag[s] = r.stagger;
+          kd[s] = r.kd ?? false;
           if (!r.ko) eff[1 - s] += w[3] * (10 * !r.stagger + Math.max(0, 10 - 5 * r.head_peak));
         }
       }
       const hi = eff[1] > eff[0] ? 1 : 0, pts = [10, 10];
-      if (Math.abs(eff[0] - eff[1]) > 0.05 * Math.max(...eff)) pts[1 - hi] = stag[hi] && eff[hi] >= 2 * eff[1 - hi] ? 8 : 9;
+      if (Math.abs(eff[0] - eff[1]) > 0.05 * Math.max(...eff)) pts[1 - hi] = (stag[hi] && eff[hi] >= 2 * eff[1 - hi]) || kd[hi] ? 8 : 9;
       for (const [, r] of recs) for (const [who] of r.fouls) pts[names.indexOf(who)] -= 1;
       this.cards[j][0] += pts[0]; this.cards[j][1] += pts[1];
     });
@@ -516,3 +619,7 @@ export class Match {
     this.phase = "after"; this.holdLeft = Math.round(6 / this.dt);   // 6 s on the result, then the menu (or, autoNext, a new match)
   }
 }
+
+// The checks' switches (never set by the page): forceRules2 = python's SLAP_RULES=2; rules = the numbers in play;
+// first / seed = the first match's coin toss and dice (Web/parity.mjs replays a logged match).
+Match.forceRules2 = false; Match.rules = RULES; Match.first = null; Match.seed = null;

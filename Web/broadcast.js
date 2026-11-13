@@ -7,10 +7,9 @@
 // peaks above FEINT_MIN_PEAK and, FEINT_AFTER_S after the peak, has pulled back below FEINT_PULLBACK of it
 // without contact is a feint; a swing that lands is real. A new swing (FEINT_REARM of the old peak, FEINT_REARM_S
 // after it) re-arms the classifier.
-export const FEINT_MIN_PEAK = 2.5;        // m/s: the palm's peak speed that counts as a swing
-export const FEINT_PULLBACK = 0.55;   // fraction of the peak the palm has to fall below
-export const FEINT_AFTER_S = 0.12;     // s after the peak before the pull-back is judged
-export const FEINT_REARM = 0.95, FEINT_REARM_S = 0.2;
+// (the numbers: shared.gen.js, written by training/gen_constants.py - the same ones sim.js and Unreal read)
+import { FEINT_MIN_PEAK, FEINT_PULLBACK, FEINT_AFTER_S, FEINT_REARM, FEINT_REARM_S, REACT, CONTROL_HZ } from "./shared.gen.js";
+export { FEINT_MIN_PEAK, FEINT_PULLBACK, FEINT_AFTER_S, FEINT_REARM, FEINT_REARM_S };
 
 export class SwingTagger {
   constructor() { this.reset(); }
@@ -33,7 +32,7 @@ export class SwingTagger {
 // The defender's observation shows the striker's hand REACT_S late (sim.js REACT = 6 decisions at 50 Hz), so the read
 // is taken on the delayed trace. WIND-UP: the palm drawing back away from the face, or the shoulder loading fast;
 // INCOMING: the palm closing on the face (Unreal's tell: within TELL_DIST, faster than 4 x the distance per second).
-export const REACT_S = 0.12;
+export const REACT_S = REACT / CONTROL_HZ;
 export const WINDUP_AWAY = 0.4;       // m/s: the palm moving away from the defender's face (drawing back)
 export const WINDUP_SHOULDER = 2.0;   // rad/s: the striking shoulder's swing speed that reads as loading
 export const TELL_DIST = 0.6, TELL_SPEED = 3.0;   // m, m/s (SlapHUD.cpp F3)

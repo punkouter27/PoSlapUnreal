@@ -221,6 +221,31 @@
         "description": "heel_l, toe_l, heel_r, toe_r: the sole box touching a world geom (floor, podium, step); heel = contact point behind the box centre along its long axis, toe = at or ahead of it (DOCS/BRAIN_IO.md)"
       }
     ],
+    "interface_5_dimension": 142,
+    "interface_5_channels": [
+      {
+        "indices": [
+          140,
+          140
+        ],
+        "name": "cmd_power",
+        "size": 1,
+        "scale": 1.0,
+        "units": "[-1, 1]",
+        "description": "Player strike command (role > 0 only, else 0): +1 max power, -1 max accuracy/palm placement, 0 neutral AI"
+      },
+      {
+        "indices": [
+          141,
+          141
+        ],
+        "name": "cmd_brace",
+        "size": 1,
+        "scale": 1.0,
+        "units": "[0, 1]",
+        "description": "Player defence brace-timing command (role < 0 only, else 0): +1 brace now, 0 neutral AI"
+      }
+    ],
     "retired": "2026-11-04: the optional 12-float locomotion extension (148) - never trained, replaced by the interface-4 foot contacts"
   },
   "smooth_motor_control": {

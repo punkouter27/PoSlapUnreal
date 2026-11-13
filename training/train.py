@@ -354,8 +354,9 @@ def main():
                     help="prune the observation to N channels INSIDE the network's input layer (a fixed projection, "
                          "baked into the exported ONNX: the brain I/O stays the same 136 floats and the C++/JS "
                          "engines need no change)")
-    ap.add_argument("--physics", type=int, default=None, choices=(1, 2, 3),
-                    help="the physics version's models: 1 shipped (models/), 2 the realism batch (models/v2/); default SLAP_PHYSICS or 1")
+    ap.add_argument("--physics", type=int, default=None, choices=(1, 2, 3, 4),
+                    help="the physics version's models: 1 shipped (models/), n = models/v<n>/ (2 the realism batch, 3 the face, "
+                         "4 the v3 bodies under rules 2: training/rules.json); default SLAP_PHYSICS or 1")
     ap.add_argument("--allow-config-change", action="store_true",
                     help="resume although the checkpoint's card / model / physics / level config differ (item 49)")
     ap.add_argument("--supervise", type=int, default=0, help="crash guard: resume a crashed run from latest.pt up to N times (see the docstring)")
@@ -478,6 +479,11 @@ def main():
                 m[f"{tag}_down"] = mean([e.get("down", False) for e in rec])
             if r == 1:
                 m["strike_hit"] = mean([e["hit"] for e in rec])
+                # the curricula's signal: the speed bar made, palm or not (rules 1: the same as strike_hit; rules 2: the
+                # exam's hit also needs the palm - envs/slap.py fast_ok)
+                m["strike_fast"] = mean([e.get("fast", e["hit"]) for e in rec])
+                if any("palm" in e for e in rec):
+                    m["strike_palm"] = sum(e.get("palm", False) for e in rec) / max(1, sum(e["speed"] > 0 for e in rec))   # per landed strike
                 m["strike_whiff"] = mean([e.get("whiff", False) for e in rec])   # missed swings (each ends the attempt)
                 m["strike_speed"] = mean([e["speed"] for e in rec if e["speed"] > 0])   # m/s at contact
             if r == 1 and arena:
@@ -492,7 +498,7 @@ def main():
             elif m["guard_episode_s"] < 0.4 * env.T / 50:
                 env.push_scale = max(0.0, env.push_scale - 0.01)
             env.push_scale = round(env.push_scale, 2)   # 0.01/0.02 steps drifted to 0.5999999999999996 < 0.6: no exam ever
-        if 1 in recent and len(recent[1]) == 100 and m["strike_hit"] > 0.5:   # first move the target out, then raise the bar
+        if 1 in recent and len(recent[1]) == 100 and m["strike_fast"] > 0.5:   # first move the target out, then raise the bar
             if getattr(env, "imit", 0) > 0.5:   # clean hits coming: lean less on the reference slap, but keep its single
                 env.imit = max(0.5, round(env.imit - 0.02, 2))   # swing (floor 0.5; at 0.2-0.3 he drifted into flailing)
             if env.reach < 1.0:

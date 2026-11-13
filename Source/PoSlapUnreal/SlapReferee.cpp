@@ -1,14 +1,16 @@
 #include "SlapReferee.h"
 
+#include "SlapShared.gen.h"
+
 namespace
 {
-	/** The judges: speed, head snap, stagger, defence. Each weighs them differently. */
-	constexpr int32 Weights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };
+	/** The judges: speed, head snap, stagger, defence. Each weighs them differently (training/rules.json judge_weights). */
+	constexpr auto& Weights = SlapGen::JudgeWeights;
 }
 
 namespace Slap
 {
-	void FSlapReferee::Score(int32 (&Out)[3][2])
+	void FSlapReferee::Score(int32 (&Out)[3][2], const double (*Noise)[4])
 	{
 		for (const FSlapTurn& R : RoundTurns)	// the decision's tiebreak: the hardest slap landed
 		{
@@ -16,21 +18,28 @@ namespace Slap
 		}
 		for (int32 j = 0; j < 3; ++j)	// 10-point must, three judges weighing (speed, head, stagger, defence) differently
 		{
+			// the judge's weights as doubles: the integers themselves (rules 1: every product below is the same double the
+			// integer arithmetic gave), or scaled by this round's taste (rules 2, match.py: w[i] * (1 + noise ...))
+			double W[4];
+			for (int32 i = 0; i < 4; ++i) W[i] = Noise ? (double)Weights[j][i] * Noise[j][i] : (double)Weights[j][i];
 			double Eff[2] = { 0.0, 0.0 };
 			bool Stag[2] = { false, false };
+			bool Kd[2] = { false, false };	// rules 2: he put the other down and the other beat the count
 			for (const FSlapTurn& R : RoundTurns)
 			{
 				if (R.TouchStep < 0) continue;
-				Eff[R.Striker] += Weights[j][0] * R.Speed + (Weights[j][1] * 5) * R.HeadPeak + (double)(Weights[j][2] * 10 * (R.bStagger ? 1 : 0));
+				// match.py: w[0] * speed + w[1] * 5 * head_peak + w[2] * 10 * stagger, left to right
+				Eff[R.Striker] += W[0] * R.Speed + (W[1] * 5.0) * R.HeadPeak + (W[2] * 10.0) * (R.bStagger ? 1.0 : 0.0);
 				Stag[R.Striker] = R.bStagger;
+				Kd[R.Striker] = R.bKd;
 				if (!R.bKO)	// the defender absorbed it: stayed put, small head snap
 				{
-					Eff[1 - R.Striker] += Weights[j][3] * ((double)(10 * (R.bStagger ? 0 : 1)) + FMath::Max(0.0, 10.0 - 5 * R.HeadPeak));
+					Eff[1 - R.Striker] += W[3] * ((double)(10 * (R.bStagger ? 0 : 1)) + FMath::Max(0.0, 10.0 - 5 * R.HeadPeak));
 				}
 			}
 			const int32 Hi = Eff[1] > Eff[0] ? 1 : 0;
 			int32 Pts[2] = { 10, 10 };
-			if (FMath::Abs(Eff[0] - Eff[1]) > 0.05 * FMath::Max(Eff[0], Eff[1])) Pts[1 - Hi] = Stag[Hi] && Eff[Hi] >= 2 * Eff[1 - Hi] ? 8 : 9;
+			if (FMath::Abs(Eff[0] - Eff[1]) > 0.05 * FMath::Max(Eff[0], Eff[1])) Pts[1 - Hi] = (Stag[Hi] && Eff[Hi] >= 2 * Eff[1 - Hi]) || Kd[Hi] ? 8 : 9;
 			for (const FSlapTurn& R : RoundTurns)
 			{
 				for (const TPair<int32, FString>& F : R.Fouls) --Pts[F.Key];

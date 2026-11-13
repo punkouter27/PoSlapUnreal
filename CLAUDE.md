@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-`BLUEPRINT.md`, `tasks.md`, `DOCS/` (including `BRAIN_IO.md`, the brain input/output contract) and `SCREENSHOTS/` were
-removed from the tree on 2026-11-13 (commit 4e8308e); they are in git history at `cb01401`. The brain I/O layout now
-lives only in code: `training/constants.py`, `training/brain_cpu.py` (`Athlete.obs`), `SlapControllerInternal.h` and `Web/sim.js`.
-New dated reports go in `DOCS/<YYYYMMDD>/`, created when needed.
+`BLUEPRINT.md`, `tasks.md`, the dated `DOCS/` folders and `SCREENSHOTS/` were removed from the tree on 2026-11-13
+(commit 4e8308e); they are in git history at `cb01401`. `DOCS/BRAIN_IO.md` (the brain input/output contract) was
+restored the same day; its table is also data (`constants.LAYOUT`). New dated reports go in `DOCS/<YYYYMMDD>/`,
+created when needed (`DOCS/20261113/rules2.md`: rules 2, physics 4, the generated constants).
 
 ## Architecture: one match, three engines
 
@@ -21,7 +21,19 @@ or fatigue has to land in all three, or the parity checks below break:
 | Browser (MuJoCo WASM + onnxruntime-web) | `Web/sim.js`, `Web/loader.js` | Spectator site, auto-deployed to Azure on push to `master` |
 
 Training envs (`training/envs/locomotion.py` S2 (walk-in), `slap.py` L0–L3, `arena.py` L4) run on GPU via `mujoco-warp`
-and build the same observation (140 floats, interface 4; shipped brains read their first 136). `OBS`, `LAGS` and the fatigue floors are constants duplicated in each file.
+and build the same observation (140 floats, interface 4; shipped brains read their first 136).
+
+**Shared numbers and rules are generated, not typed three times.** `training/constants.py` (brain I/O, timing, gaze,
+feint) and `training/rules.json` (the match rules) are the source. `python training/gen_constants.py` writes
+`Source/PoSlapUnreal/SlapShared.gen.h` (namespace `SlapGen`) and `Web/shared.gen.js`; C++ and JS read those. After
+changing either source, run the generator and commit both generated files with it (`verify_constants.py` and both
+workflows fail on a stale copy). Never edit a `.gen.` file.
+
+**Rules 1 and rules 2.** A fingerprint's `"physics"` picks the rules: below 4 the shipped rules (a scripted
+`strike_mass` impulse at the touch, a knockdown after the strike = KO); from 4 (`training/models/v4/`, the physics-3
+bodies) rules 2: no scripted impulse, a stun on head speed, a 10 s count, flinch and clubbing fouls, judge noise, a
+daze on a hurt neck. Everything shipped is physics 1. `SLAP_RULES=2` (Python, `check.mjs`, `parity.mjs`) and
+`-SlapRules=2` (Unreal) force rules 2 on any physics for checks.
 
 **Body pipeline:** character card `training/characters/<name>.json` + Blender skeleton `<name>_skeleton.json`
 → `training/build_body.py` → `training/models/<name>_solo.xml`, `<red>_vs_<blue>_arena.xml`, `<name>_fingerprint.json`
@@ -57,6 +69,8 @@ cd training
 .venv/Scripts/python.exe build_body.py characters/grandpa.json --blue characters/kim.json   # rebuild models after a card change
 .venv/Scripts/python.exe train.py --level L0 --minutes 5                                   # one ladder level (levels.py); TensorBoard :6006
 .venv/Scripts/python.exe overnight.py --hours 10                                           # queue from runs/overnight_queue.json
+.venv/Scripts/python.exe overnight.py --hours 10 --queue retrain_v5_queue.json --resume    # the rules-2 retrain (copy configs/retrain_v5_queue.json to runs/ first)
+.venv/Scripts/python.exe gen_constants.py                                                  # after editing constants.py or rules.json
 .venv/Scripts/python.exe match.py play models/brains/grandpa_L4.onnx [--blue <onnx>]       # one match
 .venv/Scripts/python.exe match.py exam models/brains/grandpa_L4.onnx --matches 100         # L5 gate
 .venv/Scripts/python.exe tournament.py --matches 4                                         # roster.json round robin
@@ -89,5 +103,12 @@ Pushing changes under `Web/`, `training/models/` or `training/characters/` to `m
 - `training/replay_check.py record|compare`: MuJoCo vs URLab replay, every body ≤ 1 mm. Pass `--mjb Saved/URLab/scene_compiled.mjb`.
 - `training/match.py compare <onnx> <unreal match .jsonl> --mjb ...`: Unreal plays the same match events as Python.
 - `node Web/check.mjs [gg|kk|gk]` (from repo root): one turn each way through the browser engine; exits 1 if no turn ends.
+- `training/parity_check.py [--stun 0.55]` (training venv; `npm ci` in `Web/`): the same seeded matches through `match.py` and
+  `sim.js` (`node Web/parity.mjs <python log> gk`), referee event for event, rules 1 and rules 2.
+- `training/verify_constants.py` (standard library only): the generated copies are current, the engines read them, the
+  observation layout matches `DOCS/BRAIN_IO.md`. `training/verify_cards.py`: cards, models, roster, packaged brains.
+- `training/calibrate_rules.py <onnx> [--blue ...] [--physics 4] [--rules 2]`: the head-speed and flinch percentiles
+  `rules.json`'s thresholds are set from.
 - `training/verify_realism.py`: card and model realism checks.
+- CI: `.github/workflows/verify.yml` runs the checks above that need no GPU and no Unreal on every push to `master`.
 - Unreal synthetic tests: launch with `-game -SlapUiTest` or `-SlapPairTest`; `-SlapTourney -SlapTourneyQuit` plays a whole 16-place bracket (TOURNEY tab, `Saved/PoSlap/tournament.json`) and quits on the champion (needs a window: under `-nullrhi` DrawHUD never runs, so neither does the bracket); `-SlapBasicCpu` runs the Android brain path on desktop.

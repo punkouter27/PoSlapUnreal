@@ -127,6 +127,27 @@ def lowpass(tgt, goal, on):
     return torch.where(on, f, tgt) if isinstance(on, torch.Tensor) else (f if on else tgt)
 
 
+# ---------------------------------------------------------------- rules 2 (training/rules.json, physics 4 on)
+# What the referee's new calls cost in reward (training only). A foul is one point on every card; in reward units a
+# point is put at 20: a clean palm strike pays ~120 (50 + 8 v), a striker's time-out without a strike costs 20, so a
+# foul is as bad as not striking at all and a sixth of a clean slap.
+FOUL = 20.0        # the defender's flinch (once a turn); the striker's clubbing (on top of the reduced pay)
+CLUB_PAY = 0.25    # a first touch that is not a palm still is the strike, at a quarter of its pay: about +10 net at
+                   # 9 m/s against +120 for the palm - never better than a palm, never worse than refusing to strike
+
+
+def palm_led(env, on, g0, other, w, worlds):
+    """match.py's palm test on every contact slot, per world: a striking contact (`on`) whose `other` geom is a hand
+    box with its palm face (the box's -z axis) leading - the contact normal (frame row 0, from geom 0 to geom 1)
+    turned to point from the striker's part to the face, against the hand's z axis, over 0.5. Any such contact in the
+    world counts (match.py takes the first face contact in MuJoCo's list; the lists differ in order, not in content)."""
+    sign = torch.where(g0 == other, 1.0, -1.0)
+    z = env.geom_xmat[w, other][:, :, 2]
+    lead = -sign * (env.con_frame[:, 0] * z).sum(-1)
+    pc = on & env.is_hand[other] & (lead > 0.5)
+    return torch.zeros(worlds, device=env.device).scatter_reduce_(0, w, pc.float(), "amax").bool()
+
+
 # The motion-style terms every policy shares (AGENTS.md §3 hand-overs): training only, never an input.
 HF_BETA = (1.0 / (2 * 3.141592653589793 * 10.0)) / (1.0 / (2 * 3.141592653589793 * 10.0) + 0.02)   # 10 Hz high-pass at 50 Hz
 HF_W, HF_CAP = 0.002, 2.0          # cost per (rad/s)^2 of >10 Hz joint velocity, summed over joints, capped per step
@@ -146,3 +167,17 @@ def com_recovery(com_xy, feet_xy, ref):
     ref = the same offset at the episode's stance (each body's own lean). Returns (pay, e)."""
     e = ((com_xy - feet_xy.mean(-2)) - ref).norm(dim=-1)
     return COM_W * torch.exp(-e ** 2 / COM_VAR), e
+
+
+# ---------------------------------------------------------------- interface 5: player command vector (140-141)
+def cmd_strike_bonus(cmd_power, speed, hit_v, clean, phi):
+    """Extra touch reward when strike command power (+1) vs accuracy (-1) is non-zero; 0 when neutral."""
+    pwr = cmd_power.clamp(min=0.0) * (3.0 * (speed - hit_v) * clean.float())
+    acc = (-cmd_power).clamp(min=0.0) * (20.0 * clean.float() + 10.0 * phi)
+    return pwr + acc
+
+
+def cmd_brace_reward(cmd_brace, upright, qvel):
+    """Defence stability pay while timed brace command (141) is active (+1); 0 when neutral."""
+    vel_pen = 0.1 * (qvel ** 2).mean(-1).clamp(max=10.0) / 10.0
+    return cmd_brace * (0.4 * upright.clamp(min=0.0) - vel_pen)

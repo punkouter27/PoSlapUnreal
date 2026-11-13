@@ -1,0 +1,241 @@
+[
+ {
+  "level": "L3",
+  "char": "kim",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/kim_L3_v3.pt",
+  "args": ["--physics", "4", "--critic-warmup", "20", "--allow-config-change"],
+  "note": "Interface 5 (142 floats: player strike power/accuracy + defence brace timing) & Rules 2 (physics 4 = the v3 bodies, training/rules.json): no scripted kick, the stun, palm-only strikes, the flinch line, the daze. Kim's graduated physics-3 L3 brain (interface 4), its checkpoint rebuilt from the exported brain (onnx_to_checkpoint.py: fresh optimiser, std 0.25), widened 140 -> 142 with zero weights on the command vector. The palm rule and the missing kick are new to the critic (warm-up 20)."
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "Self-play under rules 2. After this stage run `calibrate_rules.py` on its best brain and set rules.json stun_speed from the head-speed percentiles (it is provisional at 1.0 m/s), regenerate (gen_constants.py) and commit before the next L4 stage."
+ },
+ {
+  "level": "L2",
+  "char": "grandpa",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/grandpa_final_vs_kim.pt",
+  "args": ["--physics", "4", "--critic-warmup", "20", "--reach-start", "1.0", "--imit-start", "1.0", "--allow-config-change"],
+  "note": "Grandpa's shipped match brain (physics 1, interface 3) widened 136 -> 140 with zero weights, the 8 Hz low-pass on. Under rules 2 none of his 192 strikes in the 2026-11-13 check was palm-led (all clubbing): L2 with the reference slap at full weight teaches the palm before self-play."
+ },
+ {
+  "level": "L3",
+  "char": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "self-play"
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "vs": "grandpa",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "mixed: against Grandpa's stage-5 brain (frozen)"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "vs": "kim",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "mixed: against Kim's stage-6 brain (frozen); the gate pairing"
+ },
+ {
+  "level": "L2",
+  "char": "matt",
+  "minutes": 120,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/matt_L1.pt",
+  "args": ["--physics", "4", "--critic-warmup", "20", "--reach-start", "0.0", "--imit-start", "1.0", "--allow-config-change"],
+  "note": "Matt's L2 stall (0 hits in 90 min, twice): both runs passed --reach-start 1.0, which makes the podium a knockdown for the striker from the first step. His L1 brain braces on the podium (K13: falls ~1.3 s into every strike turn), so every strike episode ended at -100 before the 4 s stand was over and the slap was never tried - the freeze envs/slap.py records for 2026-10-22 ('strict from the start, the striker froze'). --reach-start 0.0 runs the curriculum the env has for this: a podium touch costs 2 a step, the target starts easy, and reach rises 0.05 at a time as clean hits come; graduation still needs reach 1.0. His reference slap is not the problem (10/20 clean on the physics-4 body; Grandpa 8, Kim 1)."
+ },
+ {
+  "level": "L3",
+  "char": "matt",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "L4",
+  "char": "matt",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "self-play"
+ },
+ {
+  "level": "L0",
+  "char": "mom",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/mom_L0_candidate.pt",
+  "args": ["--physics", "4", "--critic-warmup", "20", "--allow-config-change"],
+  "note": "Mom's L0 candidate (physics 1, 136; best no-fall 0.83 of 0.95) onto the physics-4 body, widened to interface 4"
+ },
+ {
+  "level": "L0",
+  "char": "tong",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "runs/tong_L0_night1_1625/best.pt",
+  "args": ["--physics", "4", "--critic-warmup", "20", "--allow-config-change"],
+  "note": "Tong's 2026-11-13 L0 run (187 M steps, exam 0.79 of 0.95) onto the physics-4 body. If that run folder has been pruned, rebuild a checkpoint from models/brains/tong_L0_candidate.onnx with onnx_to_checkpoint.py and point resume at it."
+ },
+ {
+  "level": "L1",
+  "char": "mom",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "L1",
+  "char": "tong",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "G1",
+  "char": "grandpa",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "@stage:7",
+  "args": ["--physics", "4", "--critic-warmup", "20"],
+  "note": "The get-up brain the count needs (rules 2: a defender down after the strike has 10 s; match.py hands him to <char>_G1_v4.onnx while he is down). From real knockdown states (models/v4/getup/, the v3 states: same bodies), seeded from his stage-7 match brain. Not carried."
+ },
+ {
+  "level": "G1",
+  "char": "kim",
+  "minutes": 45,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "@stage:6",
+  "args": ["--physics", "4", "--critic-warmup", "20"],
+  "note": "Kim's get-up brain, from her stage-6 match brain"
+ },
+ {
+  "level": "S3",
+  "char": "grandpa",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "resume": "models/brains/grandpa_S2.pt",
+  "args": ["--physics", "4", "--allow-config-change"],
+  "note": "the podium course from the shipped walk-in brain (physics 1 -> 4)"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "field": ["kim", "matt", "grandpa"],
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "The league (overnight.py 'field' -> train.py --field): one Grandpa brain in self-play and against Kim's, Matt's and his own previous brain from both corners, instead of one brain per pairing. Graduates as grandpa_all_v4 when every seat passes."
+ },
+ {
+  "level": "L4",
+  "char": "kim",
+  "field": ["grandpa", "matt", "kim"],
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "the league for Kim: graduates as kim_all_v4"
+ },
+ {
+  "level": "L2",
+  "char": "mom",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4", "--reach-start", "0.0", "--imit-start", "1.0"]
+ },
+ {
+  "level": "L3",
+  "char": "mom",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "L4",
+  "char": "mom",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "Mom L4 self-play under rules 2 + command vector"
+ },
+ {
+  "level": "L2",
+  "char": "tong",
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4", "--reach-start", "0.0", "--imit-start", "1.0"]
+ },
+ {
+  "level": "L3",
+  "char": "tong",
+  "minutes": 60,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"]
+ },
+ {
+  "level": "L4",
+  "char": "tong",
+  "minutes": 75,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "Tong L4 self-play under rules 2 + command vector"
+ },
+ {
+  "level": "L4",
+  "char": "grandpa",
+  "field": ["kim", "matt", "mom", "tong", "grandpa"],
+  "minutes": 90,
+  "envs": 8192,
+  "no_gate": true,
+  "args": ["--physics", "4"],
+  "note": "Full 5-athlete league stage after all 5 athletes finish their physics-4 ladders"
+ }
+]

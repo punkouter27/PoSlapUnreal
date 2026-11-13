@@ -188,6 +188,19 @@ def run_queue(a, summary):
             if not carry.get(vs) and not stage.get("opponent") and "_v" in vs_of[char]:
                 log(event="warning", note=f"{vs} has no brain on this physics in the queue: sparring the shipped {opp.name}")
             stage = {**stage, "args": stage.get("args", []) + ["--opponent", f"{vs}:{opp}"]}
+        if stage.get("field"):
+            # the league (train.py --field, envs/arena.Field): one brain learns in self-play and against every listed
+            # athlete's latest brain in this queue, from both corners, instead of one brain per pairing. Naming the
+            # learner itself adds its own previous brain as a frozen past self.
+            pool = []
+            for c in stage["field"]:
+                pt = carry.get(c) or HERE / "models" / "brains" / f"{c}_final.pt"
+                if Path(pt).exists():
+                    pool.append(f"{c}:{pt}")
+                else:
+                    log(event="warning", note=f"field: {c} has no brain yet ({pt}); seat left out")
+            if pool:
+                stage = {**stage, "args": stage.get("args", []) + ["--field", ",".join(pool)]}
         log(event="stage", level=stage["level"], run=run.name, minutes=round(minutes, 1), resume=str(resume))
         end = time.time() + minutes * 60
         code = train(stage, run, minutes, resume, char) if minutes >= 1 else 0

@@ -7,6 +7,22 @@ at 30 s, or on any knockdown / foot-box exit. KO = the defender knocked down aft
 Same observation, action rule, timing and randomisation as envs/slap.py; the model is the arena Unreal runs.
 Memory: each world's turns follow on like a match's (a new match 1 in 6), so the opponent's last strike (BRAIN_IO 126-127)
 is real. Feints: the striker earns a bonus when the defender's head had already moved (flinched, committed) at the touch.
+
+Rules 2 (constants.rules2: a physics 4 model, training/rules.json; rules 1 worlds are untouched):
+  * no kick, no arm reaction: the palm-face contact is the blow;
+  * the stun: the defender's peak head speed over stun_window_s after the touch against stun_speed x his card's chin;
+    over it, his motors run at stun_strength for stun_s x severity (applied with the Hill cap, per step, so the
+    per-world randomised forceranges and the neck's damage stay as they are);
+  * the flinch as the referee calls it (the head flinch_m from where it was when the palm last was slow): -FOUL once;
+  * clubbing: a first touch that is not a palm (either hand) is the strike at CLUB_PAY x its pay, -FOUL, and never
+    "clean" (so it earns no KO bonus);
+  * the daze: the defender sees the hand REACT + daze_lag(neck) decisions late.
+The COUNT is not played here: the episode still ends when the defender falls after the touch. In the match a fall
+starts a count and the separate get-up brain (G1, envs/getup.py) takes him over; so under rules 2 this env's `ko` (and
+the L4 exam's ko_rate) is the KNOCKDOWN rate, an upper bound of the match's KO rate.
+Down, for the defender after the strike, is the match's rules 2 test: a non-sole part on the FLOOR or the pelvis under
+up_height x his stand height (a podium contact alone no longer counts); before the touch and for the striker the
+floor-or-podium test stands.
 """
 from __future__ import annotations
 
@@ -19,7 +35,8 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, WATCH_MAX_STEP, lpf_on, models_dir
+from constants import (FEINT_MIN_PEAK, GAZE_GAIN, GAZE_MAX_STEP, GAZE_ON, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, RULES,
+                       WATCH_MAX_STEP, lpf_on, models_dir, rules2)
 from envs import common
 from envs.common import blown_up, contact_slots
 from envs.slap import DECIM, WAIT, hill, quat_mat
@@ -60,6 +77,7 @@ class ArenaEnv:
         fps = [json.loads((md / f"{c}_fingerprint.json").read_text()) for c in self.chars]
         m = self.m = mujoco.MjModel.from_xml_path(str(md / f"{self.chars[0]}_vs_{self.chars[1]}_arena.xml"))
         self.physics = int(fps[0].get("physics", 1))   # 2: the strike impulse from the part that touched
+        self.r2 = rules2(self.physics)                 # rules 2 (rules.json): physics 4 on (see the module docstring)
         order = fps[0]["joint_order"]
         assert fps[1]["joint_order"] == order, "both corners need the same joint order"
         self.A = len(order)
@@ -79,7 +97,9 @@ class ArenaEnv:
         # the face (physics 3): sphere + jaw capsules, a touch counting inside the head's face_zone box (match.py)
         self.face_of, self.face_site, self.site_size = common.face_lookup(m, PREFIX, dev)
         # the slap's impact (match.py): the striker's card mass behind the palm, as an impulse on the head after the touch
-        self.strike_mass = t([json.loads((HERE / "characters" / f"{c}.json").read_text())["strike_mass"] for c in self.chars])   # (2,)
+        cards = [json.loads((HERE / "characters" / f"{c}.json").read_text()) for c in self.chars]
+        self.strike_mass = t([c["strike_mass"] for c in cards])   # (2,)
+        self.chin = t([float(c.get("chin", 1.0)) for c in cards])   # (2,) rules 2: the stun threshold's card factor
         self.feet = t([[m.geom(p + "foot_l").id, m.geom(p + "foot_r").id] for p in PREFIX])
         self.stand = t([[fp["stand_pose_rad"].get(n, 0.0) for n in order] for fp in fps])          # (2 corners, A)
         rng = t([fp["ctrl_range_rad"] for fp in fps])                                             # (2, A, 2)
@@ -116,6 +136,7 @@ class ArenaEnv:
         self.geom_xpos, self.geom_xmat = T(self.dw.geom_xpos), T(self.dw.geom_xmat)
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.xfrc, self.xipos = T(self.dw.xfrc_applied), T(self.dw.xipos)
+        self.con_frame = T(self.dw.contact.frame)   # (slots, 3, 3): row 0 = the normal, geom 0 -> geom 1 (the palm test)
         self.con_pos, self.site_xpos, self.site_xmat = T(self.dw.contact.pos), T(self.dw.site_xpos), T(self.dw.site_xmat)
         self.mact = T(self.dw.act)   # the muscles' filtered targets (build_body MUSCLE_TC)
         self.act0 = torch.zeros(m.nu, device=dev)
@@ -161,7 +182,7 @@ class ArenaEnv:
         self.kick, self.kick_left = z(W, 6), torch.zeros(W, dtype=torch.long, device=dev)
         # physics 3: the kick's reaction on the striker's arm (match.reaction_chain): per geom, up to 3 bodies + mass shares
         import match as _match
-        self.kick_react = self.physics >= 3 and _match.KICK_REACTION
+        self.kick_react = self.physics >= 3 and _match.KICK_REACTION and not self.r2   # rules 2: no kick, so no reaction
         cb, cw = torch.zeros(m.ngeom, 3, dtype=torch.long), torch.zeros(m.ngeom, 3)
         for g in range(m.ngeom):
             if m.geom_bodyid[g] > 0:
@@ -175,7 +196,20 @@ class ArenaEnv:
         self.force_striker = None   # exams: None = coin toss
         self.stamina, self.neck = torch.ones(W, 2, device=dev), torch.ones(W, 2, device=dev)
         self.hist, self.fresh, self.mem = z(N, 16, 6), torch.zeros(W, dtype=torch.bool, device=dev), z(W, 2, 2)
-        self.hand_seen = z(W, REACT + 1, 2, 3)   # both right hands, oldest first: the defender sees [:, 0] (0.12 s late)
+        # both right hands, oldest first: the defender sees the one `lag` decisions old, [:, seen_n - 1 - lag]
+        # (rules 1: lag = REACT, slot 0; rules 2: + the daze, up to daze_react more for a hurt neck)
+        self.seen_n = REACT + (RULES["daze_react"] if self.r2 else 0) + 1
+        self.hand_seen = z(W, self.seen_n, 2, 3)
+        # rules 2 state, per world: the defender's head speed peak since the touch and his head after the last physics
+        # step, physics steps since the touch (-1: none yet), steps of stun left, the flinch reference and flag, the
+        # striker's palm speed after the last physics step, the first touch a palm, he was stunned
+        self.head_peak, self.head_last, self.head_ref = z(W), z(W, 3), z(W, 3)
+        self.since = torch.full((W,), -1, dtype=torch.long, device=dev)
+        self.stun_left = torch.zeros(W, dtype=torch.long, device=dev)
+        self.flinched, self.palm_ok, self.stunned = (torch.zeros(W, dtype=torch.bool, device=dev) for _ in range(3))
+        self.palm_speed = z(W)
+        self.stun_steps = int(round(RULES["stun_window_s"] / 0.005))
+        self.h_corner = torch.arange(2, device=dev).repeat_interleave(len(order))   # h_act's columns: 0 red, 1 blue
         # interface 4: heel/toe contacts (BRAIN_IO 136-139) and the action low-pass, per agent row (a frozen opponent
         # of an older interface keeps its own rule: VsFrozen clears its rows)
         self.foot_of = common.foot_lookup(m, self.feet.tolist(), dev)
@@ -184,6 +218,9 @@ class ArenaEnv:
         self.obs_w = OBS   # the learner's width (VsFrozen slices the opponent's rows to its own)
         self.hp, self.v_prev = z(N, A), z(N, A)                     # item 47: the >10 Hz joint-velocity state
         self.com_ref, self.com_new = z(W, 2, 2), torch.zeros(W, dtype=torch.bool, device=dev)   # item 46
+        self.cmd_power = z(W)                                       # interface 5 (140): striker power/accuracy
+        self.brace_t0 = torch.full((W,), -1, dtype=torch.long, device=dev)   # interface 5 (141): defender brace pulse
+        self.brace_t1 = torch.full((W,), -1, dtype=torch.long, device=dev)
 
         # The eye-contact servo (match.py gaze_desire/gaze_walk/gaze_apply/strike_hold, ported to the batch):
         # each athlete keeps a WORLD-space gaze bias that walks toward the opponent's eye line; the driven
@@ -264,6 +301,9 @@ class ArenaEnv:
         self.phi_prev[mask] = self._palm_phi(hs[0], ht[1])[mask]
         self.com_err[mask] = 0.0
         self.disp_peak[mask] = 0.0
+        self.head_peak[mask], self.since[mask], self.stun_left[mask], self.palm_speed[mask] = 0.0, -1, 0, 0.0
+        self.flinched[mask], self.palm_ok[mask], self.stunned[mask] = False, False, False
+        self.head_ref[mask] = self.head_last[mask] = ht[1][mask]   # the defender's head at the turn's start
         self.com_new[mask] = True   # the stance CoM offset is read at the first step (subtree_com is the last step's)
         self.hp[am], self.v_prev[am] = 0.0, 0.0
         # the gaze bias starts on the eye line (match.py: the bias is reseeded at every turn start)
@@ -272,6 +312,16 @@ class ArenaEnv:
         self.gaze_off[mask] = 0.0
         # the servo is on in every world by default (the match's world); SLAP_SERVO_MIX trains a share without it
         self.servo_on[mask] = torch.rand(n, device=self.device) >= self.servo_mix
+        if self.randomize:   # interface 5: sample player command vector on 50% of turns (0 neutral on exams)
+            on_p = torch.rand(n, device=self.device) < 0.5
+            self.cmd_power[mask] = torch.where(on_p, self._u(n, -1.0, 1.0), 0.0)
+            on_b = torch.rand(n, device=self.device) < 0.5
+            t0 = torch.randint(50, 350, (n,), device=self.device)
+            t1 = t0 + torch.randint(20, 60, (n,), device=self.device)
+            self.brace_t0[mask] = torch.where(on_b, t0, -1)
+            self.brace_t1[mask] = torch.where(on_b, t1, -1)
+        else:
+            self.cmd_power[mask], self.brace_t0[mask], self.brace_t1[mask] = 0.0, -1, -1
 
     # ------------------------------------------------------------------ the eye-contact servo
     def _gaze_desire(self):
@@ -358,7 +408,11 @@ class ArenaEnv:
                 self.xfrc[self.wid[:, None], self.react_b, :3] = -self.react_w[..., None] * self.kick[:, None, :3] * on
             self.kick_left = (self.kick_left - 1).clamp(min=0)
             fr = self.frange[:, self.h_act].clone()   # muscles: Hill's force-velocity cap for this step only
-            self.frange[:, self.h_act] = hill(fr, self.qvel[:, self.h_dof], self.h_vmax)
+            capped = hill(fr, self.qvel[:, self.h_dof], self.h_vmax)
+            if self.r2:   # the stun: the defender's motors at stun_strength for this step (fr, restored below, is untouched)
+                slack = (self.stun_left > 0)[:, None] & (self.h_corner[None, :] == (1 - self.striker)[:, None])
+                capped = capped * torch.where(slack, RULES["stun_strength"], 1.0)[..., None]
+            self.frange[:, self.h_act] = capped
             wp.capture_launch(self.g_step)
             self.frange[:, self.h_act] = fr
             self._strike_check()
@@ -391,10 +445,13 @@ class ArenaEnv:
             dd = done.repeat_interleave(2)
             cols = (self.ret[dd], self.t.repeat_interleave(2)[dd], self._pair(fell)[dd], self._pair(out)[dd],
                     self.hit_ok.repeat_interleave(2)[dd], self.hit_speed.repeat_interleave(2)[dd], self._pair(role)[dd],
-                    ko.repeat_interleave(2)[dd], self.struck.repeat_interleave(2)[dd], (torch.arange(self.N, device=self.device) % 2)[dd])
-            for r, l, f, b, h, v, ro, k, st, sd in zip(*(c.tolist() for c in cols)):
+                    ko.repeat_interleave(2)[dd], self.struck.repeat_interleave(2)[dd], (torch.arange(self.N, device=self.device) % 2)[dd],
+                    self.palm_ok.repeat_interleave(2)[dd], self.stunned.repeat_interleave(2)[dd], self.flinched.repeat_interleave(2)[dd],
+                    self.head_peak.repeat_interleave(2)[dd])
+            for r, l, f, b, h, v, ro, k, st, sd, pm, sn, fl, hp in zip(*(c.tolist() for c in cols)):
                 self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=int(ro), ko=k, struck=st,
-                                          absorbed=(not f) if ro < 0 else False, com_err=0.0, side=sd))
+                                          absorbed=(not f) if ro < 0 else False, com_err=0.0, side=sd,
+                                          palm=pm, stun=sn, flinch=fl, head_peak=hp))   # rules 2 readouts (False / 0 under rules 1)
             self.reset(done)
         return self.observe(), rew, done.repeat_interleave(2), timeout
 
@@ -415,6 +472,17 @@ class ArenaEnv:
         hand = self._sd(self.geom_xpos[:, self.hand_g])[0]
         vel = (hand - self.hand_prev) / 0.005
         self.hand_prev = hand.clone()
+        self.palm_speed = vel.norm(dim=-1)   # the striker's right palm after this step (match.py `speed`: the flinch line)
+        if self.r2:   # the stun (match.py): the defender's head speed peak over the window after the touch
+            dhead = self._sd(self.geom_xpos[:, self.head_g])[1]
+            self.head_peak = torch.where(self.struck, torch.maximum(self.head_peak, (dhead - self.head_last).norm(dim=-1) / 0.005), self.head_peak)
+            self.head_last = dhead.clone()
+            self.since = torch.where(self.struck, self.since + 1, self.since)
+            sev = self.head_peak / (RULES["stun_speed"] * self.chin[1 - self.striker])
+            go = self.struck & (self.since == self.stun_steps) & (sev >= 1.0)
+            steps = (RULES["stun_s"] * sev.clamp(max=RULES["stun_max"]) / 0.005 + 0.5).long()
+            self.stun_left = torch.where(go, steps, (self.stun_left - 1).clamp(min=0))
+            self.stunned = self.stunned | go
         gp = self.gprev
         if self.physics >= 2:
             self.gprev = self.geom_xpos.clone()
@@ -441,21 +509,30 @@ class ArenaEnv:
         new = hit & ~self.struck & ~early
         v = speed
         clean = v >= self.hit_v                              # any hit counts (user 2026-10-25): the palm is technique, not validity
+        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
+        if self.r2:   # rules 2: validity too - a first touch that is not a palm is clubbing: the strike, never clean, a foul
+            palm = common.palm_led(self, on, g0, other, w, W)
+            self.palm_ok = torch.where(new, palm, self.palm_ok)
+            pay = torch.where(palm, pay, common.CLUB_PAY * pay - common.FOUL)
+            clean = clean & palm
         self.hit_ok = torch.where(new, clean, self.hit_ok)
         self.hit_speed = torch.where(new, v, self.hit_speed)
-        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
         dh = self._sd(self.geom_xpos[:, self.head_g])[1] - self._sd(self.head0)[1]   # feint: he had flinched
         pay = pay + 100.0 * (dh[:, :2].norm(dim=-1) - 0.03).clamp(0, 0.15)
+        phi_hit = self._palm_phi(self._sd(self.geom_xpos[:, self.hand_g])[0], self._sd(self.geom_xpos[:, self.head_g])[1])
+        pay = pay + common.cmd_strike_bonus(self.cmd_power, v, self.hit_v, clean, phi_hit)
         self.bonus = self.bonus + torch.where(new, pay, torch.zeros_like(pay))
-        f = vel * (self.strike_mass[self.striker] / (KICK_STEPS * 0.005))[:, None]
-        r = at - self.xipos[wid, self.head_b[1 - self.striker]]
-        self.kick = torch.where(new[:, None], torch.cat([f, torch.cross(r, f, dim=-1)], -1), self.kick)
-        self.kick_left = torch.where(new, torch.full_like(self.kick_left, KICK_STEPS), self.kick_left)
+        if not self.r2:   # rules 2: nothing is added at the touch - the contact is the blow (kick stays zero)
+            f = vel * (self.strike_mass[self.striker] / (KICK_STEPS * 0.005))[:, None]
+            r = at - self.xipos[wid, self.head_b[1 - self.striker]]
+            self.kick = torch.where(new[:, None], torch.cat([f, torch.cross(r, f, dim=-1)], -1), self.kick)
+            self.kick_left = torch.where(new, torch.full_like(self.kick_left, KICK_STEPS), self.kick_left)
         if self.kick_react:
             src = part if (self.physics >= 2 and gp is not None) else self.hand_g[self.striker]
             self.react_b = torch.where(new[:, None], self.chain_b[src], self.react_b)
             self.react_w = torch.where(new[:, None], self.chain_w[src], self.react_w)
         self.struck = self.struck | new
+        self.since = torch.where(new, torch.zeros_like(self.since), self.since)   # rules 2: the stun window starts
         self.t_hit = torch.where(new, self.t, self.t_hit)
         self.com0 = torch.where(new[:, None], self._sd(self.com[:, self.pelvis, :2])[1], self.com0)
 
@@ -467,7 +544,21 @@ class ArenaEnv:
         fell = torch.zeros(self.W, 2, dtype=torch.bool, device=self.device)
         fell[w[down], self.owner[g1[down]]] = True
         fell[w[down2], self.owner[g0[down2]]] = True
-        return fell | (self.qpos[:, self.rq + 2] < 0.45)
+        fell = fell | (self.qpos[:, self.rq + 2] < 0.45)
+        if self.r2:
+            # rules 2 (match.py turn(), down(floor_only=True)): AFTER the strike the defender is down only with a non-sole
+            # part on the FLOOR or his pelvis under up_height x his stand height - a podium contact alone no longer
+            # counts. Before the touch, and for the striker, the test above stands.
+            fl = valid & (g0 == self.floor) & self.bad[g1]
+            fl2 = valid & (g1 == self.floor) & self.bad[g0]
+            floor = torch.zeros_like(fell)
+            floor[w[fl], self.owner[g1[fl]]] = True
+            floor[w[fl2], self.owner[g0[fl2]]] = True
+            floor = floor | (self.qpos[:, self.rq + 2] < RULES["up_height"] * self.h0)
+            corner = torch.arange(2, device=self.device)
+            d_after = self.struck[:, None] & (corner[None, :] == (1 - self.striker)[:, None])
+            fell = torch.where(d_after, floor, fell)
+        return fell
 
     def _reward(self, a, fell):
         W = self.W
@@ -512,8 +603,19 @@ class ArenaEnv:
         after = self.struck
         flinch = (hdev - 0.05).clamp(min=0) * (~after)[:, None]
         r_def = r + torch.where(after, torch.exp(-self.com_err ** 2 / 0.0025), torch.zeros_like(self.com_err))[:, None] - 20.0 * flinch
+        if self.r2:   # the referee's flinch (match.py): the head's set position is where it was when the palm last was
+            # slow; flinch_m from it while the palm swings, before the touch, is the foul - once a turn. The drift term
+            # above stays: it shapes (any head move past 5 cm from the START, every step), this is the call itself
+            dpos = self._sd(head)[1]
+            self.head_ref = torch.where(((self.palm_speed <= FEINT_MIN_PEAK) & ~after)[:, None], dpos, self.head_ref)
+            call = ~after & ~self.flinched & ((dpos - self.head_ref).norm(dim=-1) > RULES["flinch_m"])
+            self.flinched = self.flinched | call
+            r_def = r_def - common.FOUL * call.float()[:, None]
         hands = self.geom_xpos[:, self.hand_ids]                         # (W, 2 athletes, 2 hands, 3): the brace
         r_def = r_def + 0.4 * torch.exp(-((hands - self.brace_pt) ** 2).sum(-1) / 0.01).sum(-1)
+        brace_now = ((~self.struck) & (self.t >= self.brace_t0) & (self.t <= self.brace_t1)).float()
+        dv = self._sd(torch.stack([self.qvel[:, self.jv[k]] for k in range(2)], 1))[1]
+        r_def = r_def + common.cmd_brace_reward(brace_now, self._sd(upright)[1], dv)[:, None]
 
         # striker: as envs/slap.py strike (approach + palm-facing shaping before the touch, hit bonus at it), + KO bonus
         hand, tgt = self._sd(self.geom_xpos[:, self.hand_g])[0], self._sd(head)[1]
@@ -559,11 +661,16 @@ class ArenaEnv:
         clock = (1.0 - self.t.float() / self.T)[:, None].expand(-1, 2)
         head, hand = self.geom_xpos[:, self.head_g], self.geom_xpos[:, self.hand_g]
         fresh = self.fresh.repeat_interleave(2)
-        self.hand_seen = torch.where(self.fresh[:, None, None, None], hand[:, None].expand(-1, REACT + 1, -1, -1),
+        self.hand_seen = torch.where(self.fresh[:, None, None, None], hand[:, None].expand(-1, self.seen_n, -1, -1),
                                      torch.cat([self.hand_seen[:, 1:], hand[:, None]], 1))
+        # how old the hand the defender sees is, per athlete: REACT, + the daze of a hurt neck under rules 2 (constants.daze_lag)
+        lag = torch.full((W, 2), REACT, dtype=torch.long, device=self.device)
+        if self.r2:
+            lag = lag + (RULES["daze_react"] * (1.0 - self.neck) / (1.0 - MIN_NECK) + 0.5).long()
         self.fresh[:] = False
         rows = []
         feet_io = common.foot_contacts(self, W, self.foot_of, self.is_world, athletes=2)   # (W, 2, 4): BRAIN_IO 136-139
+        brace_now = ((~self.struck) & (self.t >= self.brace_t0) & (self.t <= self.brace_t1)).float()
         for k in range(2):
             rq, rv = self.rq[k], self.rv[k]
             R = quat_mat(q[:, rq + 3:rq + 7])
@@ -571,7 +678,7 @@ class ArenaEnv:
             c, s = torch.cos(yaw), torch.sin(yaw)
             hd = lambda x: torch.stack([c * x[:, 0] + s * x[:, 1], -s * x[:, 0] + c * x[:, 1], x[:, 2]], -1)
             pel = self.xpos[:, self.pelvis[k]]
-            opp_hand = torch.where((role[:, k] < 0)[:, None], self.hand_seen[:, 0, 1 - k] - pel, torch.zeros_like(pel))
+            opp_hand = torch.where((role[:, k] < 0)[:, None], self.hand_seen[self.wid, self.seen_n - 1 - lag[:, k], 1 - k] - pel, torch.zeros_like(pel))
             cur = torch.cat([hd(head[:, 1 - k] - pel), hd(opp_hand)], -1)
             rows.append(torch.cat([
                 q[:, self.jq[k]] - self.stand[k],
@@ -587,6 +694,8 @@ class ArenaEnv:
                 self.mem[:, 1 - k], self.stamina[:, k:k + 1], self.neck[:, k:k + 1],
                 hd(hand[:, k] - pel), hd(-self.geom_xmat[:, self.hand_g[k]][:, :, 2]),   # own palm: centre, facing (130-135)
                 feet_io[:, k],                                                            # heel/toe contacts (136-139)
+                torch.where(role[:, k] > 0, self.cmd_power, torch.zeros_like(self.cmd_power))[:, None],   # 140: cmd_power
+                torch.where(role[:, k] < 0, brace_now, torch.zeros_like(brace_now))[:, None],             # 141: cmd_brace
             ], -1))
         obs = torch.stack(rows, 1).reshape(self.N, -1)   # (2W, 108 + 10): memory history goes in below
         cur = obs[:, 102:108]

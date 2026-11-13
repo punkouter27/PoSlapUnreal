@@ -57,6 +57,14 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 		Physics = Fp->HasField(TEXT("physics")) ? (int32)Fp->GetNumberField(TEXT("physics")) : 1;
 		UE_LOG(LogSlap, Log, TEXT("MuJoCo options from %s: timestep %.17g, integrator %d, physics %d"), *Fingerprint, m->opt.timestep, m->opt.integrator, Physics);
 	}
+	int32 RulesFlag = 0;	// -SlapRules=2: rules 2 on any physics (match.py's SLAP_RULES=2)
+	FParse::Value(FCommandLine::Get(), TEXT("SlapRules="), RulesFlag);
+	bRules2 = Physics >= SlapGen::Rules2FromPhysics || RulesFlag == 2;
+	UE_LOG(LogSlap, Log, TEXT("match rules %d"), bRules2 ? 2 : 1);
+	float Pwr = 0.f, Brc = 0.f;	// interface 5 player command overrides (-SlapPower= / -SlapBrace=, default 0 neutral)
+	FParse::Value(FCommandLine::Get(), TEXT("SlapPower="), Pwr);
+	FParse::Value(FCommandLine::Get(), TEXT("SlapBrace="), Brc);
+	SetPlayerCommand(Pwr, Brc);
 	if (Mode == ESlapControlMode::Replay || !RecordFile.IsEmpty()) BindReplay(m);	// replay stream; also the start state
 	Athletes.Reset();
 	const TSharedPtr<FJsonObject> BlueFp = BlueFingerprint.IsEmpty() ? Fp : LoadJson(BlueFingerprint);
@@ -256,6 +264,7 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 					else StartTurn(m, d);
 				}
 				Faint(m);
+				Stun(m);
 				if (PreStep(m, d)) break;
 			}
 			if (WalkInLeft == 0 && (bInTurn ? Turn.Step % ControlEvery == 0 : HoldLeft-- % ControlEvery == 0))

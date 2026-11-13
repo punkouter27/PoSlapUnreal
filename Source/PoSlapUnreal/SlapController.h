@@ -4,6 +4,7 @@
 #include <atomic>
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
 #include "SlapReferee.h"
+#include "SlapShared.gen.h"
 #include "SlapController.generated.h"
 
 class FArchive;
@@ -12,12 +13,12 @@ class UNNEModelData;
 struct FSlapReel;
 namespace UE::NNE { class IModelInstanceCPU; }
 
-/** Match rules the HUD shows too (training/match.py, brain_cpu.py). */
+/** Match rules the HUD shows too: from SlapShared.gen.h (training/rules.json, training/constants.py). */
 namespace Slap
 {
-	inline constexpr int32 Rounds = 3;
-	inline constexpr double MinStamina = 0.7, MinNeck = 0.5;	// fatigue floors
-	inline constexpr double StrikeClock = 30.0, Recovery = 5.0;	// s: to land the strike; to stay up after it
+	inline constexpr int32 Rounds = SlapGen::Rounds;
+	inline constexpr double MinStamina = SlapGen::MinStamina, MinNeck = SlapGen::MinNeck;	// fatigue floors
+	inline constexpr double StrikeClock = SlapGen::StrikeClock, Recovery = SlapGen::Recovery;	// s: to land the strike; to stay up after it
 	inline constexpr double CleanSpeed = 8.0;	// m/s: a clean strike (Blueprint L2)
 }
 
@@ -176,7 +177,16 @@ public:
 	/** Second screen: the match events since the last call (JSONL lines, frames left out). */
 	void TakeEvents(TArray<FString>& Out) { FScopeLock L(&HudLock); Out = MoveTemp(Outbox); Outbox.Reset(); }
 
+	/** Interface 5 player command vector: Power in [-1, 1] (power vs accuracy on strike), Brace in [0, 1] (defence brace timing). */
+	void SetPlayerCommand(float Power, float Brace)
+	{
+		CmdPower.store(FMath::Clamp(Power, -1.f, 1.f), std::memory_order_relaxed);
+		CmdBrace.store(FMath::Clamp(Brace, 0.f, 1.f), std::memory_order_relaxed);
+	}
+
 private:
+	std::atomic<float> CmdPower = 0.f;
+	std::atomic<float> CmdBrace = 0.f;
 	struct FAthlete
 	{
 		FString Prefix, Name;	// "Arena_red_", "red"
@@ -190,12 +200,14 @@ private:
 		int32 NumIn = 0;			// how many BRAIN_IO inputs this brain reads (108 before memory, 130 before the own palm, 136, 140 = interface 4: foot contacts + low-pass)
 		int32 NumOut = 1;
 		float Hist[16][6] = {};		// inputs 102-107 of this turn's last 16 decisions (memory)
-		double Seen[7][3] = {};		// defender: the striker's hand at the last React + 1 decisions (React = 6, the .cpp)
+		double Seen[SlapGen::React + SlapGen::DazeReact + 1][3] = {};	// defender: the striker's hand at the last SeenLag + 1 decisions
+		int32 SeenLag = SlapGen::React;	// decisions late he sees it: React, + the daze of a damaged neck under rules 2 (StartTurn)
 		bool bFresh = true;
 		double Mem[2] = {}, Stamina = 1.0, NeckStrength = 1.0;
 		float Value = 0.f;		// the critic's last estimate of this athlete's next ~2 s of reward
 		int32 Role = 0;			// the role it was playing then (+1 strike, -1 defend, 0 guard)
 		double StaminaPerStrike = 0.0, NeckDamage = 0.0, StrikeMass = 0.0;	// character card
+		double Chin = 1.0;	// card chin (default 1): scales the stun threshold (rules 2, rules.json stun_speed)
 		double FaintChance = 0.0, FaintSeconds = 2.0, FaintStrength = 0.05;	// card: fainting (match.py faint_step)
 		double WalkSpeed = USlapController::WalkSpeed;	// the walk-in command, m/s (card walk_speed_mps)
 		TArray<double> FrAll;	// every motor's own forcerange (lo, hi per motor): a faint slackens them all
@@ -225,9 +237,9 @@ private:
 
 	// Eye contact + post-slap poise (match.py GAZE_/WATCH_/PLANT_/STAB_ constants): identical maths both sides -
 	// the match log still compares event for event.
-	static constexpr double GazeGain = 1.0;		// the bias OWNS the neck goal pre-touch
-	static constexpr double GazeMaxStep = 0.08;	// rad per decision the bias may walk (deliberate head turn)
-	static constexpr double WatchMaxStep = 0.25;// rad per decision while PLANTED (re-acquiring a snapping head)
+	static constexpr double GazeGain = SlapGen::GazeGain;		// the bias OWNS the neck goal pre-touch
+	static constexpr double GazeMaxStep = SlapGen::GazeMaxStep;	// rad per decision the bias may walk (deliberate head turn)
+	static constexpr double WatchMaxStep = SlapGen::WatchMaxStep;// rad per decision while PLANTED (re-acquiring a snapping head)
 	bool bEyeContact = true;					// -SlapEyeContact=0 disables (debug / A-B checks)
 	void ApplyGaze(const mjModel* m, mjData* d);
 	void SeedGaze(const mjData* d);	// each turn's start: the world gaze biases on the eye line
@@ -241,6 +253,7 @@ private:
 	void SetForce(mjModel* m, const FAthlete& A, double Gain) const;	// every motor at Gain x its own force, the neck's damage on top
 	void ApplyFatigue(const mjModel* m, FAthlete& S, FAthlete& D) const;	// the turn's end: stamina, the defender's memory and neck (match.py finish)
 	void Faint(mjModel* m);	// a faint starting or ending this step (before the referee looks, as match.py)
+	void Stun(mjModel* m);	// rules 2: the stun read once its window after the touch has run, and its end (after Faint, as match.py)
 	int64 HoldLeft = 0;	// physics steps of the hold after a turn or a match
 	int64 WalkInLeft = 0, WalkInTotal = 0;	// physics steps of the pre-match aisle walk-in before Round 1 Turn 1
 	mutable std::atomic<double> HudAt = 0.0;	// FPlatformTime of the last frame ASlapHUD drew with the curtain down (MarkDrawn)
@@ -266,7 +279,7 @@ private:
 	bool bInTurn = false;
 	FTurn Turn;
 	FArchive* Log = nullptr;
-	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos = nullptr) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
+	FString Down(const mjModel* m, const mjData* d, const FAthlete& A, bool bDefender, FVector* OutPos = nullptr, bool bFloorOnly = false) const;	// non-foot part on floor/podium, else "" (the defender's palms may rest on the podium)
 	void StartMatch(mjModel* m, mjData* d);
 	void StartTurn(mjModel* m, mjData* d);
 	void StandIdle(mjModel* m, mjData* d);	// the menu at launch: both in the stand pose at their foot boxes, no match
@@ -341,6 +354,10 @@ private:
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
 	int32 Physics = 1;			// the fingerprint's physics version: 2 takes the strike impulse from the part that touched (match.py)
+	// Rules 2 (training/rules.json, match.py): no scripted kick, the stun, the count, flinch and clubbing, judge noise,
+	// the daze. On from physics SlapGen::Rules2FromPhysics; -SlapRules=2 forces them on any physics (the check switch,
+	// as python's SLAP_RULES=2)
+	bool bRules2 = false;
 	TArray<mjtNum> GeomPrev;	// physics 2: every geom's position before the step about to run (match.py gprev)
 	TArray<mjtNum> GeomLast;	// physics 2: every geom where the last step left it (match.py glast)
 	bool Infer(FAthlete& A, const float* InObs, float& Value);	// A's brain on InObs: its actions into A.Action, its critic into Value

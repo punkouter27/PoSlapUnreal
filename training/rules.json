@@ -1,0 +1,36 @@
+{
+ "_doc": "The match rules every engine plays (training/match.py is the reference; Unreal and the browser read the copies gen_constants.py writes from this file: Source/PoSlapUnreal/SlapShared.gen.h, Web/shared.gen.js). Edit here, run `python training/gen_constants.py`, never the copies.",
+
+ "rounds": 3,
+ "strike_clock": 30.0,
+ "recovery": 5.0,
+ "box": [0.20, 0.25],
+ "kick_steps": 2,
+ "judge_weights": [[2, 1, 1, 1], [1, 2, 1, 1], [1, 1, 2, 2]],
+
+ "_rules2": "Rules 2 (2026-11-13): played from this physics version on (the fingerprint's \"physics\"); below it every engine plays the rules above exactly as before.",
+ "rules2_from_physics": 4,
+
+ "_kick": "Rules 2 has no scripted impact: the blow is what the contact between the striker's part and the face passes on (rules 1 adds the card's strike_mass x the part's velocity as an impulse over kick_steps).",
+
+ "_stun": "The knockout model: the defender's head speed peak over stun_window_s after the touch, against stun_speed x the card's chin (default 1). At or above it he is stunned: every motor at stun_strength of its force for stun_s x severity seconds (severity = peak / threshold, at most stun_max). PROVISIONAL (2026-11-13): 1.0 m/s is the top ~5 % of head speeds the shipped physics-1 brains produce without the kick (p50 0.75, p99 1.1-1.3); no brain trained on rules 2 exists yet. Re-read it from `calibrate_rules.py` after the first physics-4 L4 stage.",
+ "stun_speed": 1.0,
+ "stun_window_s": 0.25,
+ "stun_strength": 0.25,
+ "stun_s": 1.0,
+ "stun_max": 2.5,
+
+ "_count": "After the strike the defender is down when a part other than a sole is on the floor, or his pelvis is under up_height x its height at the turn's start (the podium alone does not count: a brush against it while standing is not a knockdown). He then gets a count of count_s. Up again (neither of the two) for up_hold_s: he beat the count and the round is scored 10-8 against him. Still down when it runs out: KO.",
+ "count_s": 10.0,
+ "up_hold_s": 1.0,
+ "up_height": 0.85,
+
+ "_fouls": "Rules 2 fouls (-1 point on every card that round, as the others). flinch: before the touch, while the striker's palm is swinging (faster than FEINT_MIN_PEAK), the defender's head is more than flinch_m from where it was when the palm last was slow. clubbing: the first touch is not a palm (a hand box's palm face leading).",
+ "flinch_m": 0.12,
+
+ "_judges": "Each judge's four weights are scaled every round by 1 +- judge_noise, from the match's dice (mix(seed, round, judge, term, 7)).",
+ "judge_noise": 0.15,
+
+ "_daze": "A damaged neck slows the eyes: the defender sees the striker's hand REACT + int(daze_react x (1 - neck) / (1 - MIN_NECK) + 0.5) decisions late.",
+ "daze_react": 4
+}

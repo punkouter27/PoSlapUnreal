@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "SlapShared.gen.h"
 
 /**
  * The broadcast's read of the striker's swing, from the controller's 50 Hz telemetry (display only: it reads the
@@ -14,11 +15,11 @@
 struct FSlapSwingRead
 {
 	// FEINT / REAL
-	static constexpr double FeintMinPeak = 2.5;		// m/s: a palm peak below this is a twitch, not a swing
-	static constexpr double FeintPullBack = 0.55;	// the palm drops under this share of its peak ...
-	static constexpr double FeintAfter = 0.12;		// ... this long (s) after the peak, with no contact: a feint
-	static constexpr double RearmShare = 0.95;		// after a feint, a palm back at this share of the peak ...
-	static constexpr double RearmAfter = 0.2;		// ... this long (s) after it is a new swing
+	static constexpr double FeintMinPeak = SlapGen::FeintMinPeak;	// m/s: a palm peak below this is a twitch, not a swing
+	static constexpr double FeintPullBack = SlapGen::FeintPullback;	// the palm drops under this share of its peak ...
+	static constexpr double FeintAfter = SlapGen::FeintAfterS;		// ... this long (s) after the peak, with no contact: a feint
+	static constexpr double RearmShare = SlapGen::FeintRearm;		// after a feint, a palm back at this share of the peak ...
+	static constexpr double RearmAfter = SlapGen::FeintRearmS;		// ... this long (s) after it is a new swing
 	static constexpr double TagSeconds = 1.4;		// how long a FEINT / REAL tag stays over the athlete
 
 	// AI READ

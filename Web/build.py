@@ -29,7 +29,7 @@ data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerpri
     + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
-for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
+for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
         + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars] \
         + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS] \
         + [(ROOT / f, DIST / f) for f in data]:

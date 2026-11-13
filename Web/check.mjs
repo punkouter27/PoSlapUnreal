@@ -1,10 +1,11 @@
 // Node check: one turn each way of a pairing through the browser engine (sim.js), events printed; the broadcast's
 // display-only reading (broadcast.js: the feint/real swing tag, the head-snap trace) runs beside it on the same steps.
-//   node Web/check.mjs [gg|kk|gk|kg]        (from the repo root; SLAP_PHYSICS=3 runs the v3 models)
+//   node Web/check.mjs [gg|kk|gk|kg]        (from the repo root; SLAP_PHYSICS=3|4 runs the v3 / v4 models, 4 = rules 2)
 import fs from "node:fs";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
 import { loadMatch } from "./loader.js";
+import { Match } from "./sim.js";
 import { SwingTagger, Snap } from "./broadcast.js";
 
 const mj = await loadMujoco();
@@ -14,12 +15,15 @@ const PHYS = Number(process.env.SLAP_PHYSICS || 1);
 const remap = p => {
   if (PHYS < 2) return p;
   const b = p.match(/^training\/models\/brains\/(\w+)\.onnx$/);
-  if (b) return [3, 2].filter(v => v <= PHYS).map(v => `training/models/brains/${b[1]}_v${v}.onnx`).find(f => fs.existsSync(f)) ?? p;
+  if (b) return [4, 3, 2].filter(v => v <= PHYS).map(v => `training/models/brains/${b[1]}_v${v}.onnx`).find(f => fs.existsSync(f)) ?? p;
   const v = p.replace(/^training\/models\/(?!brains\/)/, `training/models/v${PHYS}/`);
   return fs.existsSync(v) ? v : p;
 };
 const read = p => { const q = remap(p); if (q !== p) console.error(`  physics ${PHYS}: ${p} -> ${q}`); return q; };
 const get = (p, kind) => (p = read(p), kind === "text" ? fs.readFileSync(p, "utf8") : kind === "json" ? JSON.parse(fs.readFileSync(p, "utf8")) : new Uint8Array(fs.readFileSync(p)));
+// SLAP_RULES=2: rules 2 (training/rules.json) on any physics - python's A/B switch of the same name (a check only: the
+// page goes by the fingerprint's physics version, 4 on)
+Match.forceRules2 = process.env.SLAP_RULES === "2";
 const events = [], tags = [], tagger = new SwingTagger(), snap = new Snap();
 let match;
 ({ match } = await loadMatch(mj, ort, get, e => {

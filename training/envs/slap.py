@@ -14,6 +14,10 @@ Fatigue (card): 70 % of episodes start tired (stamina 0.7-1 scales joint speed) 
 motors' strength); both are inputs. Memory: the 0.1-0.3 s history of inputs 102-107, and the opponent's last strike: the
 scripted slap keeps its timing from one episode to the next half the time (a habit worth remembering).
 A fall is Unreal's knockdown rule: any non-foot geom touching the floor or podium (MuJoCo contacts, not a height guess).
+Rules 2 (constants.rules2: a physics 4 model, training/rules.json): the palm is validity, not only technique - a first
+touch that is not a palm (either hand box's palm face leading, match.py's test) is clubbing: still the strike, at
+envs/common.CLUB_PAY of its pay less a foul, and never a clean hit (the exam's `hit`). The absorb role's scripted slap
+is a training perturbation, not the referee's kick, and stays under rules 2.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ import mujoco_warp as mjw
 import torch
 import warp as wp
 
-from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, lpf_on, models_dir
+from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, lpf_on, models_dir, rules2
 from envs import common
 from envs.common import blown_up, contact_slots
 from levels import LEVELS
@@ -71,6 +75,7 @@ class SlapEnv:
         fp = json.loads((md / f"{character}_fingerprint.json").read_text())
         m = self.m = mujoco.MjModel.from_xml_path(str(md / f"{character}_solo.xml"))
         self.physics = int(fp.get("physics", 1))
+        self.r2 = rules2(self.physics)   # rules 2 (rules.json): physics 4 on - the palm rule (see the module docstring)
         order = fp["joint_order"]
         self.A = len(order)
         jid = [m.joint(n).id for n in order]
@@ -112,6 +117,12 @@ class SlapEnv:
         self.con_geom, self.con_world, self.nacon = T(self.dw.contact.geom), T(self.dw.contact.worldid), T(self.dw.nacon)
         self.mocap = T(self.dw.mocap_pos)
         self.con_pos, self.site_xpos, self.site_xmat = T(self.dw.contact.pos), T(self.dw.site_xpos), T(self.dw.site_xmat)
+        self.con_frame = T(self.dw.contact.frame)   # (slots, 3, 3): row 0 = the normal, geom 0 -> geom 1 (the palm test)
+        self.palm_ok = torch.zeros(num_envs, dtype=torch.bool, device=dev)   # rules 2: the first touch was a palm
+        # the strike made the speed bar, palm or not: what the trainer's curricula (reach, bar, imitation) go by. Under
+        # rules 1 it is hit_ok; under rules 2 hit_ok also needs the palm, and a curriculum waiting for palms would
+        # never move the target out for a brain that still clubs (the pay teaches the palm, the exam demands it)
+        self.fast_ok = torch.zeros(num_envs, dtype=torch.bool, device=dev)
         feet = [m.geom("foot_l").id, m.geom("foot_r").id]
         self.feet = torch.tensor(feet, device=dev)
         # interface 4: the heel/toe contact inputs (BRAIN_IO 136-139) and the action low-pass (its brains only)
@@ -201,6 +212,7 @@ class SlapEnv:
         self.hist, self.fresh, self.mem = z(N, 16, 6), zb(), z(N, 2)   # memory (BRAIN_IO 108-127)
         self.hp, self.v_prev, self.com_ref, self.com_e = z(N, A), z(N, A), z(N, 2), z(N)   # motion style, CoM recovery
         self.com_new = zb()
+        self.cmd_power, self.brace_t0, self.brace_t1 = z(N), zl(), zl()   # interface 5: player command vector (140-141)
 
         self.g_step, self.g_kin = common.capture(self.mw, self.dw)   # CUDA graphs: compile once, then replay
         self.reset(torch.ones(N, dtype=torch.bool, device=dev))
@@ -276,6 +288,7 @@ class SlapEnv:
         self.mocap[strike, 0, 0] -= self._u(ns, 0.0, 0.10 * lean)
         self.struck[mask], self.hit_ok[mask], self.settle[mask] = False, False, 0
         self.hit_speed[mask], self.bonus[mask] = 0.0, 0.0
+        self.palm_ok[mask], self.fast_ok[mask] = False, False
         self.hand_prev[mask] = self.geom_xpos[mask][:, self.strikers]
         self.hand_prev_ctrl[mask] = self.geom_xpos[mask][:, self.hand]
         self.near[mask], self.whiff[mask] = 9.0, False
@@ -291,6 +304,17 @@ class SlapEnv:
         self.slap_f[mask] = f / f.norm(dim=-1, keepdim=True) * (j / 0.01)[:, None]   # j over 10 ms
         self.slap_r[mask] = torch.tensor([0.05, 0.07, -0.03], device=self.device)    # left cheek, from the head centre
         self.com_err[mask] = 0.0
+        # interface 5: sample strike power/accuracy [-1, 1] and defence brace timing on 50% of training episodes (0 on exams)
+        if not self.exam:
+            on_p = (torch.rand(n, device=self.device) < 0.5) & (self.role[mask] == 1)
+            self.cmd_power[mask] = torch.where(on_p, self._u(n, -1.0, 1.0), 0.0)
+            on_b = (torch.rand(n, device=self.device) < 0.5) & (self.role[mask] == -1)
+            t0 = (self.t_hit[mask] - torch.randint(10, 35, (n,), device=self.device)).clamp(min=0)
+            t1 = self.t_hit[mask] + torch.randint(5, 25, (n,), device=self.device)
+            self.brace_t0[mask] = torch.where(on_b, t0, -1)
+            self.brace_t1[mask] = torch.where(on_b, t1, -1)
+        else:
+            self.cmd_power[mask], self.brace_t0[mask], self.brace_t1[mask] = 0.0, -1, -1
 
     # ------------------------------------------------------------------ step
     def _forces(self, dt, s):
@@ -365,9 +389,11 @@ class SlapEnv:
         self.done_hit = done & self.hit_ok & ~stop
         self.done_absorbed = done & ~stop & (self.com_err <= 0.05)    # absorb: up, COM back within 5 cm after 5 s
         if done.any():
-            cols = (self.ret, self.t, fell, self.left_box, self.done_hit, self.hit_speed, self.role, self.done_absorbed, self.com_err, self.whiff)
-            for r, l, f, b, h, v, ro, ab, ce, wf in zip(*(c[done].tolist() for c in cols)):
-                self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=ro, absorbed=ab, com_err=ce, whiff=wf))
+            cols = (self.ret, self.t, fell, self.left_box, self.done_hit, self.hit_speed, self.role, self.done_absorbed, self.com_err, self.whiff,
+                    done & self.fast_ok & ~stop, self.palm_ok)
+            for r, l, f, b, h, v, ro, ab, ce, wf, fa, pm in zip(*(c[done].tolist() for c in cols)):
+                self.episodes.append(dict(ret=r, len=l, fell=f, left_box=b, hit=h, speed=v, role=ro, absorbed=ab, com_err=ce, whiff=wf,
+                                          fast=fa, palm=pm))   # fast: the speed bar made, palm or not (= hit under rules 1)
             self.reset(done)
         return self.observe(), rew, done, timeout
 
@@ -407,9 +433,17 @@ class SlapEnv:
         new = hit & ~self.struck & ~early
         v = speed
         clean = hit & (v >= self.hit_v)                      # any hit counts (user 2026-10-25): the palm is technique, not validity
+        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
+        self.fast_ok = torch.where(new, clean, self.fast_ok)
+        if self.r2:   # rules 2: validity too - not a palm is clubbing: the strike, never clean, a foul (envs/common.py)
+            palm = common.palm_led(self, on, g0, other, w, self.N)
+            self.palm_ok = torch.where(new, palm, self.palm_ok)
+            pay = torch.where(palm, pay, common.CLUB_PAY * pay - common.FOUL)
+            clean = clean & palm
         self.hit_ok = torch.where(new, clean, self.hit_ok)
         self.hit_speed = torch.where(new, v, self.hit_speed)
-        pay = torch.where(clean, 50.0 + 8.0 * v, 3.0 * v + v * v)
+        phi_hit = self._palm_phi(self.geom_xpos[:, self.hand], self.mocap[:, 0])
+        pay = pay + common.cmd_strike_bonus(self.cmd_power, v, self.hit_v, clean, phi_hit)
         self.bonus += torch.where(new, pay, torch.zeros_like(v))
         # one slap per turn (user): touching the target again 0.3 s or more after the strike costs 1 per physics step
         self.bonus -= 1.0 * (hit & self.struck & (self.settle < SETTLE - 15)).float()
@@ -480,7 +514,9 @@ class SlapEnv:
         # absorb (L3): after the slap, pay for the centre of mass coming back over its pre-slap spot
         self.com_err = (self.com[:, self.pelvis, :2] - self.com0).norm(dim=-1)
         after = self.t > self.t_hit
-        r_absorb = r + torch.where(after, 1.0 * torch.exp(-self.com_err ** 2 / 0.0025), torch.zeros_like(r))
+        brace_now = ((self.role == -1) & (self.t >= self.brace_t0) & (self.t <= self.brace_t1)).float()
+        r_absorb = r + torch.where(after, 1.0 * torch.exp(-self.com_err ** 2 / 0.0025), torch.zeros_like(r)) \
+                   + common.cmd_brace_reward(brace_now, upright, v)
 
         # strike (L2), v2 (the first version paid ~0.8/step for a hand near the target: the brain hovered 30 s, never
         # struck). Before the strike every step costs a little; closing on the target pays only the distance gained (so
@@ -561,6 +597,8 @@ class SlapEnv:
             self._heading(self.geom_xpos[:, self.hand] - self.xpos[:, self.pelvis], c, s),   # own palm: centre - pelvis,
             self._heading(-self.geom_xmat[:, self.hand][:, :, 2], c, s),                     # facing (BRAIN_IO 130-135)
             common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4),  # heel/toe (136-139)
+            torch.where(self.role == 1, self.cmd_power, torch.zeros_like(self.cmd_power))[:, None],   # 140: cmd_power
+            ((self.role == -1) & (self.t >= self.brace_t0) & (self.t <= self.brace_t1)).float()[:, None],   # 141: cmd_brace
         ], -1)
         if self.randomize:
             noise = torch.zeros(OBS, device=self.device)

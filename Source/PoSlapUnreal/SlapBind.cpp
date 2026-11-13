@@ -134,6 +134,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 			A.StaminaPerStrike = Card->GetNumberField(TEXT("stamina_per_strike"));
 			A.NeckDamage = Card->GetNumberField(TEXT("neck_damage_per_snap"));
 			A.StrikeMass = Card->GetNumberField(TEXT("strike_mass"));
+			Card->TryGetNumberField(TEXT("chin"), A.Chin);	// rules 2: the stun threshold's scale (absent = 1)
 			Card->TryGetNumberField(TEXT("faint_chance_per_turn"), A.FaintChance);
 			Card->TryGetNumberField(TEXT("faint_seconds"), A.FaintSeconds);
 			Card->TryGetNumberField(TEXT("faint_strength"), A.FaintStrength);

@@ -37,6 +37,9 @@ jobs:
         working-directory: Web
         run: npm ci
 
+      - name: The browser's shared numbers are the generated ones (training/constants.py, rules.json)
+        run: python training/gen_constants.py --check
+
       - name: Bundle static site
         run: python Web/build.py
 

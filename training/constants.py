@@ -1,45 +1,48 @@
-"""The numbers the three engines share (DOCS/BRAIN_IO.md): one source of truth inside training/.
+"""The numbers the three engines share: the one source of truth.
 
-The same constants are mirrored in C++ (Source/PoSlapUnreal/SlapController.cpp) and in JS (Web/sim.js).
-Changing a value here means changing it in both mirrors too, or the parity checks (Blueprint 8) break:
-`replay_check.py` compares MuJoCo against URLab bit for bit, `match.py compare` compares the Python and
-the Unreal match engines event by event, and `node Web/check.mjs` runs the browser engine.
+Unreal and the browser do not carry their own copies any more: `python gen_constants.py` writes
+Source/PoSlapUnreal/SlapShared.gen.h (namespace SlapGen) and Web/shared.gen.js from this module and from
+rules.json, and the C++ and JS read those. Change a value here (or in rules.json), run gen_constants.py, commit
+the two generated files with it; `verify_constants.py` fails when they are stale.
 
-    constant      value        C++ mirror (Source/PoSlapUnreal)          JS mirror (Web/sim.js)
-    OBS           140          SlapControllerInternal.h: NumObs = 140    sim.js: export const OBS = 140
-                              (interface 4: 136 + heel/toe contact per foot; older brains read their first n)
-    LPF_HZ        8.0          SlapControllerInternal.h: LpfHz = 8.0     sim.js: const LPF_HZ = 8.0
-                              (the action low-pass, interface 4 only: width >= LPF_FROM_OBS = 140)
-    LAGS          (5, 10, 15)  SlapController.cpp: Lags[3]                sim.js: const LAGS = [5, 10, 15]
-    REACT         6            SlapController.cpp: React = 6             sim.js: const REACT = 6
-    HILL_K        0.25         SlapController.cpp: HillK = 0.25          sim.js: const HILL_K = 0.25
-    MIN_STAMINA   0.7          SlapController.h: MinStamina               sim.js: const MIN_STAMINA = 0.7
-    MIN_NECK      0.5          SlapController.h: MinNeck                  sim.js: const MIN_NECK = 0.5
-    DECIM         4            SlapController.cpp: ControlEvery = 4      sim.js: (every 4th physics step)
-    PHYSICS_HZ    200          the model's <option timestep="0.005">      sim.js: the WASM model's timestep
-    CONTROL_HZ    50           the brain runs every 4th physics step     sim.js: the same
-    MUSCLE_TC     0.035        build_body.MUSCLE_TC (the model carries it: every engine reads the model's
-                              <position timeconst>), so it is the same number in all three by construction
-
-Nothing here may change value without the two mirrors changing with it (see the table above).
+MUSCLE_TC is carried by the model (<position timeconst>), so it is the same in all three by construction.
+The parity checks still decide: `replay_check.py` (MuJoCo vs URLab), `match.py compare` (Python vs Unreal match
+events), `node Web/check.mjs` (the browser engine).
 """
 from __future__ import annotations
 
 import math
 import os
 
-OBS = 140                       # DOCS/BRAIN_IO.md, interface 4 (108 before memory and fatigue, 130 before the own
-                                # palm, 136 before the foot contacts; older brains read their first n)
+OBS = 142                       # DOCS/BRAIN_IO.md, interface 5 (108 before memory and fatigue, 130 before the own
+                                # palm, 136 before foot contacts, 140 before player command vector; older brains read first n)
 OBS_V3 = 136                    # interface 3: every shipped brain (2026-11-04)
+OBS_V4 = 140                    # interface 4: foot contacts added (heel_l, toe_l, heel_r, toe_r)
 FOOT = slice(136, 140)          # interface 4: heel_l, toe_l, heel_r, toe_r (a sole box touching a world geom;
                                 # heel = contact behind the box centre along its long axis, toe = at or ahead of it)
-INTERFACE = 4                   # the interface new checkpoints are tagged with (DOCS/20261104/policy_change_log.md)
+CMD = slice(140, 142)           # interface 5: strike power/accuracy [-1, +1] (140), defence brace timing [0, +1] (141)
+INTERFACE = 5                   # the interface new checkpoints are tagged with (DOCS/BRAIN_IO.md)
 # (OBS_EXT = 148, an unused 12-float locomotion extension at 136-147, was retired 2026-11-04: no brain ever read it)
 
 
+# The observation layout as data (DOCS/BRAIN_IO.md is the prose): (first index, one past the last, name). Appended to,
+# never reordered; verify_constants.py checks that it tiles 0..OBS and that the document lists every range.
+LAYOUT = (
+    (0, 30, "joint angle - stand pose"), (30, 60, "joint velocity x 0.1"), (60, 61, "pelvis height"),
+    (61, 64, "gravity in the pelvis frame"), (64, 67, "pelvis linear velocity, heading frame"),
+    (67, 70, "pelvis angular velocity x 0.25"), (70, 100, "previous action"), (100, 101, "role"), (101, 102, "turn clock"),
+    (102, 105, "target - pelvis (role 0: own foot box)"), (105, 108, "opponent hand, REACT (+ daze) decisions late"),
+    (108, 126, "memory: 102-107 at 5, 10, 15 decisions ago"), (126, 128, "the opponent's last strike: time, speed"),
+    (128, 129, "stamina"), (129, 130, "neck strength"), (130, 133, "own palm - pelvis"), (133, 136, "own palm facing"),
+    (136, 140, "foot contacts: heel_l, toe_l, heel_r, toe_r"),
+    (140, 141, "strike command: power (+1) vs accuracy (-1), 0 neutral"),
+    (141, 142, "defence command: brace timing (+1 brace, 0 neutral)"),
+)
+
+
 def interface_of(n_in):
-    """A brain's interface from its input width: 108 -> 1, 130 -> 2, 136 -> 3, 140 -> 4."""
-    return 4 if n_in >= 140 else 3 if n_in >= 136 else 2 if n_in >= 130 else 1
+    """A brain's interface from its input width: 108 -> 1, 130 -> 2, 136 -> 3, 140 -> 4, 142 -> 5."""
+    return 5 if n_in >= 142 else 4 if n_in >= 140 else 3 if n_in >= 136 else 2 if n_in >= 130 else 1
 
 
 # the action low-pass (interface 4 only, item 43): a first-order filter at LPF_HZ on the joint targets, computed at
@@ -102,15 +105,21 @@ def models_dir(version=None):
     base = Path(__file__).resolve().parent / "models"
     return base if v == 1 else base / f"v{v}"
 
-# The mirrors, as (file, needle) so a checker can prove the three engines still agree.
-MIRRORS = {
-    "OBS": ("Source/PoSlapUnreal/SlapControllerInternal.h", "NumObs = 140", "Web/sim.js", "export const OBS = 140"),
-    "LPF_HZ": ("Source/PoSlapUnreal/SlapControllerInternal.h", "LpfHz = 8.0", "Web/sim.js", "const LPF_HZ = 8.0"),
-    "LPF_FROM_OBS": ("Source/PoSlapUnreal/SlapControllerInternal.h", "LpfFromObs = 140", "Web/sim.js", "const LPF_FROM_OBS = 140"),
-    "LAGS": ("Source/PoSlapUnreal/SlapController.cpp", "Lags[3] = { 5, 10, 15 }", "Web/sim.js", "const LAGS = [5, 10, 15]"),
-    "REACT": ("Source/PoSlapUnreal/SlapController.cpp", "React = 6", "Web/sim.js", "const REACT = 6"),
-    "HILL_K": ("Source/PoSlapUnreal/SlapController.cpp", "HillK = 0.25", "Web/sim.js", "const HILL_K = 0.25"),
-    "MIN_STAMINA": ("Source/PoSlapUnreal/SlapController.h", "MinStamina = 0.7", "Web/sim.js", "const MIN_STAMINA = 0.7"),
-    "MIN_NECK": ("Source/PoSlapUnreal/SlapController.h", "MinNeck = 0.5", "Web/sim.js", "const MIN_NECK = 0.5"),
-    "DECIM": ("Source/PoSlapUnreal/SlapController.cpp", "ControlEvery = 4", "Web/sim.js", "REACT"),
-}
+# ---------------------------------------------------------------- the match rules (training/rules.json)
+# One file for the three engines: match.py and the envs read it here; Unreal and the browser read the copies
+# gen_constants.py writes (SlapShared.gen.h, Web/shared.gen.js) together with the constants above.
+import json as _json
+from pathlib import Path as _Path
+
+RULES = {k: v for k, v in _json.loads((_Path(__file__).resolve().parent / "rules.json").read_text()).items() if not k.startswith("_")}
+
+
+def rules2(physics_version):
+    """Rules 2 (no scripted kick, the stun, the count, flinch and clubbing fouls, judge noise, the daze) from physics 4."""
+    # SLAP_RULES=2 forces them on any physics (python only, an A/B switch: Unreal and the browser go by the fingerprint)
+    return os.environ.get("SLAP_RULES") == "2" or int(physics_version) >= RULES["rules2_from_physics"]
+
+
+def daze_lag(neck_strength):
+    """Rules 2: the extra decisions a damaged neck adds to the defender's reaction (0 at full strength)."""
+    return int(RULES["daze_react"] * (1.0 - neck_strength) / (1.0 - MIN_NECK) + 0.5)

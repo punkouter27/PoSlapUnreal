@@ -87,6 +87,11 @@ LENGTH_RATIO = {"thigh": (0.20, 0.28), "shin": (0.17, 0.27), "upperarm": (0.13, 
 #   * the per-foot friction randomisation made real: the sole boxes carry priority 2 with the floor's friction,
 #     condim and stiffness, so a sole's contact takes the SOLE's (randomised) friction; with the floor's priority the
 #     floor's value won every floor contact (tasks K11).
+# PHYSICS 4 (2026-11-13, training/rules.json): the physics 3 bodies, unchanged, under RULES 2. The version in the
+# fingerprint is what every engine switches on: from 4 the referee adds no impulse at the touch (the strike_mass kick
+# is gone: the blow is what the palm-face contact passes on), stuns on head speed, counts a downed defender, calls
+# flinch and clubbing, and the judges vary. The models are the v3 models with "physics": 4, so a v3 reference slap
+# and v3 knockdown states fit a v4 body exactly.
 PHYSICS = 1
 STIFF_SOLREF = (0.01, 1.0)            # the stiffest timeconst MuJoCo allows at a 5 ms step (refsafe: 2 x timestep)
 STIFF_SOLIMP = (0.99, 0.999, 0.001)   # impedance ~1 from the first mm: the contact does not give like skin
@@ -663,8 +668,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("card")
     ap.add_argument("--blue", help="card for the blue athlete (default: same as red)")
-    ap.add_argument("--physics", type=int, default=1, choices=(1, 2, 3),
-                    help="1: the shipped physics (models/); 2: the realism batch (models/v2/); 3: + face, stiff limbs, sole friction (models/v3/)")
+    ap.add_argument("--physics", type=int, default=1, choices=(1, 2, 3, 4),
+                    help="1: the shipped physics (models/); 2: the realism batch (models/v2/); 3: + face, stiff limbs, sole friction (models/v3/); 4: the v3 bodies under rules 2 (models/v4/, rules.json)")
     a = ap.parse_args()
     global PHYSICS
     PHYSICS = a.physics

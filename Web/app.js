@@ -25,7 +25,7 @@ const QS = new URLSearchParams(location.search);
 const SIDES = ["red", "blue"];
 const COLORS = { red: 0xd9473f, blue: 0x4f7fe0 };
 const DANGER_FULL = 12;                    // m/s of head snap that reads as full KO danger (the relay's scale)
-const MIN_NECK = 0.5, MIN_STAMINA = 0.7;   // sim.js's fatigue floors (the bars empty at the floor)
+import { MIN_NECK, MIN_STAMINA } from "./shared.gen.js";   // the fatigue floors (the bars empty at the floor)
 const CLEAN = 8;                           // m/s: a clean strike (Blueprint L2)
 const CLEAN_MOMENTUM = 3.0 * 9;            // kg m/s: a 3 kg strike mass at 9 m/s, the contact burst's size 1
 const NEAR_MISS_DIST = 0.15, NEAR_MISS_SPEED = 4;   // m, m/s: a palm this fast this close to the face, no touch: "ooooh"
@@ -426,6 +426,12 @@ function onEvent(e) {
       }
       S.downAt = performance.now() / 1000;
       sound.knockdown(e.athlete === "red" ? -0.4 : 0.4);
+      break;
+    case "stun":        // rules 2 (training/rules.json): ticker text only, no new UI yet
+      tick(`${sideName(e.athlete)} is stunned`, "bad");
+      break;
+    case "count_end":   // rules 2: the count is over (the knockdown's ten-count is already on screen)
+      if (e.up) tick(`${sideName(e.athlete)} beats the count at ${Math.ceil(e.count)}`, "gold");
       break;
     case "foul":
       S.fouls++;
