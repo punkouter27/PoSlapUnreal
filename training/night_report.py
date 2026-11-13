@@ -100,7 +100,7 @@ def main():
         return out
 
     athletes = []
-    for char in ("grandpa", "kim", "matt"):
+    for char in ("grandpa", "kim", "matt", "mom", "tong"):
         rs = [r for r in runs.values() if r["stage"]["char"] == char]
         if not rs:
             continue
@@ -118,6 +118,10 @@ def main():
              "Share of turns the defender stayed up 5 s after the slap with the body back over the feet."),
             ("guard_return", "Guard reward", "reward per episode",
              "Standing in the foot box, facing the target, under pushes (levels L0-L2)."),
+            ("guard_fall", "Guard fall rate", "share of turns",
+             "Share of guard/stand episodes ending in a fall. Lower is better (exam requires <= 5 % at full push)."),
+            ("guard_episode_s", "Guard survival time", "seconds",
+             "Mean seconds upright per 30 s episode under pushes. Rising toward 30 s means the athlete stays standing."),
             ("policy_loss", "Policy loss", "loss",
              "PPO's actor objective. Small and noisy is normal; a drift to large negative values means the policy is changing fast."),
             ("value_loss", "Value loss", "loss",

@@ -63,7 +63,11 @@ void USlapController::Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*
 	if (Fp && BlueFp)
 	{
 		const FJsonObject* const Fps[2] = { Fp.Get(), BlueFp.Get() };
-		if (Mode == ESlapControlMode::Policy) BindPolicy(m, Fps);
+		if (Mode == ESlapControlMode::Policy)
+		{
+			BindPolicy(m, Fps);
+			ReelBind(m);	// the highlight reel's ring (display only)
+		}
 		else BindHillMotors(m, Fps);	// replay: no athletes, but the Hill cap still has to be applied (see BindHillMotors)
 	}
 }
@@ -281,6 +285,9 @@ void USlapController::StepPolicy(mjModel* m, mjData* d)
 	// the decision's mj_kinematics has already moved geom_xpos to this step's pose, so the touching part read 0 m/s)
 	if (Physics >= 2 && bInTurn && Turn.TouchStep < 0) GeomPrev = GeomLast;
 	if (RecordFile.IsEmpty()) SetPace(m);
+	const bool bTouched = Athletes.Num() == 2 && bInTurn && Turn.TouchStep >= 0;	// the reel marks the step the palm landed
+	ReelStep(d, ReelPalm, ReelG, bTouched && !bReelTouched, Turn.Striker);
+	bReelTouched = bTouched;
 }
 
 void USlapController::SetPace(const mjModel* m)

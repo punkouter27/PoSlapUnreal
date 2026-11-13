@@ -16,6 +16,11 @@ class UMaterialInterface;
 class USpotLightComponent;
 class IWebSocket;
 class UAudioComponent;
+class ALevelSequenceActor;
+class USceneCaptureComponent2D;
+class UStaticMeshComponent;
+class UText3DComponent;
+class UTextureRenderTarget2D;
 class ULightComponent;
 class UPoseableMeshComponent;
 class UMaterialInstanceDynamic;
@@ -291,6 +296,57 @@ private:
 	int32 Attempts[2] = {}, Landed[2] = {};		// turns struck / strikes landed, this match
 	int32 FirstDownRound = 0, FirstDownWho = -1;	// the turning point: the first knockdown
 	int32 BigRound = 0, BigRoundMargin = 0, BigRoundWho = -1;	// or the round won by the most
+
+	// ---- the broadcast pass of 2026-11-12 (user: "do all" of the ten spectator features; render side first). Display only.
+	// the win probability (SlapHUDWinProb.cpp; training/winprob.py -> training/models/winprob.json)
+	void LoadWinProb();
+	double WinProb(const FSlapHud& H);		// P(red wins) from the score, knockdowns, neck, stamina; -1 = no model
+	void DrawWinProb(const FSlapHud& H);	// the thin row under the momentum bar
+	TArray<double> WinW;					// the model's five weights (empty: no model, no row)
+	int32 WinMatches = 0, WinMatch = -1, WinTurn0 = 0, WinDrawn = 0;
+	float WinShown = 0.5f;
+	// the stage (SlapHUDStage.cpp): the jumbotron, the 3D titles, the Sequencer shots, soft tissue. Everything is made
+	// once in BuildStage (LoadAssets); a match only moves, shows and hides it
+	void BuildStage();
+	void Jumbo(const FSlapHud& H, double Now);		// the arena screen: a second camera at 30 Hz
+	void Titles(const FSlapHud& H, double Now);		// Text3D: the fighters' names, the big caption
+	void SeqTick(const FSlapHud& H, double Now);	// plays the authored camera moves; grades and focuses their camera
+	void PlaySeq(int32 k, const FTransform& Origin);
+	void StopSeq();
+	void Jiggle(const FSlapHud& H);					// belly and jowl on damped springs, drawn by the skin material
+	void LoadSoftness(const FSlapHud& H);			// per character, from the card's mass and height
+	UPROPERTY(Transient) TObjectPtr<AActor> StageActor;	// owns the screen and the letters (an AHUD is hidden: its primitives never draw)
+	UPROPERTY(Transient) TObjectPtr<UTextureRenderTarget2D> JumboTarget;
+	UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> JumboScreen;
+	UPROPERTY(Transient) TObjectPtr<USceneCaptureComponent2D> JumboCam;
+	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> JumboSkin;
+	bool bJumboPlaced = false, bJumboAimed = false;
+	int32 JumboSubject = -1, JumboFrames = 0;
+	double JumboAt = 0.0;
+	FVector StageCentre = FVector::ZeroVector;
+	UPROPERTY(Transient) TObjectPtr<UText3DComponent> NameTitle[2];
+	UPROPERTY(Transient) TObjectPtr<UText3DComponent> BigTitle;
+	FString TitleName[2], TitleBig;
+	float NameShown[2] = {}, TitleYaw = -90.f, TitleSize = 0.5f;	// the letters read from the broadcast side (+Y)
+	int32 TitlesShown = 0;
+	enum ESeq : int32 { SeqIntro, SeqKORed, SeqKOBlue, SeqWinRed, SeqWinBlue, NumSeq };
+	TWeakObjectPtr<ALevelSequenceActor> SeqActor[NumSeq];
+	int32 SeqLoaded = 0, SeqPlaying = -1, SeqPlays = 0, SeqSeenKO = INT32_MIN;
+	bool bSeqWalk = false, bSeqWon = false;
+	struct FSoft { bool bSeen = false; FVector Prev = FVector::ZeroVector, Vel = FVector::ZeroVector, X = FVector::ZeroVector, XVel = FVector::ZeroVector; };
+	FSoft Soft[2][2];								// per athlete: belly, jowl
+	FString SoftCard[2];
+	float Softness[2] = { 0.5f, 0.5f }, JigglePeak = 0.f;
+	bool bJiggle = true;
+	// the highlight reel (SlapHUDReel.cpp, SlapReel.h): saved after a knockout, played back one physics step per frame
+	void ReelBegin();						// -SlapReel=<file>: playback mode
+	void ReelWatch(const FSlapHud& H, double Now);	// live: save the window 3 s after a KO or a 9 m/s slap
+	void ReelFrame();						// playback: the step, the camera, the caption, the frame's PNG
+	bool bReel = false, bReelDone = false;
+	FString ReelOut, ReelWhy;
+	int32 ReelFirst = 0, ReelLast = 0, ReelShot = 0, ReelWarmed = 0, ReelsSaved = 0;
+	int32 ReelSeenKO = INT32_MIN, ReelSeenStrike = 0;
+	double ReelSaveAt = -1.0, ReelSpeed = 0.0;
 
 	// ---- checks (SlapHUDTests.cpp)
 	void UiTest(const FSlapHud& H);			// -SlapUiTest: every click target, then Menu -> Gameplay -> Win/Loss -> Menu -> Reset

@@ -35,6 +35,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "Text3D",
+			"Enabled": true
+		},
+		{
 			"Name": "NNERuntimeORT",
 			"Enabled": true
 		},

@@ -15,6 +15,7 @@
 #include "MuJoCo/Utils/MjUtils.h"
 #include "SlapHUDInternal.h"
 #include "SlapNames.h"
+#include "SlapReel.h"
 
 ASlapAthleteVisual::ASlapAthleteVisual()
 {
@@ -110,7 +111,27 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 	}
 
 	Pose.Reset();
-	AAMjManager::GetManager()->PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& S)
+	const FSlapReel& Reel = FSlapReel::Playing();
+	if (Reel.IsValid())	// -SlapReel=<file>: one recorded physics step per frame (SlapReel.h); the live physics is not drawn
+	{
+		const float* F = Reel.Frame(FSlapReel::PlayStep);
+		ReelPos.SetNumUninitialized(3 * Reel.NumBodies, EAllowShrinking::No);
+		ReelQuat.SetNumUninitialized(4 * Reel.NumBodies, EAllowShrinking::No);
+		for (int32 b = 0; b < Reel.NumBodies; ++b)
+		{
+			for (int32 i = 0; i < 3; ++i) ReelPos[3 * b + i] = F[7 * b + i];
+			for (int32 i = 0; i < 4; ++i) ReelQuat[4 * b + i] = F[7 * b + 3 + i];
+		}
+		Pose.SetNum(BodyIds.Num());
+		for (int32 k = 0; k < BodyIds.Num(); ++k)
+		{
+			const int32 b = BodyIds[k];
+			if (b >= Reel.NumBodies) { Pose.Reset(); break; }	// a reel from another pairing's model
+			Pose[k] = FTransform(MjUtils::MjToUERotation(&ReelQuat[4 * b]) * Offsets[k], MjUtils::MjToUEPosition(&ReelPos[3 * b]), Scales[k]);
+		}
+		if (Pose.Num()) ClampHands(ReelPos, ReelQuat);
+	}
+	else AAMjManager::GetManager()->PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& S)
 	{
 		if (S.XPos.Num() == 0) return;
 		Pose.SetNum(BodyIds.Num());
@@ -119,7 +140,7 @@ void ASlapAthleteVisual::Tick(float DeltaSeconds)
 			const int32 b = BodyIds[k];
 			Pose[k] = FTransform(MjUtils::MjToUERotation(&S.XQuat[4 * b]) * Offsets[k], MjUtils::MjToUEPosition(&S.XPos[3 * b]), Scales[k]);
 		}
-		if (ReplayRate == 0.0) ClampHands(S);	// live only: a replay shows the poses recorded (already clamped)
+		if (ReplayRate == 0.0) ClampHands(S.XPos, S.XQuat);	// live only: a replay shows the poses recorded (already clamped)
 	});
 	if (Pose.Num() == 0) return;
 
@@ -310,7 +331,7 @@ double ASlapAthleteVisual::ClipPush(const FClip& Hand, const FClip& Face, const 
 	return Push.Size();
 }
 
-void ASlapAthleteVisual::ClampHands(const FMjRenderSnapshot& S)
+void ASlapAthleteVisual::ClampHands(const TArray<double>& XPos, const TArray<double>& XQuat)
 {
 	ClipLastCm = 0.0;
 	if (!bClip) return;
@@ -326,8 +347,8 @@ void ASlapAthleteVisual::ClampHands(const FMjRenderSnapshot& S)
 		const FClip& Face = O->Clip[f];
 		if (Face.P.Num() == 0) continue;
 		const int32 b = O->BodyIds[Face.Driven];
-		if (4 * b + 3 >= S.XQuat.Num()) return;
-		const FTransform FaceT(MjUtils::MjToUERotation(&S.XQuat[4 * b]) * O->Offsets[Face.Driven], MjUtils::MjToUEPosition(&S.XPos[3 * b]));	// this snapshot's pose
+		if (4 * b + 3 >= XQuat.Num()) return;
+		const FTransform FaceT(MjUtils::MjToUERotation(&XQuat[4 * b]) * O->Offsets[Face.Driven], MjUtils::MjToUEPosition(&XPos[3 * b]));	// this snapshot's pose
 		for (const int32 h : { (int32)ClipHandL, (int32)ClipHandR })
 			ClipLastCm += ClipPush(Clip[h], Face, FaceT, Pose[Clip[h].Driven]);
 	}

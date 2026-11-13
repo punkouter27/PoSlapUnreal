@@ -69,7 +69,7 @@ def fresh_state():
             "judges": [], "cards": {"red": 0, "blue": 0},
             "athletes": [athlete("red"), athlete("blue")],
             "ko": False, "knockdown": False, "result": None, "last_strike": None,
-            "danger": {"red": 0.0, "blue": 0.0, "source": "events"}, "updated_at": time.time()}
+            "danger": {"red": 0.0, "blue": 0.0, "source": "events"}, "win_prob": None, "updated_at": time.time()}
 
 
 def side_index(name):
@@ -357,6 +357,9 @@ async def publisher_message(data):
         latest["pose"] = data
         poses.append({"ts": time.time(), "c": msg.get("c"), "m": msg.get("m"), "r": msg.get("r"),
                       "s": msg.get("s"), "w": msg.get("w"), "slow": msg.get("slow")})
+        wp = msg.get("wp")      # Unreal's win probability for red (training/winprob.py's model on the live state)
+        if isinstance(wp, (int, float)) and not isinstance(wp, bool) and 0.0 <= wp <= 1.0:
+            state["win_prob"] = {"red": round(float(wp), 3), "blue": round(1.0 - float(wp), 3), "source": "unreal"}
         c = msg.get("c") or []
         for i, name in enumerate(c[:2]):
             if name and i < 2:
@@ -504,6 +507,8 @@ def schema():
             "result": "{how, winner, cards} or null",
             "last_strike": "{striker, part, palm, speed, t} or null",
             "danger": "{red, blue, source} the KO danger, 0..1",
+            "win_prob": "{red, blue, source} or null: the chance each corner wins from here (training/winprob.py, a "
+                        "logistic model on the score, knockdowns, neck and stamina), as Unreal's HUD shows it",
         },
         "derived": {
             "health": "a spectator estimate, not a simulated value: 1.0 at the start of a match, -0.5 per knockdown, "

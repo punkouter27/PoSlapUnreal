@@ -32,7 +32,7 @@ try {
   await waitForRelay(port);
   const ue = await open(`ws://127.0.0.1:${port}/ue?key=${key}`);
   const ev = e => ue.send(JSON.stringify({ t: "ev", e }));
-  ue.send(JSON.stringify({ t: "pose", c: ["grandpa", "kim"], m: 3, r: 1, s: "red", w: false, slow: 1, q: new Array(74).fill(0) }));
+  ue.send(JSON.stringify({ t: "pose", c: ["grandpa", "kim"], m: 3, r: 1, s: "red", w: false, slow: 1, wp: 0.71, q: new Array(74).fill(0) }));
   ev({ type: "match_start", match: 3, first: "red", seed: 7 });
   ev({ type: "turn_start", round: 1, striker: "red", defender: "blue" });
   ev({ type: "strike", t: 5.2, striker: "red", part: "head", palm: true, speed: 11.5, pos: [0.1, 0, 1.4] });
@@ -61,6 +61,7 @@ try {
   check("match: the knockdowns are counted", m.athletes[0].knockdowns === 1 && m.athletes[1].knockdowns === 0);
   check("match: the flags", m.knockdown === true && m.ko === false);
   check("match: the danger meters", m.danger.red === 1 && Math.abs(m.danger.blue - 3.4 / 12) < 0.001, JSON.stringify(m.danger));
+  check("match: the win probability rides in with the pose", m.win_prob?.red === 0.71 && Math.abs(m.win_prob.blue - 0.29) < 1e-9 && m.win_prob.source === "unreal", JSON.stringify(m.win_prob));
   check("match: the last strike", m.last_strike?.striker === "red" && m.last_strike.speed === 11.5, JSON.stringify(m.last_strike));
   check("match: the clock", m.clock.turn_clock === 30 && m.clock.phase === "hold", JSON.stringify(m.clock));
 

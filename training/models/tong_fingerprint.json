@@ -468,6 +468,16 @@
     0.28
    ]
   },
-  "length_ratio_note": "A baby scan scaled to adult height (user 2026-11-09, option 1): thigh 0.18 H against the adult 0.20-0.28. The physics body follows the mesh, so Tong's legs are short on purpose."
+  "length_ratio_note": "A baby scan scaled to adult height (user 2026-11-09, option 1): thigh 0.18 H against the adult 0.20-0.28. The physics body follows the mesh, so Tong's legs are short on purpose.",
+  "sparring": {
+   "head": [
+    0.8,
+    0.0,
+    0.78
+   ],
+   "shorter_max": 0.15,
+   "lean": 1.0,
+   "note": "Practice opponent: Grandpa's face from Tong's start pelvis (Mom's 0.72 m plus the 6 cm Tong's pelvis sits lower: 0.787 vs 0.847 m); up to 15 cm lower for Kim; leaning in when braced"
+  }
  }
 }

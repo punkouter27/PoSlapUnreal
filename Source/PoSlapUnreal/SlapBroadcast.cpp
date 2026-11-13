@@ -85,6 +85,7 @@ void USlapController::Telemetry(const mjModel* m, const mjData* d, double HandSp
 {
 	// every brain step (20 ms) of a turn: the defender's head acceleration, the striker's palm speed. Over 5 ms steps a
 	// hard contact differentiates into thousands of g; the 20 ms average is what a mouthguard sensor would report.
+	ReelPalm = HandSpeed;	// the highlight reel stamps every 5 ms step with it
 	if (Turn.Step % ControlEvery) return;
 	const double* Head = d->geom_xpos + 3 * Athletes[1 - Turn.Striker].Head;
 	const double Dt = m->opt.timestep * ControlEvery;

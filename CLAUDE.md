@@ -73,6 +73,13 @@ Voices (per character card: HAPPY / ANGRY / HURT / INSULT x 5 sounds x 5 levels;
 saved over a file under the same name is kept): `training/.venv/Scripts/python.exe Scripts/voice_pack.py [--report]`, then
 `UnrealEditor-Cmd.exe ... -run=pythonscript -script="<abs>/Scripts/voice_import.py"` → `/Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<n>_<level>`.
 
+Broadcast pass (2026-11-12, display only; `SlapHUDStage.cpp`, `SlapHUDWinProb.cpp`, `SlapHUDReel.cpp`):
+`UnrealEditor-Cmd.exe ... -run=pythonscript -script="<abs>/Scripts/broadcast_pass.py"` builds its assets (`/Game/FX/M_Jumbotron`,
+the soft-tissue nodes on every `M_<athlete>`, `/Game/Cinematics/LS_*`); `training/.venv/Scripts/python.exe winprob.py [--simulate N]`
+(from `training/`) refits `models/winprob.json`; `training/.venv/Scripts/python.exe Scripts/highlight_reel.py [--4k]` renders the newest
+`Saved/PoSlap/reels/*.reel` (saved after a KO or a 9 m/s slap) to `Saved/Clips/*.mp4`, one physics step per frame.
+Switches: `-SlapJumbo=0`, `-SlapTitles=0`, `-SlapSeq=0`, `-SlapJiggle=0`, `-SlapReel=<file>`.
+
 Web: `cd Web && npm ci`, then `python Web/serve.py` (http://localhost:8080/Web/) or `python Web/build.py` → `Web/dist/`.
 Pushing changes under `Web/`, `training/models/` or `training/characters/` to `master` deploys the site.
 

@@ -1,0 +1,22 @@
+{
+ "features": [
+  "score",
+  "downs",
+  "neck",
+  "stamina",
+  "late"
+ ],
+ "weights": [
+  0.13959,
+  0.14757,
+  0.35472,
+  0.35098,
+  0.09312
+ ],
+ "matches": 59,
+ "samples": 397,
+ "red_wins": 30,
+ "brier_held_out": 0.1608,
+ "brier_coin": 0.25,
+ "fitted": "2026-11-12"
+}

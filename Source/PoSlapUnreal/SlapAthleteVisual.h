@@ -58,7 +58,8 @@ private:
 	void BuildClip(const TArray<FTransform>& CS, const TArray<int32>& RefIdx);
 	/** Pushes Hand (a world bone transform, moved in place) out of Face (the other athlete's head or neck bone). Returns cm. */
 	double ClipPush(const FClip& Hand, const FClip& Face, const FTransform& FaceT, FTransform& HandT) const;
-	void ClampHands(const FMjRenderSnapshot& S);
+	void ClampHands(const TArray<double>& XPos, const TArray<double>& XQuat);	// body poses, MuJoCo order (the snapshot, or a reel step)
+	TArray<double> ReelPos, ReelQuat;	// the highlight reel's step as the snapshot lays it out (SlapReel.h)
 
 	bool bReady = false;
 	bool bChecked = false;

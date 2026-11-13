@@ -1,0 +1,71 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Broadcast pass, stage 1</title>
+<style>
+body{font:15px system-ui;background:#111;color:#eee;margin:20px;max-width:1320px}
+h1{margin:0 0 4px}h2{margin:28px 0 8px;color:#fd0}
+p,li{color:#ccc;line-height:1.45}
+table{border-collapse:collapse;margin:8px 0}td,th{border:1px solid #333;padding:4px 10px;text-align:left;vertical-align:top}
+.pair{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 22px}.pair figure{margin:0;width:300px}.pair img{width:300px;border:1px solid #333}
+figcaption{font-size:13px;color:#bbb;margin-top:4px}
+.pass{color:#6f6}.warn{color:#fb4}.no{color:#f77}
+code{color:#9cf}
+</style>
+<h1>Broadcast pass, stage 1: the display-only features</h1>
+<p>2026-11-12. <code>/Game/Levels/L_Arena_grandpa_vs_kim</code>, 540 x 960, quality tier 2 (auto). Before and after are two
+<code>-SlapTour</code> runs (menu, a whole match, the result, rematch). The tour is not seeded, so each pair shows the same
+stage of two different matches. Notes: <code>DOCS/20261112/broadcast_pass.md</code>.</p>
+
+<h2>Checks</h2>
+<table>
+<tr><th>Check</th><th>Outcome</th></tr>
+<tr><td>Editor build</td><td class=pass>Succeeded (a clean checkout failed before: unity-build name clash, fixed in <code>PoSlapUnreal.Build.cs</code>)</td></tr>
+<tr><td><code>-SlapTour</code>, before</td><td class=pass>PASS, 29 shots, 0 clicks ignored</td></tr>
+<tr><td><code>-SlapTour</code>, after</td><td class=pass>PASS, 31 shots, 0 clicks ignored</td></tr>
+<tr><td><code>match.py compare</code> (Unreal, seed 7, new build, against Python)</td><td class=pass>PASS: 22 events each, no mismatch</td></tr>
+<tr><td><code>-SlapLayoutTest</code></td><td class=pass>4 tabs measured, 0 fails</td></tr>
+<tr><td><code>-SlapUiTest</code></td><td>UI_TEST_RESULT</td></tr>
+<tr><td><code>node Web/api_check.mjs</code></td><td class=pass>PASS, with a new assertion for <code>win_prob</code></td></tr>
+<tr><td>Highlight reel render</td><td class=pass>321 frames at 1080 x 1920 in 207 s, encoded to a 5.3 s clip at 60 fps (1.6 s of match, 3.3x slow)</td></tr>
+<tr><td>Frame rate, same machine, tier 2</td><td class=warn>About 100 to 116 fps before, 71 to 97 fps after. The jumbotron's second camera is most of it</td></tr>
+<tr><td>Sequencer KO shot</td><td class=warn>Not seen: neither tour match ended in a knockout. The intro and winner shots played</td></tr>
+<tr><td>Android build</td><td class=warn>Not built. The Text3D module is a new dependency there</td></tr>
+<tr><td>4K reel render</td><td class=warn>Not run (only 1080 x 1920)</td></tr>
+</table>
+
+<h2>Before and after</h2>
+<div class=pair>
+<figure><img src="before/10_match_r1.png"><figcaption>Before: round 1, the wait</figcaption></figure>
+<figure><img src="after/10_match_r1.png"><figcaption>After: the jumbotron behind the podium shows the defender's face from a second camera; the win probability row sits under the momentum bar</figcaption></figure>
+</div>
+<div class=pair>
+<figure><img src="before/04_walkin_r1.png"><figcaption>Before: the walk-in ends</figcaption></figure>
+<figure><img src="after/04_walkin_r1.png"><figcaption>After: the fighters' names stand on the mat in 3D letters (team colours; brightened after this shot)</figcaption></figure>
+</div>
+<div class=pair>
+<figure><img src="before/05_cap_ROUND_1.png"><figcaption>Before: ROUND 1</figcaption></figure>
+<figure><img src="after/05_cap_ROUND_1.png"><figcaption>After: the same caption also stands between the fighters as 3D letters</figcaption></figure>
+<figure><img src="extra/round1.png"><figcaption>After, another angle: the 3D ROUND 1 behind the 2D band, the screen on the left</figcaption></figure>
+</div>
+<div class=pair>
+<figure><img src="before/22_match_r3.png"><figcaption>Before: round 3</figcaption></figure>
+<figure><img src="after/24_match_r3.png"><figcaption>After: win probability 64 % to 36 % with the judges at 20:18</figcaption></figure>
+</div>
+<div class=pair>
+<figure><img src="before/24_cap_GRANDPA_WINS.png"><figcaption>Before: the winner</figcaption></figure>
+<figure><img src="extra/result.png"><figcaption>After: 3D GRANDPA WINS! behind him, his name on the mat, the screen top left. The 2D result cards already fill this frame, so the 3D letters are partly hidden</figcaption></figure>
+</div>
+
+<h2>Highlight reel</h2>
+<div class=pair>
+<figure><img src="extra/reel_touch.png"><figcaption>One frame of the rendered reel, 20 ms after the touch. Every frame is one recorded 5 ms physics step</figcaption></figure>
+<figure><img src="extra/reel_late.png"><figcaption>Later in the same clip: the camera pulls out</figcaption></figure>
+</div>
+<p>The clip itself is in <code>Saved/Clips/</code> (not in git). Make one with
+<code>training/.venv/Scripts/python.exe Scripts/highlight_reel.py</code>.</p>
+
+<h2>What to look at</h2>
+<ul>
+<li>The jumbotron picture is greyer than the main view. It is a tone-mapped capture shown on an unlit panel.</li>
+<li>Soft tissue cannot be judged from stills. Watch the belly and jowl on a strike in motion, or in a reel.</li>
+<li>The names on the mat are mostly hidden behind the fighters in the close walk-in shot; they read best from the intro crane.</li>
+<li>The win probability model was fitted on 59 matches. Treat the number as rough until more real matches are logged.</li>
+</ul>

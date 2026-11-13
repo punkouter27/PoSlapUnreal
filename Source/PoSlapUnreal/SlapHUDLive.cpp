@@ -54,8 +54,10 @@ void ASlapHUD::Live(const FSlapHud& H)
 	if (Now - LiveSent < 1.0 / 30.0 || H.Pose.IsEmpty()) return;
 	LiveSent = Now;
 	TStringBuilder<2048> Msg;
-	Msg.Appendf(TEXT("{\"t\":\"pose\",\"c\":[\"%s\",\"%s\"],\"m\":%d,\"r\":%d,\"s\":\"%s\",\"w\":%s,\"slow\":%.2f,\"q\":["),
+	Msg.Appendf(TEXT("{\"t\":\"pose\",\"c\":[\"%s\",\"%s\"],\"m\":%d,\"r\":%d,\"s\":\"%s\",\"w\":%s,\"slow\":%.2f,"),
 		*H.Card[0], *H.Card[1], H.Match, H.Round, *H.Striker, H.bWalkIn ? TEXT("true") : TEXT("false"), H.SlowMo);
+	if (const double Wp = WinProb(H); Wp >= 0.0) Msg.Appendf(TEXT("\"wp\":%.3f,"), Wp);	// /api/match's win_prob (Web/live.py)
+	Msg << TEXT("\"q\":[");
 	for (int32 i = 0; i < H.Pose.Num(); ++i) Msg.Appendf(TEXT("%s%.4f"), i ? TEXT(",") : TEXT(""), H.Pose[i]);
 	Msg << TEXT("]}");
 	LiveSend(FString(Msg));

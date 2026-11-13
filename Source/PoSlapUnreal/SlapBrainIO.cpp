@@ -206,6 +206,7 @@ void USlapController::Decide(const mjModel* m, mjData* d)
 		PrevHandDist = HandDist;
 		Ttc = Turn.TouchStep < 0 && Closing > 0.5 ? FMath::Max(HandDist - 0.12, 0.0) / Closing : 99.0;	// palm to cheek, roughly
 		const double HeadG = TelHeadG;
+		ReelG = HeadG;
 		TelHeadG = 0.0;
 		TArray<FVector> Ghost[2];
 		if (bX && GhostD)	// the brain X-ray's ghost: where each brain is steering the body (its joint targets, through MuJoCo's kinematics)

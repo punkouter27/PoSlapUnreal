@@ -130,6 +130,7 @@ void ASlapHUD::BeginPlay()
 	if ((PLATFORM_ANDROID || PLATFORM_IOS) && GEngine) GEngine->bEnableOnScreenDebugMessages = false;	// URLab's ZMQ stubs print red bind errors over a phone's arena
 	BuildUi();
 	LoadAssets();
+	ReelBegin();
 	CommentaryStamp = IFileManager::Get().GetTimeStamp(*(FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt")));	// only lines from now on
 	bBurst = FParse::Param(Cmd, TEXT("SlapBurst")) && !PLATFORM_ANDROID && !PLATFORM_IOS;	// the 120 fps burst is desktop only
 	TierCap = DetectTier();
@@ -184,6 +185,8 @@ void ASlapHUD::LoadAssets()
 		for (int32 k = 0; k < M->GetNumMaterials(); ++k) CrowdSkin.Add(M->CreateDynamicMaterialInstance(k));
 	}
 	LoadLeague();
+	LoadWinProb();
+	BuildStage();
 	Ringside = NewObject<USoundAttenuation>(this);	// spatialised, no fall-off inside the arena: the slap pans, it doesn't fade
 	Ringside->Attenuation.bAttenuate = true;
 	Ringside->Attenuation.bSpatialize = true;
@@ -324,7 +327,7 @@ void ASlapHUD::DrawHUD()
 		TActorIterator<ACameraActor> It(GetWorld());
 		if (It) Camera = *It;
 	}
-	if (PC && Camera.IsValid() && PC->GetViewTarget() != Camera.Get())
+	if (PC && Camera.IsValid() && PC->GetViewTarget() != Camera.Get() && SeqPlaying < 0)	// a Sequencer shot holds the view while it plays
 	{
 		PC->SetViewTarget(Camera.Get());
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: viewing through %s at %s"), *Camera->GetName(), *Camera->GetActorLocation().ToString());
@@ -346,6 +349,7 @@ void ASlapHUD::DrawHUD()
 	Fps += 0.05f * (1.f / FMath::Max(Dt, 1e-4f) - Fps);
 
 	Layout();
+	if (bReel) { ReelFrame(); return; }	// the highlight reel's playback owns the frame
 	FindController();
 	if (bTravelling && TravelledAt >= 0.0 && Now - TravelledAt > 6.0)
 	{
@@ -397,12 +401,18 @@ void ASlapHUD::DrawHUD()
 	AutoTier();
 	Live(H);
 	if (Camera.IsValid()) Direct(Camera.Get(), H);
+	SeqTick(H, Now);
+	Jumbo(H, Now);
+	Titles(H, Now);
+	Jiggle(H);
+	ReelWatch(H, Now);
 	if (H.Match > 0 && !bMenu)	// the menu is its own screen: nothing of the match is drawn under it
 	{
 		Boxes.Reset();
 		TextOverflows = TextShrunk = 0;
 		DrawMatch(H);		// the scoreboard
 		DrawMomentum(H);	// who is winning
+		DrawWinProb(H);		// and how likely each is to win from here
 		DrawNamePlates(H);	// names, badges, stamina, neck, danger
 		if (bShowTelemetry) DrawTelemetry(H);
 		if (bShowTelemetry) DrawStrain(H);

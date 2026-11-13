@@ -9,6 +9,7 @@
 class FArchive;
 class FJsonObject;
 class UNNEModelData;
+struct FSlapReel;
 namespace UE::NNE { class IModelInstanceCPU; }
 
 /** Match rules the HUD shows too (training/match.py, brain_cpu.py). */
@@ -168,6 +169,9 @@ public:
 	 *  itself, as before. A pairing opened by START (?SlapGo) starts its match at once. Set in Bind. */
 	std::atomic<bool> bAutoNext = true;
 	std::atomic<bool> bWaitForStart = false;
+
+	/** The highlight reel (SlapReel.h; display only): every body's pose over the last 6 s of physics steps, oldest first. */
+	void TakeReel(FSlapReel& Out) const;
 
 	/** Second screen: the match events since the last call (JSONL lines, frames left out). */
 	void TakeEvents(TArray<FString>& Out) { FScopeLock L(&HudLock); Out = MoveTemp(Outbox); Outbox.Reset(); }
@@ -345,6 +349,16 @@ private:
 	/** Runtime brains from -SlapRedBrain= / -SlapBlueBrain= (.onnx files), kept alive here. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UNNEModelData>> LoadedBrains;
+
+	// the highlight reel's ring (SlapReel.cpp): allocated in Bind, copied into once per step
+	void ReelBind(const mjModel* m);
+	void ReelStep(const mjData* d, double PalmSpeed, double HeadG, bool bTouchedNow, int32 Striker);
+	mutable FCriticalSection ReelLock;
+	TArray<float> ReelBuf;
+	int32 ReelBodies = 0, ReelHead = 0, ReelCount = 0, ReelTouchAge = -1, ReelStriker = 0;
+	float ReelDt = 0.005f;
+	double ReelPalm = 0.0, ReelG = 0.0;	// the last telemetry (50 Hz), stamped on every step
+	bool bReelTouched = false;
 
 	// replay
 	TArray<int32> ReplayAct;

@@ -27,6 +27,7 @@
 #include "MuJoCo/Utils/MjUtils.h"
 #include "SlapAthleteVisual.h"
 #include "SlapHUDInternal.h"
+#include "SlapReel.h"
 #include "SlapNames.h"
 
 using namespace SlapUi;
@@ -467,6 +468,17 @@ int32 ASlapHUD::WidgetChecks(FString& Out) const
 	Check(TEXT("strain"), StrainDrawn > 0, FString::Printf(TEXT("%d frames (TAB on)"), StrainDrawn));
 	Check(TEXT("replay"), StrikeReplays > 0 || ReplayDue == 0, FString::Printf(TEXT("%d replays, %d turns ended on a landed strike without a KO"), StrikeReplays, ReplayDue));
 	Check(TEXT("scouting"), ScoutShown > 0 || ScoutRoundsSeen == 0, FString::Printf(TEXT("%d frames, %d rounds scored before a result"), ScoutShown, ScoutRoundsSeen));
+	// the broadcast pass of 2026-11-12: each piece that is switched on did its job in this match
+	Check(TEXT("winprob"), WinW.Num() == 0 || WinDrawn > 0, FString::Printf(TEXT("%d frames, model from %d matches"), WinDrawn, WinMatches));
+	Check(TEXT("jumbotron"), !JumboCam || TierLive < 2 || JumboFrames > 0, FString::Printf(TEXT("%d captures, tier %d"), JumboFrames, TierLive));
+	Check(TEXT("titles"), !BigTitle || TierLive < 1 || TitlesShown > 0, FString::Printf(TEXT("%d captions stood in 3D"), TitlesShown));
+	Check(TEXT("sequences"), SeqLoaded == 0 || SeqPlays > 0, FString::Printf(TEXT("%d plays of %d loaded"), SeqPlays, SeqLoaded));
+	Check(TEXT("softtissue"), !bJiggle || (JigglePeak > 0.f && JigglePeak <= 4.01f), FString::Printf(TEXT("peak offset %.2f cm"), JigglePeak));
+	{
+		FSlapReel Reel;
+		if (const USlapController* C = Controller.Get()) C->TakeReel(Reel);
+		Check(TEXT("reel"), Reel.IsValid() && Reel.NumSteps > 200, FString::Printf(TEXT("%d steps x %d bodies in the ring, %d saved"), Reel.NumSteps, Reel.NumBodies, ReelsSaved));
+	}
 	// the name plates mirror each other about the screen's centre line (red left, blue right)
 	const FCanvasBox* R = Boxes.FindByPredicate([](const FCanvasBox& B) { return B.Name == TEXT("PlateRed"); });
 	const FCanvasBox* B = Boxes.FindByPredicate([](const FCanvasBox& X) { return X.Name == TEXT("PlateBlue"); });
