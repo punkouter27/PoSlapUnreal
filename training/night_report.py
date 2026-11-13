@@ -94,7 +94,14 @@ def main():
         for run, r in runs.items():
             if r["stage"]["char"] != char or not r["tele"] or key not in r["tele"][-1]:
                 continue
-            pts = [[round(t["min"], 2), t.get(key)] for t in r["tele"] if t.get(key) is not None]
+            pts, base_m, last_m = [], 0.0, 0.0
+            for t in r["tele"]:
+                m = float(t.get("min", 0.0))
+                if m < last_m:
+                    base_m += last_m
+                last_m = m
+                if t.get(key) is not None:
+                    pts.append([round(base_m + m, 2), t.get(key)])
             out.append({"name": run, "color": SLOTS[i % len(SLOTS)], "points": pts})
             i += 1
         return out
@@ -163,15 +170,19 @@ def main():
     # ---------------------------------------------------------------- the story, in words
     story = []
     for s in stages:
+        rm = runs[s["run"]]["meta"]
+        s_min = s.get("train_minutes") if s.get("train_minutes") is not None else rm.get("minutes")
+        s_steps = s.get("steps") or rm.get("steps") or 0
+        s_best = s.get("best_exam") if s.get("best_exam") is not None else rm.get("best_exam")
         who = PRETTY.get(s["char"], s["char"])
         vs = f" against {PRETTY.get(s['vs'], s['vs'])}" if s.get("vs") else ""
-        g = s.get("graduated")
+        g = s.get("graduated") if s.get("graduated") is not None else rm.get("graduated")
         me = s.get("match_exam")
-        line = f"<b>{who} {s['level']}{vs}</b> ({s['run']}, {fmt(s.get('train_minutes'))} min, {fmt((s.get('steps') or 0) / 1e6, 0)} M steps): "
+        line = f"<b>{who} {s['level']}{vs}</b> ({s['run']}, {fmt(s_min)} min, {fmt(s_steps / 1e6, 0)} M steps): "
         if g:
             line += "train.py's exam passed (" + ", ".join(f"{k} {pct(v) if isinstance(v, float) and v <= 1 else v}" for k, v in g.items() if k != "score") + "). "
         else:
-            line += f"train.py's exam not passed (best score {fmt(s.get('best_exam'), 2)}). "
+            line += f"train.py's exam not passed (best score {fmt(s_best, 2)}). "
         if me:
             sd = me.get("side") or {}
             line += (f"Match gate <b>{'PASSED' if me['passed'] else 'failed'}</b>: lands {pct(sd.get('land_rate'))}, self-falls {pct(sd.get('self_fall'))}, "
@@ -191,8 +202,10 @@ def main():
     story_html = "".join(f"<li>{s}</li>" for s in story)
     stage_rows = "".join(
         f"<tr><td>{esc(s['run'])}</td><td>{esc(PRETTY.get(s['char'], s['char']))}</td><td>{esc(s['level'])}{' vs ' + esc(PRETTY.get(s['vs'], s['vs'])) if s.get('vs') else ''}</td>"
-        f"<td>{fmt(s.get('train_minutes'))}</td><td>{fmt((s.get('steps') or 0) / 1e6, 0)}</td><td>{fmt(s.get('best_exam'), 3)}</td>"
-        f"<td>{'yes' if s.get('graduated') else 'no'}</td><td>{(('pass' if s['match_exam']['passed'] else 'fail: ' + esc(s['match_exam']['why'])) if s.get('match_exam') else '-')}</td>"
+        f"<td>{fmt(s.get('train_minutes') if s.get('train_minutes') is not None else runs[s['run']]['meta'].get('minutes'))}</td>"
+        f"<td>{fmt((s.get('steps') or runs[s['run']]['meta'].get('steps') or 0) / 1e6, 0)}</td>"
+        f"<td>{fmt(s.get('best_exam') if s.get('best_exam') is not None else runs[s['run']]['meta'].get('best_exam'), 3)}</td>"
+        f"<td>{'yes' if (s.get('graduated') or runs[s['run']]['meta'].get('graduated')) else 'no'}</td><td>{(('pass' if s['match_exam']['passed'] else 'fail: ' + esc(s['match_exam']['why'])) if s.get('match_exam') else '-')}</td>"
         f"<td><a href='../../training/runs/{esc(s['run'])}/report.html'>run report</a></td></tr>" for s in stages)
     gate_table = "".join(
         f"<tr><td>{esc(g['run'])}</td><td>{esc(PRETTY[g['char']])} vs {esc(PRETTY[g['vs']])}</td><td>{g['matches']}</td><td>{g['blowups']}</td>"
