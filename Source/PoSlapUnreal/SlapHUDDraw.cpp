@@ -368,6 +368,8 @@ void ASlapHUD::DrawTelemetry(const FSlapHud& H)
 	Text(bPass ? FString::Printf(TEXT("FEINT %d   REAL %d   FLINCH %d"), Read.Feints, Read.Reals, Flinches[0] + Flinches[1]) : FString::Printf(TEXT("FEINT %d   REAL %d"), Read.Feints, Read.Reals),
 		FX, FY - 3.f * S, Read.Feints ? Gold : FColor::White, 0.95f * S);
 	Text(FString::Printf(TEXT("AI READ %d / %d right   now %d%%"), Read.ReadsRight, Read.Reads, FMath::RoundToInt(100.f * Read.Score)), FX, FY + 12.f * S, Read.bReading ? Amber : Grey, 0.85f * S);
+	static const TCHAR* ModeNames[] = { TEXT("WATCH"), TEXT("PLAY"), TEXT("TESTBED") };
+	Text(FString::Printf(TEXT("MODE %s  CAM %s  NAN %d  [F1-F4 SPACE R]"), ModeNames[FMath::Clamp(AppModeIndex, 0, 2)], CamName[(int32)CamMode], H.NanInfCount), FX, FY - 28.f * S, Gold, 0.78f * S);
 	TrackBox(TEXT("Swings"), FX - 6.f * S, FY - 18.f * S, FW, 48.f * S);
 }
 

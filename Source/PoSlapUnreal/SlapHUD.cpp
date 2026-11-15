@@ -301,19 +301,57 @@ void ASlapHUD::Keys()
 {
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC) return;
-	const bool bTab = PC->IsInputKeyDown(EKeys::Tab);	// TAB: the detailed stats panel (the default HUD stays clean)
-	if (bTab && !bTabDown)
+	const bool bTab = PC->IsInputKeyDown(EKeys::Tab);	// TAB / F3: the detailed stats panel (the default HUD stays clean)
+	const bool bF3 = PC->IsInputKeyDown(EKeys::F3);
+	if ((bTab && !bTabDown) || (bF3 && !bF3Down))
 	{
 		bShowTelemetry = !bShowTelemetry;
-		UE_LOG(LogSlap, Log, TEXT("SlapHUD: TAB: the stats panel is %s"), bShowTelemetry ? TEXT("on") : TEXT("off"));
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: telemetry %s"), bShowTelemetry ? TEXT("on") : TEXT("off"));
 	}
 	bTabDown = bTab;
-	const bool bCam = PC->IsInputKeyDown(EKeys::C);	// C: the camera mode (AUTO -> WIDE -> SIDE -> CLOSE)
-	if (bCam && !bCamDown) SetCam((ECam)(((int32)CamMode + 1) % UE_ARRAY_COUNT(CamName)));
+	bF3Down = bF3;
+	const bool bCam = PC->IsInputKeyDown(EKeys::C);	// C / F2: camera mode (AUTO -> WIDE -> SIDE -> CLOSE -> FOLLOW -> ORBIT -> FREE)
+	const bool bF2 = PC->IsInputKeyDown(EKeys::F2);
+	if ((bCam && !bCamDown) || (bF2 && !bF2Down)) SetCam((ECam)(((int32)CamMode + 1) % UE_ARRAY_COUNT(CamName)));
 	bCamDown = bCam;
-	const bool bSpace = PC->IsInputKeyDown(EKeys::SpaceBar);	// SPACE: skip a replay, back to live
-	if (bSpace && !bSpaceDown) SkipReplay();
+	bF2Down = bF2;
+	const bool bF1 = PC->IsInputKeyDown(EKeys::F1);	// F1: cycle Watch -> Play -> Testbed
+	if (bF1 && !bF1Down)
+	{
+		AppModeIndex = (AppModeIndex + 1) % 3;
+		static const TCHAR* AppModes[] = { TEXT("Watch"), TEXT("Play"), TEXT("Testbed") };
+		UE_LOG(LogSlap, Log, TEXT("SlapHUD: F1 mode %s"), AppModes[AppModeIndex]);
+	}
+	bF1Down = bF1;
+	const bool bF4 = PC->IsInputKeyDown(EKeys::F4);	// F4: hot-swap brain on striker corner
+	if (bF4 && !bF4Down) StepBrain(0, 1);
+	bF4Down = bF4;
+	const bool bR = PC->IsInputKeyDown(EKeys::R);	// R: restart / rematch
+	if (bR && !bRDown)
+	{
+		FreeCamOffset = FVector::ZeroVector;
+		Start();
+	}
+	bRDown = bR;
+	const bool bSpace = PC->IsInputKeyDown(EKeys::SpaceBar);	// SPACE: skip a replay if active, else toggle pause
+	if (bSpace && !bSpaceDown)
+	{
+		if (GetWorld() && GetWorld()->GetTimeSeconds() < ReplayEnd) SkipReplay();
+		else
+		{
+			bUserPaused = !bUserPaused;
+			PC->SetPause(bUserPaused);
+		}
+	}
 	bSpaceDown = bSpace;
+	if (CamMode == ECam::Free && GetWorld())
+	{
+		const float PanStep = 140.f * FMath::Max(GetWorld()->GetDeltaSeconds(), 0.016f);
+		if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up)) FreeCamOffset.Y += PanStep;
+		if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down)) FreeCamOffset.Y -= PanStep;
+		if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) FreeCamOffset.X += PanStep;
+		if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left)) FreeCamOffset.X -= PanStep;
+	}
 }
 
 void ASlapHUD::DrawHUD()

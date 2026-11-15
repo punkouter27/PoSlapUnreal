@@ -67,7 +67,7 @@ public:
 	virtual void DrawHUD() override;
 
 	enum ETab : int32 { TabMatch, TabBrains, TabView, TabTourney, NumTabs };
-	enum class ECam : uint8 { Auto, Wide, Side, Close };	// the director (Auto) or a pinned shot (the VIEW tab, the C key)
+	enum class ECam : uint8 { Auto, Wide, Side, Close, Follow, Orbit, Free };	// the director (Auto) or a pinned shot / free cam (F2 / C)
 
 private:
 	enum class EShot : uint8 { WalkIn, Wide, Side, Tension, Strike, Impact, KO, Replay, Winner };	// escalating: a higher shot cuts in at once
@@ -482,6 +482,10 @@ private:
 	double SlowSince = -1.0;
 	int32 BaseQuality[5] = { -1, -1, -1, -1, -1 };	// the engine's scalability at launch: shadows, post, effects, foliage, shading
 	bool bTabDown = false, bCamDown = false;
+	bool bF1Down = false, bF2Down = false, bF3Down = false, bF4Down = false, bRDown = false;
+	int32 AppModeIndex = 0;	// 0 = Watch, 1 = Play, 2 = Testbed
+	bool bUserPaused = false;
+	FVector FreeCamOffset = FVector::ZeroVector;
 
 	// momentum bar: what each brain's critic usually says in each role (index role + 1), and the bar's red share
 	double RoleMean[3] = {}, RoleVar[3] = {};

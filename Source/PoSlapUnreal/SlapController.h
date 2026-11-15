@@ -80,6 +80,7 @@ struct FSlapHud
 	float SlowMo = 1.f;					// physics pace (1 = real time); the HUD slows the world clock with it
 	float Focus[2][10] = {};			// brain X-ray: share of each input group in what each brain just reacted to (sums to 1)
 	TArray<FVector> Ghost[2];			// brain X-ray: each athlete's target pose, body origins (Unreal cm)
+	int32 NanInfCount = 0;
 	TArray<int32> GhostParent[2];		// per ghost body: its parent's index in Ghost[a], -1 = the pelvis
 	TArray<float> Pose;					// second screen: per athlete root (7) + joints in fingerprint order, red then blue
 	FString WalkNote;					// walk-in: which athletes walk on their own brain
@@ -151,7 +152,7 @@ public:
 	int32 DefenderRole = -1;
 
 	/** Thread-safe copy of the match state for the HUD (into a kept FSlapHud: its strings reuse their buffers). */
-	void GetHud(FSlapHud& Out) const { FScopeLock L(&HudLock); Out = Hud; Out.Steps = StepCount.load(std::memory_order_relaxed); Out.Timestep = Timestep; }
+	void GetHud(FSlapHud& Out) const { FScopeLock L(&HudLock); Out = Hud; Out.Steps = StepCount.load(std::memory_order_relaxed); Out.Timestep = Timestep; Out.NanInfCount = NanInfCount.load(std::memory_order_relaxed); }
 
 	/** Menu (game thread): these brains for red / blue (null = keep the current one) and a fresh match from the next
 	 *  physics step; the match in progress is abandoned, unscored. */
@@ -344,6 +345,8 @@ private:
 	TArray<mjtNum> FrSaved;
 	void BuildObs(const mjModel* m, const mjData* d, FAthlete& A, float Role, double Clock, const FAthlete* Opp, float* Obs, const float* Cmd = nullptr) const;	// Cmd: inputs 102-107 (the walking brain's command)
 	static void FootContacts(const mjModel* m, const mjData* d, const FAthlete& A, float* Out);	// BRAIN_IO 136-139 (heel/toe per foot)
+	/** Appends zero-initialized inputs to the tail of an observation buffer without reordering existing slots. */
+	static void AppendZeroInitInputs(TArray<float>& Obs, int32 ExtraCount);
 	void WriteQposDump(const mjModel* m, const FString& RelPath);
 
 	// live matching check (-SlapRecord=<file>): record qpos for RecordSteps physics steps from the stand pose
@@ -351,6 +354,7 @@ private:
 	int32 RecordSteps = 1000;
 
 	std::atomic<int64> StepCount = 0;	// physics thread writes; the HUD's step counter reads it (GetHud)
+	std::atomic<int32> NanInfCount = 0;
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
 	int32 Physics = 1;			// the fingerprint's physics version: 2 takes the strike impulse from the part that touched (match.py)

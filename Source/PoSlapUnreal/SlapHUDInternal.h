@@ -6,6 +6,7 @@
 #include "GameFramework/HUD.h"
 #include "SlapController.h"
 #include "SlapNames.h"
+#include "UiTheme.h"
 
 namespace SlapUi
 {
@@ -37,7 +38,7 @@ namespace SlapUi
 	inline FString DesktopLevel(const FString& Name) { return IsMobileLevel(Name) ? Name.LeftChop(7) : Name; }
 	inline constexpr float MatRadius = 270.f;	// cm: the padded safety mat around the centre; the hard stage deck outside (Web/audio.js MAT_RADIUS)
 	inline const TCHAR* const ShotName[] = { TEXT("WALKIN"), TEXT("WIDE"), TEXT("SIDE"), TEXT("TENSION"), TEXT("STRIKE"), TEXT("IMPACT"), TEXT("KO"), TEXT("REPLAY"), TEXT("WINNER") };
-	inline const TCHAR* const CamName[] = { TEXT("AUTO"), TEXT("WIDE"), TEXT("SIDE"), TEXT("CLOSE") };
+	inline const TCHAR* const CamName[] = { TEXT("AUTO"), TEXT("WIDE"), TEXT("SIDE"), TEXT("CLOSE"), TEXT("FOLLOW"), TEXT("ORBIT"), TEXT("FREE") };
 
 	inline int32 Team(const FString& Name) { return Name == TEXT("blue") ? 1 : 0; }
 	template <typename T> T* Load(const TCHAR* Path) { return LoadObject<T>(nullptr, Path, nullptr, LOAD_Quiet | LOAD_NoWarn); }

@@ -173,17 +173,33 @@ void ASlapHUD::Direct(ACameraActor* Cam, const FSlapHud& H)
 		Speed = 6.f;
 		break;
 	}
-	default:				// wide, side-on: both athletes framed (~60 % of the portrait height), below the HUD panel
+	default:				// wide, side-on, follow, orbit, free
 	{
-		const float Height = FMath::Max(Box.GetSize().Z, Box.GetSize().X / Aspect) + 40.f;
-		// capped: a fallen athlete sliding away grew the box and pulled the lens back into the ringside jibs and tables
-		// (their dark boxes filled the frame); past the cap the far athlete may leave the frame instead
-		const float Dist = FMath::Min(Height * 0.5f / 0.55f / FMath::Tan(HalfV), MaxWideDist);
-		Pos = Box.GetCenter() - Fwd * Dist + Up * (0.12f * 2.f * Dist * FMath::Tan(HalfV));
-		Look = Pos + Fwd;
+		if (CamMode == ECam::Follow)
+		{
+			const int32 Sk = 1 - Def;
+			Look = Head[Sk];
+			Pos = Look - Fwd.RotateAngleAxis(Sk == 1 ? -24.f : 24.f, Up) * 140.f + Up * 14.f;
+			Speed = 6.f;
+		}
+		else if (CamMode == ECam::Orbit)
+		{
+			const float Ang = float(Now * 18.0);
+			Look = 0.5f * (Pelvis[0] + Pelvis[1]) + Up * 15.f;
+			Pos = Look - Fwd.RotateAngleAxis(Ang, Up) * 185.f + Up * 32.f;
+			Speed = 5.f;
+		}
+		else
+		{
+			const float Height = FMath::Max(Box.GetSize().Z, Box.GetSize().X / Aspect) + 40.f;
+			const float Dist = FMath::Min(Height * 0.5f / 0.55f / FMath::Tan(HalfV), MaxWideDist);
+			const FVector Offset = CamMode == ECam::Free ? FreeCamOffset : FVector::ZeroVector;
+			Pos = Box.GetCenter() - Fwd * Dist + Up * (0.12f * 2.f * Dist * FMath::Tan(HalfV)) + Offset;
+			Look = (CamMode == ECam::Free) ? (Box.GetCenter() + Offset * 0.5f) : (Pos + Fwd);
+		}
 	}
 	}
-	const FRotator Rot = Shot == EShot::Wide ? BaseRot : (Look - Pos).Rotation();
+	const FRotator Rot = (Shot == EShot::Wide && CamMode != ECam::Follow && CamMode != ECam::Orbit && CamMode != ECam::Free) ? BaseRot : (Look - Pos).Rotation();
 
 	const float Dt = GetWorld()->GetDeltaSeconds();
 	FVector L = bCut ? Pos : FMath::VInterpTo(Cam->GetActorLocation(), Pos, Dt, Speed);

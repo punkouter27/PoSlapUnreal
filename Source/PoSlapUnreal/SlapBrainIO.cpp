@@ -146,18 +146,49 @@ bool USlapController::Infer(FAthlete& A, const float* InObs, float& Value)
 	return RunNet(*A.Net, A.NumIn, A.NumOut, InObs, Value, A.Action);
 }
 
+void USlapController::AppendZeroInitInputs(TArray<float>& Obs, int32 ExtraCount)
+{
+	if (ExtraCount <= 0) return;
+	const int32 Base = Obs.Num();
+	Obs.SetNumUninitialized(Base + ExtraCount);
+	for (int32 i = 0; i < ExtraCount; ++i)
+	{
+		Obs[Base + i] = 0.f;
+	}
+}
+
 bool USlapController::RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out)
 {
 	const UE::NNE::FTensorBindingCPU In{ (void*)InObs, (uint64)NumIn * sizeof(float) };
+	bool bOk = false;
 	if (NumOut == 0)	// the rebuilt brain: one output, the actions then the value
 	{
 		Out.SetNumUninitialized(Out.Num() + 1, EAllowShrinking::No);
-		const bool bOk = Net.RunSync({ In }, { { Out.GetData(), (uint64)Out.Num() * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
+		bOk = Net.RunSync({ In }, { { Out.GetData(), (uint64)Out.Num() * sizeof(float) } }) == UE::NNE::EResultStatus::Ok;
 		Value = Out.Pop(EAllowShrinking::No);
-		return bOk;
 	}
-	const UE::NNE::FTensorBindingCPU OutB[] = { { Out.GetData(), (uint64)Out.Num() * sizeof(float) }, { &Value, sizeof(float) } };
-	return Net.RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(OutB, NumOut)) == UE::NNE::EResultStatus::Ok;
+	else
+	{
+		const UE::NNE::FTensorBindingCPU OutB[] = { { Out.GetData(), (uint64)Out.Num() * sizeof(float) }, { &Value, sizeof(float) } };
+		bOk = Net.RunSync({ In }, TConstArrayView<UE::NNE::FTensorBindingCPU>(OutB, NumOut)) == UE::NNE::EResultStatus::Ok;
+	}
+	if (bOk)
+	{
+		for (float& V : Out)
+		{
+			if (!FMath::IsFinite(V))
+			{
+				NanInfCount.fetch_add(1, std::memory_order_relaxed);
+				V = 0.f;
+			}
+		}
+		if (!FMath::IsFinite(Value))
+		{
+			NanInfCount.fetch_add(1, std::memory_order_relaxed);
+			Value = 0.f;
+		}
+	}
+	return bOk;
 }
 
 void USlapController::Decide(const mjModel* m, mjData* d)
