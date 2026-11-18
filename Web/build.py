@@ -29,22 +29,24 @@ data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerpri
     + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
-for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
+for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "diag.html", "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
         + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars] \
         + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS] \
         + [(ROOT / f, DIST / f) for f in data]:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
-page = DIST / "Web" / "index.html"   # the build stamp (bottom right): the build date
-# the stamp is <div class="... stamp ..." ...>dev</div>: only the text between the tags is replaced
-page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)', rf'\g<1>{time.strftime("%y%m%d")}\g<2>',
-                        page.read_text(encoding="utf-8")), encoding="utf-8")
+for html_name in ("index.html", "diag.html"):
+    page = DIST / "Web" / html_name   # the build stamp (bottom right): the build date
+    # the stamp is <div class="... stamp ..." ...>dev</div>: only the text between the tags is replaced
+    page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)', rf'\g<1>{time.strftime("%y%m%d")}\g<2>',
+                            page.read_text(encoding="utf-8")), encoding="utf-8")
 (DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
                                  '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
 # No Content-Security-Policy (user 2026-11-03): the old one sat under "headers", which Azure Static Web Apps does not
 # read (it reads "globalHeaders"), so it was never served; served as written it blocks MuJoCo's WASM bindings (new Function).
 (DIST / "staticwebapp.config.json").write_text(
-    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" } }\n')
+    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
+    '"routes": [ { "route": "/diag", "rewrite": "/Web/diag.html" } ] }\n')
 
 
 def _fail_lfs_pointers():

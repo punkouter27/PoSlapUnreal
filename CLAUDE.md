@@ -1,5 +1,7 @@
 # PoSlapUnreal — Claude / Agent Reference
 
+@AGENTS.md
+
 See [AGENTS.md](./AGENTS.md) for the authoritative project specification and physics/training gates.
 
 ## Standard Profile B Conventions
