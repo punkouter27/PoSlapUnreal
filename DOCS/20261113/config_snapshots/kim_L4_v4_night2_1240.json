@@ -1,14 +1,14 @@
 {
  "run": "kim_L4_v4_night2_1240",
  "started": "2026-11-13 12:40:15",
- "command": "train.py --char kim --level L4 --minutes 90.0 --envs 8192 --run kim_L4_v4_night2_1240 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_L3_v4_night1_1139\\best.pt --physics 4",
+ "command": "train.py --char kim --level L4 --minutes 90.0 --envs 8192 --run kim_L4_v4_night2_1240 --resume PoSlapUnreal\\training\\runs\\kim_L3_v4_night1_1139\\best.pt --physics 4",
  "args": {
   "char": "kim",
   "level": "L4",
   "minutes": 90.0,
   "envs": 8192,
   "run": "kim_L4_v4_night2_1240",
-  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_L3_v4_night1_1139\\best.pt",
+  "resume": "PoSlapUnreal\\training\\runs\\kim_L3_v4_night1_1139\\best.pt",
   "max_std": 0.3,
   "entropy": 0.001,
   "critic_warmup": 0,
