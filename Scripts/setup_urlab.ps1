@@ -25,5 +25,5 @@ if (Test-Path $uePython) {
     [IO.File]::WriteAllText($ini, "[PythonSettings]`nPythonPath=$uePython`n")
     Write-Host "URLab Python: packages installed, path stored in $ini"
 } else {
-    Write-Warning "UE 5.8 bundled Python not found at $uePython: MJCF imports in commandlets will cancel on the Python dialog"
+    Write-Warning "UE 5.8 bundled Python not found at ${uePython}: MJCF imports in commandlets will cancel on the Python dialog"
 }
