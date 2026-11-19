@@ -42,6 +42,12 @@ def import_file(src, dest, options=None, name=None):
 # ---- assets
 RED, BLUE = os.environ.get("SLAP_RED", "grandpa"), os.environ.get("SLAP_BLUE", "grandpa")
 PAIR = f"{RED}_vs_{BLUE}"
+# SLAP_PHYSICS=<n> (n > 1): the arena and fingerprints from training/models/v<n>/, into their own level, Blueprint and
+# folder (/Game/Levels/L_Arena_<pair>_v<n>, /Game/Arena/v<n>/), so the shipped physics-1 levels stay as they are
+PHYS = int(os.environ.get("SLAP_PHYSICS", "1"))
+MODELS = "training/models/" if PHYS == 1 else f"training/models/v{PHYS}/"
+SUFFIX = "" if PHYS == 1 else f"_v{PHYS}"
+ARENA_DIR = "/Game/Arena" if PHYS == 1 else f"/Game/Arena/v{PHYS}"
 REIMPORT = os.environ.get("SLAP_REIMPORT") == "1"
 fbx = unreal.FbxImportUI()
 for k, v in (("import_mesh", True), ("import_as_skeletal", True), ("import_materials", True),
@@ -150,7 +156,7 @@ blue_brain = brain_asset(os.environ["SLAP_BLUE_BRAIN"]) if os.environ.get("SLAP_
 
 # ---- level FIRST: wipe and save it so the old arena Blueprint has no references left (URLab refuses to import
 # over a Blueprint the open level still instantiates, and delete_asset fails on a referenced asset)
-LEVEL = "/Game/Levels/L_Arena" if PAIR == "grandpa_vs_grandpa" else f"/Game/Levels/L_Arena_{PAIR}"
+LEVEL = "/Game/Levels/L_Arena" if PAIR == "grandpa_vs_grandpa" and PHYS == 1 else f"/Game/Levels/L_Arena_{PAIR}{SUFFIX}"
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 if ASSETS.does_asset_exist(LEVEL):
@@ -161,10 +167,10 @@ if ASSETS.does_asset_exist(LEVEL):
 else:
     les.new_level(LEVEL)
 
-BP = f"/Game/Arena/BP_{PAIR}_arena"
+BP = f"{ARENA_DIR}/BP_{PAIR}_arena{SUFFIX}"
 if ASSETS.does_asset_exist(BP):   # URLab won't overwrite; the MJCF may have changed
     ASSETS.delete_asset(BP)
-arena_bp = next(a for a in import_file(f"training/models/{PAIR}_arena.xml", "/Game/Arena")
+arena_bp = next(a for a in import_file(f"{MODELS}{PAIR}_arena.xml", ARENA_DIR)
                 if isinstance(a, unreal.Blueprint))
 ASSETS.rename_asset(arena_bp.get_path_name().split(".")[0], BP)   # URLab names it after the XML
 arena_bp = ASSETS.load_asset(BP)
@@ -184,8 +190,8 @@ for h in handles:
     if isinstance(obj, unreal.SlapController):
         obj.set_editor_property("brain", brain)
         obj.set_editor_property("blue_brain", blue_brain)
-        obj.set_editor_property("fingerprint", f"training/models/{RED}_fingerprint.json")
-        obj.set_editor_property("blue_fingerprint", "" if BLUE == RED else f"training/models/{BLUE}_fingerprint.json")
+        obj.set_editor_property("fingerprint", f"{MODELS}{RED}_fingerprint.json")
+        obj.set_editor_property("blue_fingerprint", "" if BLUE == RED else f"{MODELS}{BLUE}_fingerprint.json")
         obj.set_editor_property("mode", unreal.SlapControlMode.POLICY)
         obj.set_editor_property("defender_role", int(os.environ.get("SLAP_DEFENDER_ROLE", "-1")))   # 0 for guard brains before L3
 unreal.BlueprintEditorLibrary.compile_blueprint(arena_bp)

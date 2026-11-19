@@ -12,14 +12,17 @@ export const MATCHUPS = {
         corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_final_vs_kim" }, { prefix: "blue_", char: "kim", brain: "kim_final_vs_grandpa" }] },
   kg: { name: "Kim vs Grandpa", xml: "kim_vs_grandpa_arena.xml", defenderRole: -1,
         corners: [{ prefix: "red_", char: "kim", brain: "kim_final_vs_grandpa" }, { prefix: "blue_", char: "grandpa", brain: "grandpa_final_vs_kim" }] },
+  // physics 4 / rules 2 (the 2026-11-19 retrain_v5 night): models/v4/ bodies, interface 5 brains. Not the default pairing.
+  gk4: { name: "Grandpa vs Kim (physics 4)", dir: "v4/", xml: "grandpa_vs_kim_arena.xml", defenderRole: -1,
+        corners: [{ prefix: "red_", char: "grandpa", brain: "grandpa_L4_vs_kim_v4" }, { prefix: "blue_", char: "kim", brain: "kim_L4_vs_grandpa_v4_candidate" }] },
 };
 // the key of a pairing: each corner's character initial, red first ("gk" = Grandpa red, Kim blue); null = not on this page
-export const matchupKey = (red, blue) => Object.keys(MATCHUPS).find(k => MATCHUPS[k].corners[0].char === red && MATCHUPS[k].corners[1].char === blue) ?? null;
+export const matchupKey = (red, blue) => Object.keys(MATCHUPS).find(k => !MATCHUPS[k].dir && MATCHUPS[k].corners[0].char === red && MATCHUPS[k].corners[1].char === blue) ?? null;
 
 export async function loadMatch(mj, ort, get, emit, key = "gg") {
   const mu = MATCHUPS[key];
-  const m = mj.MjModel.from_xml_string(await get(`training/models/${mu.xml}`, "text"));
-  const fps = await Promise.all(mu.corners.map(c => get(`training/models/${c.char}_fingerprint.json`, "json")));
+  const m = mj.MjModel.from_xml_string(await get(`training/models/${mu.dir ?? ""}${mu.xml}`, "text"));
+  const fps = await Promise.all(mu.corners.map(c => get(`training/models/${mu.dir ?? ""}${c.char}_fingerprint.json`, "json")));
   const o = fps[0].option;   // Unreal's options (the red corner's fingerprint): the XML drops solver and iterations
   m.opt.timestep = o.timestep; m.opt.integrator = o.integrator; m.opt.solver = o.solver; m.opt.iterations = o.iterations;
   m.opt.gravity.set(o.gravity);
