@@ -13,8 +13,8 @@
 
  "_kick": "Rules 2 has no scripted impact: the blow is what the contact between the striker's part and the face passes on (rules 1 adds the card's strike_mass x the part's velocity as an impulse over kick_steps).",
 
- "_stun": "The knockout model: the defender's head speed peak over stun_window_s after the touch, against stun_speed x the card's chin (default 1). At or above it he is stunned: every motor at stun_strength of its force for stun_s x severity seconds (severity = peak / threshold, at most stun_max). PROVISIONAL (2026-11-13): 1.0 m/s is the top ~5 % of head speeds the shipped physics-1 brains produce without the kick (p50 0.75, p99 1.1-1.3); no brain trained on rules 2 exists yet. Re-read it from `calibrate_rules.py` after the first physics-4 L4 stage.",
- "stun_speed": 1.0,
+ "_stun": "The knockout model: the defender's head speed peak over stun_window_s after the touch, against stun_speed x the card's chin (default 1). At or above it he is stunned: every motor at stun_strength of its force for stun_s x severity seconds (severity = peak / threshold, at most stun_max). 2026-11-19: 0.65 m/s = p75 of the stun-window head speed of the first physics-4 L4 brain (kim_L4_v4_candidate, calibrate_rules.py 48 matches: p50 0.59, p75 0.66, p99 0.90-0.93; at the provisional 1.0 one strike in 288 stunned). At 0.65: 27 % of landed strikes stun, 1 % KO. Re-read after the next L4 stages (brains may learn to hit harder).",
+ "stun_speed": 0.65,
  "stun_window_s": 0.25,
  "stun_strength": 0.25,
  "stun_s": 1.0,

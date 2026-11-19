@@ -35,7 +35,7 @@ namespace SlapGen
 	inline constexpr int KickSteps = 2;
 	inline constexpr int JudgeWeights[3][4] = { { 2, 1, 1, 1 }, { 1, 2, 1, 1 }, { 1, 1, 2, 2 } };
 	inline constexpr int Rules2FromPhysics = 4;
-	inline constexpr double StunSpeed = 1.0;
+	inline constexpr double StunSpeed = 0.65;
 	inline constexpr double StunWindowS = 0.25;
 	inline constexpr double StunStrength = 0.25;
 	inline constexpr double StunS = 1.0;

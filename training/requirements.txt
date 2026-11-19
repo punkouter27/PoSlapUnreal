@@ -3,6 +3,7 @@ mujoco==3.10.0
 mujoco-warp==3.10.0.3
 numpy
 onnx
+onnxruntime
 tensorboard
 # torch: uv pip install torch --index-url https://download.pytorch.org/whl/cu128
 anthropic

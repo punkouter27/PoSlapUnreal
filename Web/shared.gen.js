@@ -55,7 +55,7 @@ export const RULES = Object.freeze({
     ]
   ],
   "rules2_from_physics": 4,
-  "stun_speed": 1.0,
+  "stun_speed": 0.65,
   "stun_window_s": 0.25,
   "stun_strength": 0.25,
   "stun_s": 1.0,
