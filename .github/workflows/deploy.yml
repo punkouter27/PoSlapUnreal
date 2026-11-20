@@ -1,8 +1,9 @@
 name: Build & Deploy
 
-# The one workflow for this repo: verify the three engines agree, bundle the web build, then (master
-# only) deploy it to the Azure Static Web App. Pull requests get the checks and the bundle, never a
-# deploy. Nothing here needs a GPU: verify_realism.py (the CUDA env checks) stays a local gate.
+# The one workflow for this repo: Python checks -> the browser-engine checks -> bundle Web/dist -> (master only) deploy
+# it to the Azure Static Web App -> check the live page and /diag. Pull requests get the checks and the bundle, never
+# a deploy. Nothing here needs a GPU (verify_realism.py, the CUDA env checks, stays a local gate) and the Unreal
+# project is built locally (UE 5.8 is not on GitHub's runners).
 
 on:
   push:
@@ -22,6 +23,7 @@ concurrency:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # pinned to commit SHAs: the deploy token goes to these actions, so a moved tag must not change what runs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,7 +33,7 @@ jobs:
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -39,14 +41,30 @@ jobs:
           cache: npm
           cache-dependency-path: Web/package-lock.json
 
+      # ---- Python: lint, format, tests (MuJoCo pinned to URLab's 3.10.0, as training/requirements.txt) ----
+
+      - name: Install the CPU Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install "mujoco==3.10.0" numpy onnxruntime pytest ruff
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format --check .
+
+      - name: pytest (cards, models, generated constants, naming, a seeded match, reward config)
+        run: python -m pytest -q
+
+      # ---- Browser engine ----
+
       - name: Install the web dependencies
         working-directory: Web
         run: npm ci
 
-      # ---- Verify ----
-
-      - name: Browser engine (one turn each way, every pairing)
-        run: for p in gg kk gk; do node Web/check.mjs $p; done
+      - name: Browser engine (one turn each way, every pairing; rules 2 forced on the shipped models)
+        run: |
+          for p in gg kk gk; do node Web/check.mjs $p; done
+          SLAP_RULES=2 node Web/check.mjs gk
 
       - name: Live relay (the publisher key is enforced)
         run: node Web/live_check.mjs
@@ -54,36 +72,12 @@ jobs:
       - name: Spectator API
         run: if [ -f Web/api_check.mjs ]; then node Web/api_check.mjs; fi
 
-      - name: Every python file parses
-        run: python -m compileall -q training Web
-
-      - name: Asset naming and folder conventions
-        run: python scripts/check_naming.py
-
-      - name: Install the CPU simulation dependencies
-        run: python -m pip install --upgrade pip && python -m pip install "mujoco==3.10.0" numpy
-
-      - name: Character cards, models and packaged staging
-        run: python training/verify_cards.py
-
-      # constants.py + rules.json are the source; SlapShared.gen.h and Web/shared.gen.js are generated from them.
-      # Fails when either copy is stale or hand-edited, or an engine types a shared number itself.
-      - name: The three engines read the same numbers (generated copies current)
-        run: |
-          python training/gen_constants.py --check
-          python training/verify_constants.py
-
-      - name: Browser engine under rules 2 (forced on the shipped models)
-        run: SLAP_RULES=2 node Web/check.mjs gk
-
       # The same seeded matches through match.py and sim.js, referee event for event (rules 1, rules 2, rules 2 with
       # stuns and counts). Passes on Windows (2026-11-13); not yet run on a Linux runner, where the two ONNX runtimes'
       # rounding may differ, so it reports without failing the job. Make it blocking after the first green run.
       - name: Python vs browser match parity
         continue-on-error: true
-        run: |
-          python -m pip install onnxruntime
-          python training/parity_check.py --stun 0.55
+        run: python training/parity_check.py --stun 0.55
 
       - name: The dev server serves only Web/ and training/
         run: |
@@ -102,10 +96,11 @@ jobs:
 
       # ---- Build & deploy ----
 
-      - name: Bundle static site
+      - name: Bundle static site (version stamp, /diag check list validated)
         run: python Web/build.py
 
       - name: Deploy to Azure Static Web Apps
+        id: deploy
         if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
@@ -113,3 +108,23 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: Web/dist
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Check the live page and /diag
+        if: steps.deploy.outcome == 'success'
+        env:
+          URL: ${{ steps.deploy.outputs.static_web_app_url }}
+        run: |
+          stamp=$(grep -o 'id="stamp">[0-9]*' Web/dist/Web/index.html | grep -o '[0-9]*$')
+          for i in $(seq 1 20); do
+            page=$(curl -fsS --max-time 30 "$URL/Web/" || true)
+            diag=$(curl -fsS --max-time 30 "$URL/diag" || true)
+            root=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/")
+            if [ "$root" = "200" ] && echo "$page" | grep -q "id=\"stamp\">$stamp<" \
+               && echo "$diag" | grep -q "<title>System status</title>" && echo "$diag" | grep -q "id=\"stamp\">$stamp<"; then
+              echo "Live: $URL (/ $root, /Web/ and /diag carry v$stamp)"; exit 0
+            fi
+            sleep 15
+          done
+          echo "$URL did not serve v$stamp at / and /diag"; exit 1

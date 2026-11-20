@@ -1,0 +1,50 @@
+{
+  "_doc": "What /diag (Web/diag.html) probes live from the browser. Paths are relative to Web/ (the page's base). Web/build.py fails the build when a listed file is not in the bundle or a bundled game file is not covered by a check. probe: fetch (GET, size, not an LFS pointer), files (GET every url), wasm (GET + WebAssembly.compile), mujoco (load the MuJoCo WASM module, compile an arena, step it), onnx (one brain's inference on a zero observation), matchups (every arena, fingerprint, card and brain loader.js names), webgl2 (a WebGL2 context), version (the game page carries this page's build stamp).",
+  "checks": [
+    {"id": "mujoco", "group": "api", "label": "MuJoCo WASM runtime", "purpose": "Physics: @mujoco/mujoco 3.10.0 loads, compiles the Grandpa vs Kim arena and steps it", "probe": "mujoco", "url": "node_modules/@mujoco/mujoco/mujoco.js", "arena": "../training/models/grandpa_vs_kim_arena.xml"},
+    {"id": "mujoco-wasm", "group": "api", "label": "MuJoCo WASM binary", "purpose": "The physics engine's WebAssembly binary compiles in this browser", "probe": "wasm", "url": "node_modules/@mujoco/mujoco/mujoco.wasm"},
+    {"id": "ort", "group": "api", "label": "ONNX brain inference", "purpose": "onnxruntime-web runs one brain on a zero observation (latency = one decision)", "probe": "onnx", "url": "node_modules/onnxruntime-web/dist/ort.min.mjs", "brain": "../training/models/brains/grandpa_final_vs_kim.onnx"},
+    {"id": "ort-wasm", "group": "api", "label": "ONNX Runtime WASM binary", "purpose": "The inference runtime's WebAssembly binary compiles in this browser", "probe": "wasm", "url": "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm"},
+    {"id": "webgl2", "group": "api", "label": "3D renderer (WebGL2)", "purpose": "three.js needs a WebGL2 context", "probe": "webgl2"},
+    {"id": "brains", "group": "data", "label": "Brains (ONNX)", "purpose": "Every corner's policy for every matchup in loader.js", "probe": "matchups", "part": "brains"},
+    {"id": "arenas", "group": "data", "label": "Arenas (MJCF)", "purpose": "Every matchup's arena model in loader.js", "probe": "matchups", "part": "arenas"},
+    {"id": "bodies", "group": "data", "label": "Fingerprints and character cards", "purpose": "Each athlete's build fingerprint and card", "probe": "matchups", "part": "bodies"},
+    {"id": "league", "group": "data", "label": "Scouting league", "purpose": "Elo and tendencies per brain for the between-rounds card", "probe": "fetch", "url": "../training/models/league.json"},
+    {"id": "version", "group": "services", "label": "Build version", "purpose": "The game page carries the same build stamp as this page (no stale cache)", "probe": "version", "url": "./"},
+    {"id": "bundle", "group": "services", "label": "Game bundle", "purpose": "The page's scripts and libraries", "probe": "files", "urls": [
+      "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js",
+      "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs",
+      "node_modules/three/build/three.module.js",
+      "node_modules/three/examples/jsm/controls/OrbitControls.js",
+      "node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+      "node_modules/three/examples/jsm/utils/BufferGeometryUtils.js",
+      "node_modules/three/examples/jsm/libs/meshopt_decoder.module.js",
+      "node_modules/three/examples/jsm/environments/RoomEnvironment.js",
+      "node_modules/three/examples/jsm/math/SimplexNoise.js",
+      "node_modules/three/examples/jsm/objects/Reflector.js",
+      "node_modules/three/examples/jsm/postprocessing/EffectComposer.js",
+      "node_modules/three/examples/jsm/postprocessing/GTAOPass.js",
+      "node_modules/three/examples/jsm/postprocessing/MaskPass.js",
+      "node_modules/three/examples/jsm/postprocessing/OutputPass.js",
+      "node_modules/three/examples/jsm/postprocessing/Pass.js",
+      "node_modules/three/examples/jsm/postprocessing/RenderPass.js",
+      "node_modules/three/examples/jsm/postprocessing/SMAAPass.js",
+      "node_modules/three/examples/jsm/postprocessing/ShaderPass.js",
+      "node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js",
+      "node_modules/three/examples/jsm/shaders/CopyShader.js",
+      "node_modules/three/examples/jsm/shaders/GTAOShader.js",
+      "node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js",
+      "node_modules/three/examples/jsm/shaders/OutputShader.js",
+      "node_modules/three/examples/jsm/shaders/PoissonDenoiseShader.js",
+      "node_modules/three/examples/jsm/shaders/SMAAShader.js"
+    ]},
+    {"id": "models3d", "group": "services", "label": "3D models (GLB)", "purpose": "The arena and the athletes' meshes", "probe": "files", "urls": ["assets/arena.glb", "assets/grandpa.glb", "assets/kim.glb", "assets/tex/skin_detail.png"]},
+    {"id": "audio", "group": "services", "label": "Arena audio", "purpose": "The crowd, slaps, bell and voices (WAV)", "probe": "files", "urls": [
+      "assets/audio/ArenaIR.wav", "assets/audio/Bell.wav", "assets/audio/Breath.wav", "assets/audio/Breath_kim.wav",
+      "assets/audio/Breath_matt.wav", "assets/audio/CrowdLoop.wav", "assets/audio/CrowdNear.wav", "assets/audio/CrowdReact.wav",
+      "assets/audio/Grunt_grandpa.wav", "assets/audio/Grunt_kim.wav", "assets/audio/Grunt_matt.wav", "assets/audio/PAChime.wav",
+      "assets/audio/Scrape.wav", "assets/audio/Slap.wav", "assets/audio/Slap1.wav", "assets/audio/Slap2.wav", "assets/audio/Slap3.wav",
+      "assets/audio/Squeak0.wav", "assets/audio/Squeak1.wav", "assets/audio/Step.wav", "assets/audio/StepDeck.wav", "assets/audio/Thud.wav"
+    ]}
+  ]
+}

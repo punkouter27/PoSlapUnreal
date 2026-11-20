@@ -2,7 +2,7 @@
 // physics shape where MuJoCo puts it (drawing only, as Unreal does). Served from the repo root: Web/serve.py.
 //
 // The page is a broadcast HUD: the corner anchors (TL the match state, TC the rate, TR the view settings and the
-// stats toggle, BL the detailed telemetry, BR the build stamp), the athletes' plates, a bottom dock with the
+// stats toggle, BL the detailed telemetry; the name, settings and build stamp are the page's bar and footer), the athletes' plates, a bottom dock with the
 // spectator's pick and the tab row, and a bottom sheet (Match / Brains / View). TAB (or ≡) shows the detailed stats;
 // the default view stays clean. Everything here is display-only: the rules live in sim.js (= training/match.py).
 import * as THREE from "three";
@@ -1208,7 +1208,8 @@ function strainTick(d) {
   }
 }
 
-function resize() { const w = innerWidth, h = innerHeight; look.resize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); measureBottom(); fitNames(); }
+function resize() {   // the game's box (#stage: the page draws its bar and footer outside it), not the window
+  const r = canvas.getBoundingClientRect(), w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height)); look.resize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); measureBottom(); fitNames(); }
 addEventListener("resize", resize); resize();
 
 // ---- the loop: physics in real time, drawing every frame ---------------------------------------------------

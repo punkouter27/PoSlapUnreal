@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0b0d">
+<meta name="theme-color" content="#0b0f17">
 <title>PoSlap Arena</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M0 0h8v16H0z%22 fill=%22%23e5554c%22/%3E%3Cpath d=%22M8 0h8v16H8z%22 fill=%22%235d8cf0%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
 /* Layout: a full-bleed 3D arena under a broadcast HUD. One viewport, no scrolling, portrait first (360 x 800 up to
-   21:9): the corner anchors (TL title, TC rate, TR settings + stats, BL telemetry, BR build stamp), the athletes'
+   21:9): the corner anchors (TL title, TC rate, TR stats, BL telemetry; the name, settings and the build stamp are the page chrome outside the game), the athletes'
    plates under them, a bottom dock (the pick and the tab row) and a bottom sheet (Match / Brains / View) that opens
    upwards. Every text is at least 14 px; long names shrink to fit, then ellipsis. */
 :root {
@@ -48,7 +48,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 .turn { font-weight: 700; font-size: var(--fs-m); line-height: 1.25; }
 .turn .red { color: var(--red); } .turn .blue { color: var(--blue); }
 .clock { font: 500 var(--fs)/1.3 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.stamp { grid-area: 4 / 3; justify-self: end; align-self: end; font: 500 var(--fs) var(--mono); color: var(--ink-2); letter-spacing: .06em; text-shadow: 0 1px 2px #000; }
 
 /* ---- the athletes' plates: name, KO/knockdown badges, stamina and neck strength, the read or the swing tag ---- */
 .plates { grid-area: 2 / 1 / 3 / -1; justify-self: center; width: min(100%, var(--wide)); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -247,6 +246,31 @@ td.r { color: var(--red); } td.b { color: var(--blue); }
 }
 /* the result is the screen: the dock and the sheet step aside under it */
 body[data-phase="result"] .bottom { visibility: hidden; }
+/* ---- the page chrome, drawn ONCE by the page outside the game (never over the HUD): a 44px top bar (name left,
+   settings + fullscreen right), a 20px footer strip (status link left, version right); the game fills the rest ---- */
+:root { --po-bg: #0b0f17; --po-surface: #121826; --po-text: #e6e9f2; --po-muted: #9aa3b5; --po-accent: #6366f1;
+  --po-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --po-bar-h: calc(44px + env(safe-area-inset-top)); --po-foot-h: calc(20px + env(safe-area-inset-bottom)); }
+html, body { background: var(--po-bg); }
+.po-bar { position: fixed; top: 0; left: 0; right: 0; height: var(--po-bar-h); box-sizing: border-box; z-index: 20;
+  padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--po-surface);
+  border-bottom: 1px solid rgb(255 255 255 / .08); font-family: var(--po-font); color: var(--po-text); }
+.po-bar__title { font: 700 16px/1 var(--po-font); letter-spacing: .02em; color: var(--po-text); text-decoration: none; white-space: nowrap; }
+.po-bar__actions { display: flex; gap: 4px; }
+.po-bar__actions button { width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--po-text);
+  font-size: 19px; line-height: 1; cursor: pointer; }
+.po-bar__actions button:hover { background: rgb(255 255 255 / .08); }
+.po-foot { position: fixed; left: 0; right: 0; bottom: 0; height: var(--po-foot-h); box-sizing: border-box; z-index: 20;
+  padding: 0 max(10px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px, env(safe-area-inset-left));
+  display: flex; align-items: center; justify-content: space-between; background: var(--po-bg);
+  font: 500 12px/20px var(--po-font); color: var(--po-muted); }
+.po-foot a { color: var(--po-muted); text-decoration: none; } .po-foot a:hover { color: var(--po-text); }
+/* the game's own box: its fixed layers (canvas, HUD, dock, menu) are laid out inside it (transform = containing block) */
+#stage { position: fixed; left: 0; right: 0; top: var(--po-bar-h); bottom: var(--po-foot-h); overflow: hidden; transform: translateZ(0);
+  --inset-t: 10px; --inset-b: 10px; }
+canvas#view { height: 100%; }
+
 @media (prefers-reduced-motion: reduce) { .banner, .pickbanner, .sparkbox, .meter .bar i, .momentum-bar i, .pname .ring::before { transition: none; } .jcard { transition: none; } .ticker.on { animation: none; } }
 </style>
 <script type="importmap">
@@ -259,12 +283,19 @@ body[data-phase="result"] .bottom { visibility: hidden; }
 </script>
 </head>
 <body>
+<header class="po-bar">
+  <a class="po-bar__title" href="./">PoSlap Arena</a>
+  <div class="po-bar__actions">
+    <button id="gear" aria-label="View settings" title="View settings">⚙</button>
+    <button id="fullscreen" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+  </div>
+</header>
+<div id="stage">
 <canvas id="view"></canvas>
 <div class="loading" id="loading"><div class="big">POSLAP</div><div id="loadmsg">Loading physics and brains…</div></div>
 
 <div class="hudgrid" id="hudgrid">
   <div class="hud tl" id="tl" aria-live="polite">
-    <div class="brand"><b>PO</b>SL<i>AP</i></div>
     <div class="round-track" id="pipsTrack">R1/3 ○○ ○○ ○○</div>
     <div class="turn" id="turn">–</div>
     <div class="clock" id="clock">strike clock</div>
@@ -273,7 +304,6 @@ body[data-phase="result"] .bottom { visibility: hidden; }
   <div class="hud tc" id="tc"><span id="fps">– fps</span><br><span id="steps">0 steps</span></div>
 
   <div class="tr">
-    <button id="gear" aria-label="View settings" title="View settings">⚙</button>
     <button id="statsBtn" aria-label="Detailed stats (TAB)" title="Detailed stats (TAB)" aria-pressed="false">≡</button>
   </div>
 
@@ -303,7 +333,6 @@ body[data-phase="result"] .bottom { visibility: hidden; }
     <div class="statline" id="streak"></div>
   </div>
 
-  <div class="stamp" id="stamp">dev</div>   <!-- Web/build.py writes the build date (YYMMDD) -->
 </div>
 
 <div class="bottom" id="bottom">
@@ -355,6 +384,17 @@ body[data-phase="result"] .bottom { visibility: hidden; }
   <button class="thumb" id="practice">START MATCH</button>
   <button class="thumb" id="watchlive" hidden>WATCH LIVE</button>
 </div>
+</div>
+<footer class="po-foot">
+  <a href="/diag">System status</a>
+  <span>v<span id="stamp">dev</span></span>   <!-- Web/build.py writes the build stamp (UTC yyMMdd of the commit) -->
+</footer>
+<script>
+  // fullscreen: the whole page (bar, game, footer); the button hides where the API is missing (iPhone Safari)
+  const fs = document.getElementById("fullscreen");
+  if (!document.fullscreenEnabled) fs.hidden = true;
+  fs.onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+</script>
 
 <script type="module" src="./app.js"></script>
 </body>

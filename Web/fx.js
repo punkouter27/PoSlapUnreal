@@ -1210,14 +1210,16 @@ export class Look {
     for (const u of SURFS) { u.wearOn.value = f.wear ? 1 : 0; u.microOn.value = f.detail > 1 ? 1 : 0; }
     for (const u of CROWDS) u.crowdOn.value = f.crowd;
     if (this.refl) { this.scene.remove(this.refl); this.refl.dispose(); this.refl = null; }
-    this.resize(innerWidth, innerHeight);
+    const [vw, vh] = this.size ?? [innerWidth, innerHeight];
+    this.resize(vw, vh);
     if (f.refl > 0) {
       const pr = this.renderer.getPixelRatio();
-      this.refl = floorReflection(Math.round(innerWidth * pr), Math.round(innerHeight * pr), f.refl);
+      this.refl = floorReflection(Math.round(vw * pr), Math.round(vh * pr), f.refl);
       this.scene.add(this.refl);
     }
   }
   resize(w, h) {
+    this.size = [w, h];   // the game's box (app.js resize); a tier change re-applies it
     this.renderer.setSize(w, h, false);
     const pr = this.renderer.getPixelRatio(), W = Math.round(w * pr), H = Math.round(h * pr);
     this.size.set(W, H);

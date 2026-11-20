@@ -1,9 +1,15 @@
 """Bundle the web version for static hosting: python Web/build.py  ->  Web/dist/ (same layout as the dev server:
-dist/Web/ holds the page and its libraries, dist/training/ the arena, fingerprints, cards and the two brains loader.js names).
+dist/Web/ holds the page and its libraries, dist/training/ the arenas, fingerprints, cards and the brains loader.js names).
+
+The one version stamp (UTC yyMMdd of the HEAD commit) is written into index.html and diag.html here; /diag's check list
+(Web/diag_checks.json) is validated against what is bundled.
 """
 
+import json
+import os
 import re
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -43,14 +49,92 @@ LIBS = [
         "shaders/SMAAShader.js",
     )
 ]
+PAGE = (
+    "index.html",
+    "diag.html",
+    "diag_checks.json",
+    "app.js",
+    "sim.js",
+    "shared.gen.js",
+    "loader.js",
+    "art.js",
+    "fx.js",
+    "audio.js",
+    "broadcast.js",
+    "contacts.js",
+    "assets/arena.glb",
+    "assets/tex/skin_detail.png",
+)
 
+
+def build_stamp():
+    """The one version stamp: UTC yyMMdd of the HEAD commit (today, UTC, outside a git checkout)."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%cd", "--date=format-local:%y%m%d"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "TZ": "UTC"},
+            check=True,
+        ).stdout.strip()
+        if re.fullmatch(r"\d{6}", out):
+            return out
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return time.strftime("%y%m%d", time.gmtime())
+
+
+def matchup_files(loader):
+    """Every matchup's arena and fingerprints, in its own models folder (a `dir: "v4/"` matchup reads models/v4/)."""
+    files = set()
+    for m in re.finditer(r'(\w+): \{ name: "[^"]+",(.*?)corners: \[(.*?)\] \}', loader, re.S):
+        head, corners = m.group(2), m.group(3)
+        d = re.search(r'dir: "([\w/]+)"', head)
+        d = d[1] if d else ""
+        xml = re.search(r'xml: "([\w.]+)"', head)[1]
+        files.add(f"training/models/{d}{xml}")
+        files.update(f"training/models/{d}{c}_fingerprint.json" for c in re.findall(r'char: "(\w+)"', corners))
+    if not files:
+        raise SystemExit("build.py: no matchups parsed from Web/loader.js")
+    return sorted(files)
+
+
+def check_diag_list():
+    """/diag probes Web/diag_checks.json: every file it names is bundled, every bundled game file is probed."""
+    checks = json.loads((WEB / "diag_checks.json").read_text(encoding="utf-8"))["checks"]
+    named = set()
+    for c in checks:
+        for u in ([c["url"]] if "url" in c else []) + c.get("urls", []) + [c[k] for k in ("arena", "brain") if k in c]:
+            if u != "./":
+                named.add(os.path.normpath(os.path.join("Web", u)).replace(os.sep, "/"))
+    missing = sorted(u for u in named if not (DIST / u).is_file())
+    if missing:
+        raise SystemExit("Web/diag_checks.json names files the bundle lacks: " + ", ".join(missing))
+    # training/ (arenas, fingerprints, cards, brains) is probed by the "matchups" checks, straight from loader.js
+    bundled = [p.relative_to(DIST).as_posix() for p in (DIST / "Web").rglob("*") if p.is_file()]
+    unprobed = sorted(u for u in bundled if u not in named and not u.endswith((".html", "diag_checks.json")))
+    if unprobed:
+        raise SystemExit("bundled but not probed by /diag (add them to Web/diag_checks.json): " + ", ".join(unprobed))
+
+
+def fail_lfs_pointers():
+    """Ship-blocker: an unpulled git-LFS pointer looks like a tiny valid file but breaks browsers."""
+    bad = [
+        str(p.relative_to(DIST))
+        for p in DIST.rglob("*")
+        if p.is_file() and p.open("rb").read(64).startswith(b"version https://git-lfs")
+    ]
+    if bad:
+        raise SystemExit("LFS pointers in dist (run 'git lfs pull'): " + ", ".join(bad))
+
+
+STAMP = build_stamp()
 loader = (WEB / "loader.js").read_text(encoding="utf-8")
 chars = sorted(set(re.findall(r'char: "(\w+)"', loader)))
-brains = re.findall(r'brain: "(\w+)"', loader)
-xmls = re.findall(r'xml: "([\w.]+)"', loader)
+brains = sorted(set(re.findall(r'brain: "(\w+)"', loader)))
 data = (
-    [f"training/models/{x}" for x in xmls]
-    + [f"training/models/{c}_fingerprint.json" for c in chars]
+    matchup_files(loader)
     + [f"training/characters/{c}.json" for c in chars]
     + [f"training/models/brains/{b}.onnx" for b in brains]
     + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]
@@ -58,24 +142,7 @@ data = (
 
 shutil.rmtree(DIST, ignore_errors=True)
 for src, dst in (
-    [
-        (WEB / f, DIST / "Web" / f)
-        for f in (
-            "index.html",
-            "diag.html",
-            "app.js",
-            "sim.js",
-            "shared.gen.js",
-            "loader.js",
-            "art.js",
-            "fx.js",
-            "audio.js",
-            "broadcast.js",
-            "contacts.js",
-            "assets/arena.glb",
-            "assets/tex/skin_detail.png",
-        )
-    ]
+    [(WEB / f, DIST / "Web" / f) for f in PAGE]
     + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))]
     + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars]
     + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS]
@@ -84,16 +151,11 @@ for src, dst in (
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 for html_name in ("index.html", "diag.html"):
-    page = DIST / "Web" / html_name  # the build stamp (bottom right): the build date
-    # the stamp is <div class="... stamp ..." ...>dev</div>: only the text between the tags is replaced
-    page.write_text(
-        re.sub(
-            r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)',
-            rf"\g<1>{time.strftime('%y%m%d')}\g<2>",
-            page.read_text(encoding="utf-8"),
-        ),
-        encoding="utf-8",
-    )
+    page = DIST / "Web" / html_name  # the stamp in the page footer: <span id="stamp">dev</span>
+    text, n = re.subn(r'(id="stamp">)[^<]*(<)', rf"\g<1>{STAMP}\g<2>", page.read_text(encoding="utf-8"))
+    if n != 1:
+        raise SystemExit(f'build.py: {html_name} must carry exactly one id="stamp" element (found {n})')
+    page.write_text(text, encoding="utf-8")
 (DIST / "index.html").write_text(
     '<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
     '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>',
@@ -106,20 +168,11 @@ for html_name in ("index.html", "diag.html"):
     '"routes": [ { "route": "/diag", "rewrite": "/Web/diag.html" } ] }\n'
 )
 
-
-def _fail_lfs_pointers():
-    """Ship-blocker: an unpulled git-LFS pointer looks like a tiny valid file but breaks browsers."""
-    bad = []
-    for p in DIST.rglob("*"):
-        if p.is_file() and p.open("rb").read(64).startswith(b"version https://git-lfs"):
-            bad.append(str(p.relative_to(DIST)))
-    if bad:
-        raise SystemExit("LFS pointers in dist (run 'git lfs pull'): " + ", ".join(bad))
-
-
-_fail_lfs_pointers()
+fail_lfs_pointers()
+check_diag_list()
 
 size = sum(p.stat().st_size for p in DIST.rglob("*") if p.is_file())
 print(
-    f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB (brains: {', '.join(brains)})"
+    f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB, v{STAMP} "
+    f"(brains: {', '.join(brains)})"
 )
