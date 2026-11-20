@@ -8,6 +8,7 @@ tournament matches are credited through Logs/Tournament/*/results.jsonl and rost
 mean palm speed at the touch, self-falls per turn struck, mean HIC (Unreal's "impact" lines); as defender: strikes
 absorbed without a KO.
 """
+
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -40,14 +41,14 @@ def main():
         try:
             ev = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines() if l.strip()]
         except (ValueError, OSError):
-            continue   # a log still being written, or broken
+            continue  # a log still being written, or broken
         start = next((e for e in ev if e["type"] == "match_start"), None)
         result = next((e for e in ev if e["type"] == "result"), None)
         brains = (start or {}).get("brains") or known.get(log.name)
         if not (start and result and brains) or result["how"] == "blow-up":
             continue
         replay = json.dumps([brains] + [e for e in ev if e["type"] not in ("frame", "match_start")], sort_keys=True)
-        if replay in seen:   # the sim is deterministic: a test run that loops replays one match; count it once
+        if replay in seen:  # the sim is deterministic: a test run that loops replays one match; count it once
             continue
         seen.add(replay)
         counted += 1
@@ -76,7 +77,7 @@ def main():
         else:
             st[r]["draws"] += 1
             st[b]["draws"] += 1
-        if r != b:   # a brain against itself teaches the ladder nothing
+        if r != b:  # a brain against itself teaches the ladder nothing
             score = 0.5 if not w else 1.0 if w == "red" else 0.0
             expect = 1.0 / (1.0 + 10 ** ((elo[b] - elo[r]) / 400.0))
             elo[r], elo[b] = elo[r] + K * (score - expect), elo[b] - K * (score - expect)
@@ -84,17 +85,28 @@ def main():
     div = lambda a, b: round(a / b, 3) if b else 0.0
     league = {}
     for name, x in st.items():
-        league[name] = dict(elo=round(elo[name], 1), matches=int(x["matches"]), wins=int(x["wins"]), losses=int(x["losses"]),
-                            draws=int(x["draws"]), ko_rate=div(x["kos"], x["touches"]), clean_rate=div(x["clean"], x["touches"]),
-                            speed=div(x["speed_sum"], x["touches"]), self_fall=div(x["self_falls"], x["turns"]),
-                            absorbed=div(x["absorbed"], x["faced"]), hic=div(x["hic_sum"], x["hics"]))
+        league[name] = dict(
+            elo=round(elo[name], 1),
+            matches=int(x["matches"]),
+            wins=int(x["wins"]),
+            losses=int(x["losses"]),
+            draws=int(x["draws"]),
+            ko_rate=div(x["kos"], x["touches"]),
+            clean_rate=div(x["clean"], x["touches"]),
+            speed=div(x["speed_sum"], x["touches"]),
+            self_fall=div(x["self_falls"], x["turns"]),
+            absorbed=div(x["absorbed"], x["faced"]),
+            hic=div(x["hic_sum"], x["hics"]),
+        )
     league = dict(sorted(league.items(), key=lambda kv: -kv[1]["elo"]))
     OUT.write_text(json.dumps({"matches": counted, "brains": league}, indent=1), encoding="utf-8")
     print(f"{counted} matches -> {OUT}")
     print(f"{'brain':32} {'elo':>6} {'W-L-D':>9} {'KO':>5} {'clean':>6} {'m/s':>5} {'fall':>5} {'absorb':>6}")
     for n, x in league.items():
-        print(f"{n:32} {x['elo']:6.0f} {x['wins']:>3}-{x['losses']}-{x['draws']:<3} {x['ko_rate']:5.0%} {x['clean_rate']:6.0%} "
-              f"{x['speed']:5.1f} {x['self_fall']:5.0%} {x['absorbed']:6.0%}")
+        print(
+            f"{n:32} {x['elo']:6.0f} {x['wins']:>3}-{x['losses']}-{x['draws']:<3} {x['ko_rate']:5.0%} {x['clean_rate']:6.0%} "
+            f"{x['speed']:5.1f} {x['self_fall']:5.0%} {x['absorbed']:6.0%}"
+        )
 
 
 if __name__ == "__main__":

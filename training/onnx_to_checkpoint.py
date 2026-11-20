@@ -11,6 +11,7 @@ saved mean and variance instead of re-learning them from the first batches.
 2026-11-09: runs/mom_L0_night1_1315 (Mom's only L0 checkpoint in this checkout) was pruned by train.py's startup
 cleanup; models/brains/mom_L0_candidate.onnx was exported from it on 2026-11-05 at push 0.84 of full, 196.6 M steps.
 """
+
 import argparse
 import math
 
@@ -24,7 +25,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("onnx")
     ap.add_argument("out")
-    ap.add_argument("--std", type=float, default=0.25, help="exploration noise to restart with (the runs settle near 0.25)")
+    ap.add_argument(
+        "--std", type=float, default=0.25, help="exploration noise to restart with (the runs settle near 0.25)"
+    )
     ap.add_argument("--level", default="L0")
     ap.add_argument("--push", type=float, default=None, help="push_scale the level had reached")
     ap.add_argument("--steps", type=float, default=0.0)
@@ -44,6 +47,7 @@ def main():
 
     # check: the rebuilt policy gives the ONNX graph's own answer
     import onnxruntime as ort
+
     x = np.random.default_rng(0).normal(size=(1, rms["mean"].shape[0])).astype(np.float32)
     want = ort.InferenceSession(a.onnx).run(None, {"obs": x})[0]
     z = torch.clamp((torch.from_numpy(x) - rms["mean"]) / torch.sqrt(rms["var"] + 1e-8), -10.0, 10.0)

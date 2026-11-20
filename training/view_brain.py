@@ -7,12 +7,15 @@ Every --every s a 150-300 N shove for 0.1-0.2 s hits the chest or the head in a 
 A knockdown (any non-sole geom on the floor) resets the athlete 2 s later; the window's corner shows the time
 standing, the push count and the falls. Space pauses (MuJoCo viewer); close the window to quit.
 """
-import argparse, json, time
+
+import argparse
+import json
+import time
 from pathlib import Path
 
-import mujoco, mujoco.viewer
+import mujoco
+import mujoco.viewer
 import numpy as np
-
 from brain_cpu import Athlete, muscle_step, muscle_vmax, onnx_policy, stand
 from constants import lpf_on
 
@@ -71,8 +74,10 @@ def main():
             muscle_step(m, d, vmax)
             k += 1
             if fell_at is None:
-                down = any((c.geom1 in floor and c.geom2 not in soles) or (c.geom2 in floor and c.geom1 not in soles)
-                           for c in d.contact[:d.ncon])
+                down = any(
+                    (c.geom1 in floor and c.geom2 not in soles) or (c.geom2 in floor and c.geom1 not in soles)
+                    for c in d.contact[: d.ncon]
+                )
                 if down:
                     fell_at, falls = t, falls + 1
                     print(f"fell after {t - t_up:.1f} s standing ({pushes} pushes so far, {falls} falls)", flush=True)
@@ -80,13 +85,18 @@ def main():
                 ath, fell_at = reset(), None
                 k, push_end, next_push, t_up = 0, -1, a.every, 0.0
                 wall0, sim0 = time.perf_counter(), 0.0
-            if k % 8 == 0:   # 25 fps
+            if k % 8 == 0:  # 25 fps
                 v.cam.lookat[:] = [d.qpos[0], d.qpos[1], 0.9]
-                v.set_texts((mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_TOPLEFT,
-                             f"{a.char}  {Path(a.onnx).stem}\npushes\nfalls\nstanding",
-                             f"\n{pushes}\n{falls}\n{'DOWN' if fell_at is not None else f'{d.time - t_up:.1f} s'}"))
+                v.set_texts(
+                    (
+                        mujoco.mjtFontScale.mjFONTSCALE_150,
+                        mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        f"{a.char}  {Path(a.onnx).stem}\npushes\nfalls\nstanding",
+                        f"\n{pushes}\n{falls}\n{'DOWN' if fell_at is not None else f'{d.time - t_up:.1f} s'}",
+                    )
+                )
                 v.sync()
-                lag = (d.time - sim0) - (time.perf_counter() - wall0)   # real time: physics never outruns the clock
+                lag = (d.time - sim0) - (time.perf_counter() - wall0)  # real time: physics never outruns the clock
                 if lag > 0:
                     time.sleep(lag)
 

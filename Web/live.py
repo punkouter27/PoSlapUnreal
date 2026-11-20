@@ -19,6 +19,7 @@ The publisher role (pushing text into every viewer's page) needs the shared key:
 reads are keyed as well (--api-key, defaulting to --key): with no key anywhere the relay serves viewers and an open
 API, which is what a laptop on the LAN wants; --api-public says "open reads" on purpose.
 """
+
 import argparse
 import asyncio
 import base64
@@ -37,39 +38,64 @@ GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ROOT = Path(__file__).resolve().parents[1]
 
 # The relay's limits. The ring buffer is the history a client can still ask for; everything older is gone.
-MAX_EVENTS = 5000        # the ring buffer: the last 5,000 match events
-MAX_POSES = 200          # the last 200 pose frames (74 floats each: more is not worth the memory)
-MAX_LIMIT = 500          # ?limit is clamped to this
-DEFAULT_LIMIT = 200      # ?limit without a value
-RATE_BURST = 120         # API requests per client per RATE_WINDOW seconds
+MAX_EVENTS = 5000  # the ring buffer: the last 5,000 match events
+MAX_POSES = 200  # the last 200 pose frames (74 floats each: more is not worth the memory)
+MAX_LIMIT = 500  # ?limit is clamped to this
+DEFAULT_LIMIT = 200  # ?limit without a value
+RATE_BURST = 120  # API requests per client per RATE_WINDOW seconds
 RATE_WINDOW = 10.0
-RATE_CLIENTS = 4096      # the token buckets are capped, so cycling addresses cannot grow the dict without bound
-HEARTBEAT = 15.0         # the SSE heartbeat (a comment line), seconds
-STRIKE_CLOCK = 30.0      # match.py / sim.js: the turn clock
-RECOVERY = 5.0           # match.py / sim.js: the recovery window after a touch
-DANGER_FULL = 12.0       # m/s of head snap that reads as full KO danger (the event-derived proxy)
-SAFE_NAME = re.compile(r"^[A-Za-z0-9_]{1,40}$")   # a card name from the wire may only be a file name
+RATE_CLIENTS = 4096  # the token buckets are capped, so cycling addresses cannot grow the dict without bound
+HEARTBEAT = 15.0  # the SSE heartbeat (a comment line), seconds
+STRIKE_CLOCK = 30.0  # match.py / sim.js: the turn clock
+RECOVERY = 5.0  # match.py / sim.js: the recovery window after a touch
+DANGER_FULL = 12.0  # m/s of head snap that reads as full KO danger (the event-derived proxy)
+SAFE_NAME = re.compile(r"^[A-Za-z0-9_]{1,40}$")  # a card name from the wire may only be a file name
 
 viewers = set()
 latest = {"pose": None}
-KEY = ""       # the publisher's shared secret (--key, or SLAP_LIVE_KEY); empty = publishers are refused
-API_KEY = ""   # the API's read key (--api-key, or --key); empty = the API reads are open
+KEY = ""  # the publisher's shared secret (--key, or SLAP_LIVE_KEY); empty = publishers are refused
+API_KEY = ""  # the API's read key (--api-key, or --key); empty = the API reads are open
 
 
 # ---- the state the API serves: derived from the very events the WebSocket forwards -------------------------
 def athlete(corner):
     """One corner. health and danger are derived (see /api/schema): the publisher ships no health value."""
-    return {"corner": corner, "tint": corner, "name": None, "display": None, "height_m": None, "mass_kg": None,
-            "health": 1.0, "knockdowns": 0, "faints": 0, "fainted": False, "ko": False, "danger": 0.0}
+    return {
+        "corner": corner,
+        "tint": corner,
+        "name": None,
+        "display": None,
+        "height_m": None,
+        "mass_kg": None,
+        "health": 1.0,
+        "knockdowns": 0,
+        "faints": 0,
+        "fainted": False,
+        "ko": False,
+        "danger": 0.0,
+    }
 
 
 def fresh_state():
-    return {"match": 0, "stage": "idle", "round": 0, "turn": 0, "striker": None, "defender": None,
-            "clock": {"phase": None, "remaining": None, "turn_clock": STRIKE_CLOCK, "recovery_left": None},
-            "judges": [], "cards": {"red": 0, "blue": 0},
-            "athletes": [athlete("red"), athlete("blue")],
-            "ko": False, "knockdown": False, "result": None, "last_strike": None,
-            "danger": {"red": 0.0, "blue": 0.0, "source": "events"}, "win_prob": None, "updated_at": time.time()}
+    return {
+        "match": 0,
+        "stage": "idle",
+        "round": 0,
+        "turn": 0,
+        "striker": None,
+        "defender": None,
+        "clock": {"phase": None, "remaining": None, "turn_clock": STRIKE_CLOCK, "recovery_left": None},
+        "judges": [],
+        "cards": {"red": 0, "blue": 0},
+        "athletes": [athlete("red"), athlete("blue")],
+        "ko": False,
+        "knockdown": False,
+        "result": None,
+        "last_strike": None,
+        "danger": {"red": 0.0, "blue": 0.0, "source": "events"},
+        "win_prob": None,
+        "updated_at": time.time(),
+    }
 
 
 def side_index(name):
@@ -126,8 +152,9 @@ def apply_event(st, ev):
         st["judges"] = []
         st["cards"] = {"red": 0, "blue": 0}
         # the corners keep their names and cards (the pose frame carries them); the match resets their condition
-        st["athletes"] = [dict(a, health=1.0, knockdowns=0, faints=0, fainted=False, ko=False, danger=0.0)
-                          for a in st["athletes"]]
+        st["athletes"] = [
+            dict(a, health=1.0, knockdowns=0, faints=0, fainted=False, ko=False, danger=0.0) for a in st["athletes"]
+        ]
         st["danger"] = {"red": 0.0, "blue": 0.0, "source": "events"}
     elif kind == "turn_start":
         st["stage"] = "turn"
@@ -138,9 +165,19 @@ def apply_event(st, ev):
         st["clock"] = {"phase": "strike", "remaining": STRIKE_CLOCK, "turn_clock": STRIKE_CLOCK, "recovery_left": None}
         st["ko"] = st["knockdown"] = False
     elif kind == "strike":
-        st["last_strike"] = {"striker": ev.get("striker"), "part": ev.get("part"), "palm": ev.get("palm"),
-                             "speed": ev.get("speed"), "t": ev.get("t")}
-        st["clock"] = {"phase": "recovery", "remaining": RECOVERY, "turn_clock": STRIKE_CLOCK, "recovery_left": RECOVERY}
+        st["last_strike"] = {
+            "striker": ev.get("striker"),
+            "part": ev.get("part"),
+            "palm": ev.get("palm"),
+            "speed": ev.get("speed"),
+            "t": ev.get("t"),
+        }
+        st["clock"] = {
+            "phase": "recovery",
+            "remaining": RECOVERY,
+            "turn_clock": STRIKE_CLOCK,
+            "recovery_left": RECOVERY,
+        }
     elif kind == "faint":
         i = side_index(ev.get("athlete"))
         if i >= 0:
@@ -164,8 +201,10 @@ def apply_event(st, ev):
         striker = ev.get("striker")
         if striker in ("red", "blue"):
             # the head snap raises the danger, but a knockdown (1.0) is not talked down by the next number
-            st["danger"][other_side(striker)] = max(st["danger"][other_side(striker)],
-                                                   round(min(1.0, max(0.0, (ev.get("head_peak") or 0.0) / DANGER_FULL)), 3))
+            st["danger"][other_side(striker)] = max(
+                st["danger"][other_side(striker)],
+                round(min(1.0, max(0.0, (ev.get("head_peak") or 0.0) / DANGER_FULL)), 3),
+            )
         if ev.get("ko") and striker in ("red", "blue"):
             i = side_index(other_side(striker))
             if i >= 0:
@@ -184,14 +223,14 @@ def apply_event(st, ev):
 
 
 # The relay's live state: the ring buffer of events, the state built from them and the SSE listeners.
-events = deque(maxlen=MAX_EVENTS)     # the match events, oldest first
-poses = deque(maxlen=MAX_POSES)      # the pose frames (not part of the event stream: 74 floats each)
+events = deque(maxlen=MAX_EVENTS)  # the match events, oldest first
+poses = deque(maxlen=MAX_POSES)  # the pose frames (not part of the event stream: 74 floats each)
 seq = 0
 state = fresh_state()
 sse_clients = set()
-rate = OrderedDict()     # client address -> [tokens, last refill]
+rate = OrderedDict()  # client address -> [tokens, last refill]
 started = time.time()
-publisher_at = None    # when the publisher (Unreal) connected, None while it is away
+publisher_at = None  # when the publisher (Unreal) connected, None while it is away
 
 
 def publish_event(ev):
@@ -208,7 +247,7 @@ def publish_event(ev):
         try:
             q.put_nowait(rec)
         except asyncio.QueueFull:
-            pass          # a client that cannot keep up misses events; it catches up with ?since=
+            pass  # a client that cannot keep up misses events; it catches up with ?since=
     return rec
 
 
@@ -268,8 +307,12 @@ def evict_rate(now):
 # ---- the WebSocket --------------------------------------------------------------------------------------
 async def handshake(writer, hdr):
     accept = base64.b64encode(hashlib.sha1((hdr["sec-websocket-key"] + GUID).encode()).digest()).decode()
-    writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                  f"Sec-WebSocket-Accept: {accept}\r\n\r\n").encode())
+    writer.write(
+        (
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
+        ).encode()
+    )
     await writer.drain()
 
 
@@ -285,7 +328,7 @@ async def message(reader):
             n = struct.unpack(">Q", await reader.readexactly(8))[0]
         mask = await reader.readexactly(4) if b1 & 0x80 else bytes(4)
         part = bytes(c ^ mask[i % 4] for i, c in enumerate(await reader.readexactly(n)))
-        if b0 & 0x0F >= 8:   # a control frame may arrive between fragments
+        if b0 & 0x0F >= 8:  # a control frame may arrive between fragments
             return b0 & 0x0F, part
         op = op if op is not None else b0 & 0x0F
         data += part
@@ -295,7 +338,13 @@ async def message(reader):
 
 def frame(data, op=1):
     n = len(data)
-    size = bytes([n]) if n < 126 else bytes([126]) + struct.pack(">H", n) if n < 65536 else bytes([127]) + struct.pack(">Q", n)
+    size = (
+        bytes([n])
+        if n < 126
+        else bytes([126]) + struct.pack(">H", n)
+        if n < 65536
+        else bytes([127]) + struct.pack(">Q", n)
+    )
     return bytes([0x80 | op]) + size + data
 
 
@@ -320,14 +369,14 @@ async def websocket_session(reader, writer, target, hdr):
     try:
         while True:
             op, data = await message(reader)
-            if op == 8:   # close
+            if op == 8:  # close
                 break
-            if op == 9:   # ping
+            if op == 9:  # ping
                 writer.write(frame(data, 10))
             elif publisher and op == 1:
                 await publisher_message(data)
                 for v in list(viewers):
-                    if v.transport.get_write_buffer_size() > 1 << 20:   # a viewer this far behind is gone
+                    if v.transport.get_write_buffer_size() > 1 << 20:  # a viewer this far behind is gone
                         viewers.discard(v)
                         v.close()
                     else:
@@ -355,9 +404,18 @@ async def publisher_message(data):
     kind = msg.get("t")
     if kind == "pose":
         latest["pose"] = data
-        poses.append({"ts": time.time(), "c": msg.get("c"), "m": msg.get("m"), "r": msg.get("r"),
-                      "s": msg.get("s"), "w": msg.get("w"), "slow": msg.get("slow")})
-        wp = msg.get("wp")      # Unreal's win probability for red (training/winprob.py's model on the live state)
+        poses.append(
+            {
+                "ts": time.time(),
+                "c": msg.get("c"),
+                "m": msg.get("m"),
+                "r": msg.get("r"),
+                "s": msg.get("s"),
+                "w": msg.get("w"),
+                "slow": msg.get("slow"),
+            }
+        )
+        wp = msg.get("wp")  # Unreal's win probability for red (training/winprob.py's model on the live state)
         if isinstance(wp, (int, float)) and not isinstance(wp, bool) and 0.0 <= wp <= 1.0:
             state["win_prob"] = {"red": round(float(wp), 3), "blue": round(1.0 - float(wp), 3), "source": "unreal"}
         c = msg.get("c") or []
@@ -381,8 +439,12 @@ async def publisher_message(data):
 
 
 # ---- the HTTP API ---------------------------------------------------------------------------------------
-CORS = ("Access-Control-Allow-Origin: *", "Access-Control-Allow-Methods: GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers: X-Slap-Key, Content-Type", "Access-Control-Max-Age: 600")
+CORS = (
+    "Access-Control-Allow-Origin: *",
+    "Access-Control-Allow-Methods: GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers: X-Slap-Key, Content-Type",
+    "Access-Control-Max-Age: 600",
+)
 
 
 def http_head(status, ctype, length, extra=(), no_len=False):
@@ -471,22 +533,55 @@ def schema():
             "GET /": "a human-readable index",
         },
         "event_types": {
-            "match_start": {"fields": {"match": "int", "first": "red|blue", "seed": "int"}, "means": "a new match starts"},
-            "turn_start": {"fields": {"round": "int", "striker": "red|blue", "defender": "red|blue"}, "means": "the turn clock starts"},
-            "strike": {"fields": {"t": "float (s into the turn)", "striker": "red|blue", "part": "string",
-                                  "palm": "bool", "speed": "float (m/s)", "pos": "[x,y,z] or missing"},
-                       "means": "the palm (or any part) landed on the defender"},
+            "match_start": {
+                "fields": {"match": "int", "first": "red|blue", "seed": "int"},
+                "means": "a new match starts",
+            },
+            "turn_start": {
+                "fields": {"round": "int", "striker": "red|blue", "defender": "red|blue"},
+                "means": "the turn clock starts",
+            },
+            "strike": {
+                "fields": {
+                    "t": "float (s into the turn)",
+                    "striker": "red|blue",
+                    "part": "string",
+                    "palm": "bool",
+                    "speed": "float (m/s)",
+                    "pos": "[x,y,z] or missing",
+                },
+                "means": "the palm (or any part) landed on the defender",
+            },
             "faint": {"fields": {"t": "float", "athlete": "red|blue"}, "means": "the athlete passes out"},
-            "knockdown": {"fields": {"t": "float", "athlete": "red|blue", "part": "string"},
-                          "means": "a non-sole part touched the floor or the podium"},
+            "knockdown": {
+                "fields": {"t": "float", "athlete": "red|blue", "part": "string"},
+                "means": "a non-sole part touched the floor or the podium",
+            },
             "foul": {"fields": {"t": "float", "athlete": "red|blue", "why": "string"}, "means": "a rule was broken"},
-            "turn_end": {"fields": {"round": "int", "striker": "red|blue", "touch": "float or null",
-                                    "part": "string or null", "palm": "bool", "speed": "float", "head_peak": "float (m/s)",
-                                    "stagger": "bool", "fouls": "[[athlete, why], ...]", "ko": "bool", "end": "string"},
-                         "means": "the turn is over: the resolution of a spectator's pick"},
-            "round": {"fields": {"round": "int", "cards": "[[red, blue], ...] one per judge"}, "means": "the judges scored the round"},
-            "result": {"fields": {"how": "string", "winner": "red|blue|null", "cards": "[[red, blue], ...]"},
-                       "means": "the match is over"},
+            "turn_end": {
+                "fields": {
+                    "round": "int",
+                    "striker": "red|blue",
+                    "touch": "float or null",
+                    "part": "string or null",
+                    "palm": "bool",
+                    "speed": "float",
+                    "head_peak": "float (m/s)",
+                    "stagger": "bool",
+                    "fouls": "[[athlete, why], ...]",
+                    "ko": "bool",
+                    "end": "string",
+                },
+                "means": "the turn is over: the resolution of a spectator's pick",
+            },
+            "round": {
+                "fields": {"round": "int", "cards": "[[red, blue], ...] one per judge"},
+                "means": "the judges scored the round",
+            },
+            "result": {
+                "fields": {"how": "string", "winner": "red|blue|null", "cards": "[[red, blue], ...]"},
+                "means": "the match is over",
+            },
             "blowup": {"fields": {}, "means": "the simulation blew up: the match is void"},
         },
         "state_fields": {
@@ -496,10 +591,14 @@ def schema():
             "turn": "int, the turns taken in this match",
             "striker": "red | blue | null",
             "defender": "red | blue | null",
-            "clock": {"phase": "strike | recovery | hold | null", "remaining": "float (s) or null",
-                      "turn_clock": "float (30 s, match.py's turn clock)", "recovery_left": "float (s) or null"},
+            "clock": {
+                "phase": "strike | recovery | hold | null",
+                "remaining": "float (s) or null",
+                "turn_clock": "float (30 s, match.py's turn clock)",
+                "recovery_left": "float (s) or null",
+            },
             "athletes": "one entry per corner: corner, tint, name (the character card), display, height_m, mass_kg, "
-                        "health, knockdowns, faints, fainted, ko, danger",
+            "health, knockdowns, faints, fainted, ko, danger",
             "judges": "[{judge, red, blue}] the judges' cards",
             "cards": "{red, blue} the judges' totals",
             "ko": "bool, the last turn ended in a knockout",
@@ -508,15 +607,15 @@ def schema():
             "last_strike": "{striker, part, palm, speed, t} or null",
             "danger": "{red, blue, source} the KO danger, 0..1",
             "win_prob": "{red, blue, source} or null: the chance each corner wins from here (training/winprob.py, a "
-                        "logistic model on the score, knockdowns, neck and stamina), as Unreal's HUD shows it",
+            "logistic model on the score, knockdowns, neck and stamina), as Unreal's HUD shows it",
         },
         "derived": {
             "health": "a spectator estimate, not a simulated value: 1.0 at the start of a match, -0.5 per knockdown, "
-                      "-0.25 per faint, 0 on a knockout, floored at 0",
+            "-0.25 per faint, 0 on a knockout, floored at 0",
             "danger": "an event-derived proxy (the publisher ships no capture point): the head snap of the last strike "
-                      f"divided by {DANGER_FULL} m/s, 1.0 on a knockdown; it holds the last resolved turn's value "
-                      "until the next one. The browser HUD shows its own local capture-point estimate when it runs "
-                      "the match itself",
+            f"divided by {DANGER_FULL} m/s, 1.0 on a knockdown; it holds the last resolved turn's value "
+            "until the next one. The browser HUD shows its own local capture-point estimate when it runs "
+            "the match itself",
             "clock": "the turn clock (30 s) and the recovery window (5 s) are match.py's and sim.js's constants",
         },
         "limits": {
@@ -526,10 +625,15 @@ def schema():
             "poses_retained": MAX_POSES,
             "rate": f"{RATE_BURST} requests per {RATE_WINDOW:.0f} s per client (429 after that)",
         },
-        "cors": {"access_control_allow_origin": "*", "methods": ["GET", "HEAD", "OPTIONS"],
-                 "note": "the reads are public data (a WebSocket viewer sees the same); the site's CSP is untouched"},
-        "keys": {"publisher": "the shared key (--key) is required for ws://<host>:<port>/ue",
-                 "api": "the reads need the key when one is configured (--api-key, or --key): ?key=... or X-Slap-Key"},
+        "cors": {
+            "access_control_allow_origin": "*",
+            "methods": ["GET", "HEAD", "OPTIONS"],
+            "note": "the reads are public data (a WebSocket viewer sees the same); the site's CSP is untouched",
+        },
+        "keys": {
+            "publisher": "the shared key (--key) is required for ws://<host>:<port>/ue",
+            "api": "the reads need the key when one is configured (--api-key, or --key): ?key=... or X-Slap-Key",
+        },
     }
 
 
@@ -551,8 +655,13 @@ async def http_session(reader, writer, method, target, hdr):
         writer.close()
         return
     if not rate_ok(writer.get_extra_info("peername")[0] if writer.get_extra_info("peername") else "-"):
-        await send(writer, "429 Too Many Requests", b"too many requests\n", "text/plain; charset=utf-8",
-                   CORS + ("Retry-After: 10",))
+        await send(
+            writer,
+            "429 Too Many Requests",
+            b"too many requests\n",
+            "text/plain; charset=utf-8",
+            CORS + ("Retry-After: 10",),
+        )
         writer.close()
         return
     if path in ("/", "/api"):
@@ -560,23 +669,33 @@ async def http_session(reader, writer, method, target, hdr):
         writer.close()
         return
     if not api_ok(params, hdr):
-        await send(writer, "401 Unauthorized", b"the API needs the shared key (?key=... or X-Slap-Key)\n",
-                   "text/plain; charset=utf-8", CORS)
+        await send(
+            writer,
+            "401 Unauthorized",
+            b"the API needs the shared key (?key=... or X-Slap-Key)\n",
+            "text/plain; charset=utf-8",
+            CORS,
+        )
         writer.close()
         return
     if path == "/api/health":
         pub_age = round(time.time() - publisher_at, 1) if publisher_at else None
-        await send_json(writer, {
-            "ok": True,
-            "status": "live" if publisher_at else "waiting",
-            "publisher": {"connected": bool(publisher_at), "since": publisher_at, "age_s": pub_age},
-            "last_seq": seq,
-            "events_retained": len(events),
-            "uptime_s": round(time.time() - started, 1),
-            "clients": {"viewers": len(viewers), "sse": len(sse_clients), "total": len(viewers) + len(sse_clients)},
-            "api": {"key_required": bool(API_KEY), "cors": "GET, HEAD, OPTIONS"},
-            "limits": {"max_events": MAX_EVENTS, "max_limit": MAX_LIMIT, "default_limit": DEFAULT_LIMIT},
-        }, extra=CORS, head_only=head_only)
+        await send_json(
+            writer,
+            {
+                "ok": True,
+                "status": "live" if publisher_at else "waiting",
+                "publisher": {"connected": bool(publisher_at), "since": publisher_at, "age_s": pub_age},
+                "last_seq": seq,
+                "events_retained": len(events),
+                "uptime_s": round(time.time() - started, 1),
+                "clients": {"viewers": len(viewers), "sse": len(sse_clients), "total": len(viewers) + len(sse_clients)},
+                "api": {"key_required": bool(API_KEY), "cors": "GET, HEAD, OPTIONS"},
+                "limits": {"max_events": MAX_EVENTS, "max_limit": MAX_LIMIT, "default_limit": DEFAULT_LIMIT},
+            },
+            extra=CORS,
+            head_only=head_only,
+        )
     elif path == "/api/match":
         body = dict(state)
         body["ok"] = True
@@ -593,7 +712,7 @@ async def http_session(reader, writer, method, target, hdr):
         first = events[0]["seq"] if events else 0
         extra = list(CORS) + [f"X-Slap-First-Seq: {first}", f"X-Slap-Last-Seq: {seq}"]
         if since and since < first - 1:
-            extra.append("X-Slap-Reset: 1")   # the buffer no longer reaches back that far
+            extra.append("X-Slap-Reset: 1")  # the buffer no longer reaches back that far
         await send_json(writer, picked, extra=extra, head_only=head_only)
     elif path == "/api/poses":
         await send_json(writer, list(poses), extra=CORS, head_only=head_only)
@@ -608,7 +727,9 @@ async def http_session(reader, writer, method, target, hdr):
 
 
 def sse_frame(ev):
-    return f"id: {ev['seq']}\nevent: {ev['type']}\ndata: {json.dumps(ev, separators=(',', ':'), default=str)}\n\n".encode()
+    return (
+        f"id: {ev['seq']}\nevent: {ev['type']}\ndata: {json.dumps(ev, separators=(',', ':'), default=str)}\n\n".encode()
+    )
 
 
 async def sse_session(reader, writer, params, hdr, head_only=False):
@@ -620,8 +741,9 @@ async def sse_session(reader, writer, params, hdr, head_only=False):
             since = int(hdr.get("last-event-id") or 0)
         except ValueError:
             since = 0
-    writer.write(http_head("200 OK", "text/event-stream; charset=utf-8", 0,
-                           CORS + ("X-Accel-Buffering: no",), no_len=True))
+    writer.write(
+        http_head("200 OK", "text/event-stream; charset=utf-8", 0, CORS + ("X-Accel-Buffering: no",), no_len=True)
+    )
     await writer.drain()
     if head_only:
         writer.close()
@@ -640,7 +762,7 @@ async def sse_session(reader, writer, params, hdr, head_only=False):
                 writer.write(sse_frame(get.result()))
                 await writer.drain()
             elif eof in done:
-                break                       # the client hung up
+                break  # the client hung up
             else:
                 writer.write(b": keep-alive\n\n")
                 await writer.drain()
@@ -687,20 +809,32 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 lets phones on the network watch")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--key", default=os.environ.get("SLAP_LIVE_KEY", ""),
-                    help="the publisher's shared secret: Unreal connects to ws://<host>:<port>/ue?key=<key>; "
-                         "without it only viewers are served")
-    ap.add_argument("--api-key", default=os.environ.get("SLAP_LIVE_API_KEY", ""),
-                    help="the API's read key (?key=... or the X-Slap-Key header); defaults to --key")
+    ap.add_argument(
+        "--key",
+        default=os.environ.get("SLAP_LIVE_KEY", ""),
+        help="the publisher's shared secret: Unreal connects to ws://<host>:<port>/ue?key=<key>; "
+        "without it only viewers are served",
+    )
+    ap.add_argument(
+        "--api-key",
+        default=os.environ.get("SLAP_LIVE_API_KEY", ""),
+        help="the API's read key (?key=... or the X-Slap-Key header); defaults to --key",
+    )
     ap.add_argument("--api-public", action="store_true", help="the API's reads need no key (the publisher still does)")
     a = ap.parse_args()
     KEY = a.key
     API_KEY = "" if a.api_public else (a.api_key or a.key)
     server = await asyncio.start_server(handle, a.host, a.port)
-    print(f"PoSlap second screen: Unreal -> ws://{a.host}:{a.port}/ue"
-          f"{'?key=...' if KEY else ' (no key: publishers refused)'}, viewers -> ws://{a.host}:{a.port}", flush=True)
-    print(f"API: http://{a.host}:{a.port}/api/match"
-          f"{' (key needed)' if API_KEY else ' (open reads)'}, events, events/stream, health, schema", flush=True)
+    print(
+        f"PoSlap second screen: Unreal -> ws://{a.host}:{a.port}/ue"
+        f"{'?key=...' if KEY else ' (no key: publishers refused)'}, viewers -> ws://{a.host}:{a.port}",
+        flush=True,
+    )
+    print(
+        f"API: http://{a.host}:{a.port}/api/match"
+        f"{' (key needed)' if API_KEY else ' (open reads)'}, events, events/stream, health, schema",
+        flush=True,
+    )
     async with server:
         await server.serve_forever()
 

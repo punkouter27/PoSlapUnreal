@@ -1,6 +1,6 @@
 """The night's training report: one HTML page, plain-language, with interactive SVG charts (no external files).
 
-    .venv/Scripts/python.exe night_report.py [night1030_queue] [DOCS/20261030/night_training_report.html]
+    .venv/Scripts/python.exe night_report.py [night1030_queue] [docs/20261030/night_training_report.html]
 
 Reads runs/<queue>.json (the stages, with each run's train.py exam and match-exam gate), runs/<queue>.jsonl (the
 events), runs/<queue>_results.json (every match exam and the finals), runs/<queue>_baseline.json (the shipped brains
@@ -8,12 +8,23 @@ before the night), and each run's telemetry.jsonl + runs/<run>.log (the train.py
 method: one axis per chart, categorical colours in a fixed order (Grandpa blue, Kim orange, Matt aqua), a legend plus
 direct labels, hover tooltips, a table view under every chart.
 """
-import html, json, re, sys, time
+
+import html
+import json
+import re
+import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
-COLORS = {"grandpa": "#2a78d6", "kim": "#eb6834", "matt": "#1baf7a", "mom": "#eda100", "tong": "#e87ba4"}        # categorical slots 1-3 (validated)
+COLORS = {
+    "grandpa": "#2a78d6",
+    "kim": "#eb6834",
+    "matt": "#1baf7a",
+    "mom": "#eda100",
+    "tong": "#e87ba4",
+}  # categorical slots 1-3 (validated)
 SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 PRETTY = {"grandpa": "Grandpa", "kim": "Kim", "matt": "Matt", "mom": "Mom", "tong": "Tong"}
 
@@ -41,7 +52,7 @@ def train_exams(run):
             steps = float(m.group(2))
         if line.startswith("exam "):
             try:
-                d = eval(line.split(":", 1)[1].split("->")[0].strip(), {"__builtins__": {}})   # a python dict repr
+                d = eval(line.split(":", 1)[1].split("->")[0].strip(), {"__builtins__": {}})  # a python dict repr
             except Exception:
                 continue
             out.append({"steps_m": steps, "passed": "PASS" in line, **d})
@@ -58,10 +69,14 @@ def fmt(x, nd=1):
 
 def main():
     name = sys.argv[1] if len(sys.argv) > 1 else "night1030_queue"
-    out = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE.parent / "DOCS" / time.strftime("%Y%m%d") / "night_training_report.html"
+    out = (
+        Path(sys.argv[2])
+        if len(sys.argv) > 2
+        else HERE.parent / "docs" / time.strftime("%Y%m%d") / "night_training_report.html"
+    )
     queue = json.loads((RUNS / f"{name}.json").read_text())
     events = read_jsonl(RUNS / f"{name}.jsonl")
-    results_p = RUNS / f"{name}_results.json"   # night_driver.py: <queue stem>_results.json
+    results_p = RUNS / f"{name}_results.json"  # night_driver.py: <queue stem>_results.json
     results = json.loads(results_p.read_text()) if results_p.exists() else {"exams": [], "finals": []}
     base_p = RUNS / f"{name.replace('_queue', '')}_baseline.json"
     baseline = json.loads(base_p.read_text()) if base_p.exists() else {}
@@ -70,8 +85,14 @@ def main():
     runs = {}
     for s in stages:
         tele = read_jsonl(RUNS / s["run"] / "telemetry.jsonl")
-        runs[s["run"]] = {"stage": s, "tele": tele, "exams": train_exams(s["run"]),
-                          "meta": json.loads((RUNS / s["run"] / "meta.json").read_text()) if (RUNS / s["run"] / "meta.json").exists() else {}}
+        runs[s["run"]] = {
+            "stage": s,
+            "tele": tele,
+            "exams": train_exams(s["run"]),
+            "meta": json.loads((RUNS / s["run"] / "meta.json").read_text())
+            if (RUNS / s["run"] / "meta.json").exists()
+            else {},
+        }
 
     # ---------------------------------------------------------------- headline numbers
     t_start = next((e["t"] for e in events if e.get("event") == "start"), None)
@@ -81,12 +102,18 @@ def main():
     gates = [e for e in events if e.get("event") == "match_exam"]
     promoted = [f for f in results.get("finals", []) if f.get("promoted")]
     graduated = [s for s in stages if s.get("graduated")]
-    kpis = [("Stages trained", str(len(stages)), f"of {len(queue)} planned"),
-            ("GPU hours", f"{total_min / 60:.1f}", "of training inside the 10 h window"),
-            ("Simulated steps", f"{total_steps / 1e9:.2f} B", "physics decisions the brains learned from"),
-            ("Levels graduated", str(len(graduated)), "train.py's own exam passed"),
-            ("Match gates passed", f"{sum(1 for g in gates if g.get('passed'))} / {len(gates)}", "40 jittered full matches each"),
-            ("Brains promoted", str(len(promoted)), "replaced a shipped final")]
+    kpis = [
+        ("Stages trained", str(len(stages)), f"of {len(queue)} planned"),
+        ("GPU hours", f"{total_min / 60:.1f}", "of training inside the 10 h window"),
+        ("Simulated steps", f"{total_steps / 1e9:.2f} B", "physics decisions the brains learned from"),
+        ("Levels graduated", str(len(graduated)), "train.py's own exam passed"),
+        (
+            "Match gates passed",
+            f"{sum(1 for g in gates if g.get('passed'))} / {len(gates)}",
+            "40 jittered full matches each",
+        ),
+        ("Brains promoted", str(len(promoted)), "replaced a shipped final"),
+    ]
 
     # ---------------------------------------------------------------- per-athlete chart data
     def series_for(char, key):
@@ -113,33 +140,85 @@ def main():
             continue
         charts = []
         for key, title, ylabel, caption in (
-            ("strike_return", "Strike reward", "reward per episode",
-             "What the striker earns per turn: closing on the face, a fast palm, staying up afterwards. Rising means the slap is getting better."),
-            ("strike_hit", "Clean-hit rate", "share of turns",
-             "Share of training turns where the hand reached the head at 8 m/s or more and the striker was still standing 1.5 s later."),
-            ("strike_fall", "Striker self-fall rate", "share of turns",
-             "Share of turns the STRIKER ended on the floor or the podium (the open issue for Grandpa vs Kim: 25 % before tonight). Lower is better."),
-            ("absorb_return", "Absorb reward", "reward per episode",
-             "What the defender earns: taking the slap, keeping the feet planted, bringing the centre of mass back."),
-            ("absorb_ok", "Slaps absorbed", "share of turns",
-             "Share of turns the defender stayed up 5 s after the slap with the body back over the feet."),
-            ("guard_return", "Guard reward", "reward per episode",
-             "Standing in the foot box, facing the target, under pushes (levels L0-L2)."),
-            ("guard_fall", "Guard fall rate", "share of turns",
-             "Share of guard/stand episodes ending in a fall. Lower is better (exam requires <= 5 % at full push)."),
-            ("guard_episode_s", "Guard survival time", "seconds",
-             "Mean seconds upright per 30 s episode under pushes. Rising toward 30 s means the athlete stays standing."),
-            ("policy_loss", "Policy loss", "loss",
-             "PPO's actor objective. Small and noisy is normal; a drift to large negative values means the policy is changing fast."),
-            ("value_loss", "Value loss", "loss",
-             "How well the critic predicts the reward to come. It jumps when the opponent or the rules change, then settles as the brain adapts."),
-            ("entropy", "Policy entropy", "nats",
-             "How random the actions still are. Falling entropy = the brain is committing to a technique; it must not collapse to zero."),
+            (
+                "strike_return",
+                "Strike reward",
+                "reward per episode",
+                "What the striker earns per turn: closing on the face, a fast palm, staying up afterwards. Rising means the slap is getting better.",
+            ),
+            (
+                "strike_hit",
+                "Clean-hit rate",
+                "share of turns",
+                "Share of training turns where the hand reached the head at 8 m/s or more and the striker was still standing 1.5 s later.",
+            ),
+            (
+                "strike_fall",
+                "Striker self-fall rate",
+                "share of turns",
+                "Share of turns the STRIKER ended on the floor or the podium (the open issue for Grandpa vs Kim: 25 % before tonight). Lower is better.",
+            ),
+            (
+                "absorb_return",
+                "Absorb reward",
+                "reward per episode",
+                "What the defender earns: taking the slap, keeping the feet planted, bringing the centre of mass back.",
+            ),
+            (
+                "absorb_ok",
+                "Slaps absorbed",
+                "share of turns",
+                "Share of turns the defender stayed up 5 s after the slap with the body back over the feet.",
+            ),
+            (
+                "guard_return",
+                "Guard reward",
+                "reward per episode",
+                "Standing in the foot box, facing the target, under pushes (levels L0-L2).",
+            ),
+            (
+                "guard_fall",
+                "Guard fall rate",
+                "share of turns",
+                "Share of guard/stand episodes ending in a fall. Lower is better (exam requires <= 5 % at full push).",
+            ),
+            (
+                "guard_episode_s",
+                "Guard survival time",
+                "seconds",
+                "Mean seconds upright per 30 s episode under pushes. Rising toward 30 s means the athlete stays standing.",
+            ),
+            (
+                "policy_loss",
+                "Policy loss",
+                "loss",
+                "PPO's actor objective. Small and noisy is normal; a drift to large negative values means the policy is changing fast.",
+            ),
+            (
+                "value_loss",
+                "Value loss",
+                "loss",
+                "How well the critic predicts the reward to come. It jumps when the opponent or the rules change, then settles as the brain adapts.",
+            ),
+            (
+                "entropy",
+                "Policy entropy",
+                "nats",
+                "How random the actions still are. Falling entropy = the brain is committing to a technique; it must not collapse to zero.",
+            ),
         ):
             s = series_for(char, key)
             if s:
-                charts.append({"id": f"{char}_{key}", "title": title, "ylabel": ylabel, "caption": caption, "series": s,
-                               "percent": key.endswith(("_hit", "_fall", "_ok"))})
+                charts.append(
+                    {
+                        "id": f"{char}_{key}",
+                        "title": title,
+                        "ylabel": ylabel,
+                        "caption": caption,
+                        "series": s,
+                        "percent": key.endswith(("_hit", "_fall", "_ok")),
+                    }
+                )
         exams = []
         for run, r in runs.items():
             if r["stage"]["char"] == char:
@@ -151,10 +230,23 @@ def main():
     gate_rows = []
     for ex in results.get("exams", []):
         side = ex["sides"].get(ex["char"], {})
-        gate_rows.append({"run": ex["run"], "char": ex["char"], "vs": ex["vs"], "passed": ex["passed"], "why": ex["why"],
-                          "land": side.get("land_rate"), "self_fall": side.get("self_fall"), "ko": side.get("ko_per_landed"),
-                          "speed": side.get("speed"), "wins": side.get("wins"), "matches": ex["matches"], "blowups": ex["blowups"],
-                          "score": ex["score"]})
+        gate_rows.append(
+            {
+                "run": ex["run"],
+                "char": ex["char"],
+                "vs": ex["vs"],
+                "passed": ex["passed"],
+                "why": ex["why"],
+                "land": side.get("land_rate"),
+                "self_fall": side.get("self_fall"),
+                "ko": side.get("ko_per_landed"),
+                "speed": side.get("speed"),
+                "wins": side.get("wins"),
+                "matches": ex["matches"],
+                "blowups": ex["blowups"],
+                "score": ex["score"],
+            }
+        )
     base = baseline.get("gk", {})
     dumbbells = []
     for char, vs in (("grandpa", "kim"), ("kim", "grandpa")):
@@ -162,10 +254,23 @@ def main():
         after = [g for g in gate_rows if g["char"] == char and g["vs"] == vs]
         best = max(after, key=lambda g: g["score"]) if after else None
         if b or best:
-            dumbbells.append({"label": f"{PRETTY[char]} striking {PRETTY[vs]}", "char": char,
-                              "before": {"land": b and b["land_rate"], "self_fall": b and b["self_fall"], "ko": b and b["ko_per_landed"]},
-                              "after": {"land": best and best["land"], "self_fall": best and best["self_fall"], "ko": best and best["ko"]},
-                              "after_run": best and best["run"]})
+            dumbbells.append(
+                {
+                    "label": f"{PRETTY[char]} striking {PRETTY[vs]}",
+                    "char": char,
+                    "before": {
+                        "land": b and b["land_rate"],
+                        "self_fall": b and b["self_fall"],
+                        "ko": b and b["ko_per_landed"],
+                    },
+                    "after": {
+                        "land": best and best["land"],
+                        "self_fall": best and best["self_fall"],
+                        "ko": best and best["ko"],
+                    },
+                    "after_run": best and best["run"],
+                }
+            )
 
     # ---------------------------------------------------------------- the story, in words
     story = []
@@ -180,13 +285,21 @@ def main():
         me = s.get("match_exam")
         line = f"<b>{who} {s['level']}{vs}</b> ({s['run']}, {fmt(s_min)} min, {fmt(s_steps / 1e6, 0)} M steps): "
         if g:
-            line += "train.py's exam passed (" + ", ".join(f"{k} {pct(v) if isinstance(v, float) and v <= 1 else v}" for k, v in g.items() if k != "score") + "). "
+            line += (
+                "train.py's exam passed ("
+                + ", ".join(
+                    f"{k} {pct(v) if isinstance(v, float) and v <= 1 else v}" for k, v in g.items() if k != "score"
+                )
+                + "). "
+            )
         else:
             line += f"train.py's exam not passed (best score {fmt(s_best, 2)}). "
         if me:
             sd = me.get("side") or {}
-            line += (f"Match gate <b>{'PASSED' if me['passed'] else 'failed'}</b>: lands {pct(sd.get('land_rate'))}, self-falls {pct(sd.get('self_fall'))}, "
-                     f"KO per landed strike {pct(sd.get('ko_per_landed'))}, hand {fmt(sd.get('speed'))} m/s ({me['why']}).")
+            line += (
+                f"Match gate <b>{'PASSED' if me['passed'] else 'failed'}</b>: lands {pct(sd.get('land_rate'))}, self-falls {pct(sd.get('self_fall'))}, "
+                f"KO per landed strike {pct(sd.get('ko_per_landed'))}, hand {fmt(sd.get('speed'))} m/s ({me['why']})."
+            )
         if s.get("skipped"):
             line += f" Skipped: {s['skipped']}."
         story.append(line)
@@ -194,11 +307,20 @@ def main():
         if s.get("skipped") and not s.get("run"):
             story.append(f"<b>{PRETTY.get(s['char'], s['char'])} {s['level']}</b>: skipped, {s['skipped']}.")
 
-    data = {"athletes": athletes, "gates": gate_rows, "dumbbells": dumbbells, "events": events, "baseline": base,
-            "finals": results.get("finals", [])}
+    data = {
+        "athletes": athletes,
+        "gates": gate_rows,
+        "dumbbells": dumbbells,
+        "events": events,
+        "baseline": base,
+        "finals": results.get("finals", []),
+    }
     esc = lambda x: html.escape(str(x))
 
-    kpi_html = "".join(f'<div class="tile"><div class="k">{esc(k)}</div><div class="v">{esc(v)}</div><div class="s">{esc(s)}</div></div>' for k, v, s in kpis)
+    kpi_html = "".join(
+        f'<div class="tile"><div class="k">{esc(k)}</div><div class="v">{esc(v)}</div><div class="s">{esc(s)}</div></div>'
+        for k, v, s in kpis
+    )
     story_html = "".join(f"<li>{s}</li>" for s in story)
     stage_rows = "".join(
         f"<tr><td>{esc(s['run'])}</td><td>{esc(PRETTY.get(s['char'], s['char']))}</td><td>{esc(s['level'])}{' vs ' + esc(PRETTY.get(s['vs'], s['vs'])) if s.get('vs') else ''}</td>"
@@ -206,32 +328,64 @@ def main():
         f"<td>{fmt((s.get('steps') or runs[s['run']]['meta'].get('steps') or 0) / 1e6, 0)}</td>"
         f"<td>{fmt(s.get('best_exam') if s.get('best_exam') is not None else runs[s['run']]['meta'].get('best_exam'), 3)}</td>"
         f"<td>{'yes' if (s.get('graduated') or runs[s['run']]['meta'].get('graduated')) else 'no'}</td><td>{(('pass' if s['match_exam']['passed'] else 'fail: ' + esc(s['match_exam']['why'])) if s.get('match_exam') else '-')}</td>"
-        f"<td><a href='../../training/runs/{esc(s['run'])}/report.html'>run report</a></td></tr>" for s in stages)
+        f"<td><a href='../../training/runs/{esc(s['run'])}/report.html'>run report</a></td></tr>"
+        for s in stages
+    )
     gate_table = "".join(
         f"<tr><td>{esc(g['run'])}</td><td>{esc(PRETTY[g['char']])} vs {esc(PRETTY[g['vs']])}</td><td>{g['matches']}</td><td>{g['blowups']}</td>"
         f"<td>{pct(g['land'])}</td><td>{pct(g['self_fall'])}</td><td>{pct(g['ko'])}</td><td>{fmt(g['speed'])}</td><td>{g['wins']}</td>"
-        f"<td>{'PASS' if g['passed'] else esc(g['why'])}</td></tr>" for g in gate_rows)
+        f"<td>{'PASS' if g['passed'] else esc(g['why'])}</td></tr>"
+        for g in gate_rows
+    )
     if base:
         for char in ("grandpa", "kim"):
             b = base["sides"].get(char, {})
-            gate_table = (f"<tr class='base'><td>before tonight (shipped)</td><td>{PRETTY[char]} vs {PRETTY['kim' if char == 'grandpa' else 'grandpa']}</td>"
-                          f"<td>{base['matches']}</td><td>{base['blowups']}</td><td>{pct(b.get('land_rate'))}</td><td>{pct(b.get('self_fall'))}</td>"
-                          f"<td>{pct(b.get('ko_per_landed'))}</td><td>{fmt(b.get('speed'))}</td><td>{b.get('wins')}</td><td>baseline</td></tr>") + gate_table
-    ev_rows = "".join(f"<tr><td>{esc(e.get('t', '')[11:])}</td><td>{esc(e.get('event'))}</td><td>{esc(e.get('run') or e.get('char') or '')}</td>"
-                      f"<td>{esc({k: v for k, v in e.items() if k not in ('t', 'event', 'run', 'char', 'side', 'resume', 'opponent')})[:160]}</td></tr>" for e in events)
-    finals_html = "".join(f"<li>{esc(PRETTY[f['char']])} vs {esc(PRETTY[f['vs']])}: {'<b>promoted</b> to models/brains/' + esc(f['char']) + '_final_vs_' + esc(f['vs']) + ' from ' + esc(f['best_run']) if f['promoted'] else 'kept the shipped brain (best candidate ' + esc(f['best_run']) + ' scored ' + fmt(f['score'], 2) + ')'}</li>"
-                          for f in results.get("finals", [])) or "<li>no finals written yet (the queue is still running)</li>"
+            gate_table = (
+                f"<tr class='base'><td>before tonight (shipped)</td><td>{PRETTY[char]} vs {PRETTY['kim' if char == 'grandpa' else 'grandpa']}</td>"
+                f"<td>{base['matches']}</td><td>{base['blowups']}</td><td>{pct(b.get('land_rate'))}</td><td>{pct(b.get('self_fall'))}</td>"
+                f"<td>{pct(b.get('ko_per_landed'))}</td><td>{fmt(b.get('speed'))}</td><td>{b.get('wins')}</td><td>baseline</td></tr>"
+            ) + gate_table
+    ev_rows = "".join(
+        f"<tr><td>{esc(e.get('t', '')[11:])}</td><td>{esc(e.get('event'))}</td><td>{esc(e.get('run') or e.get('char') or '')}</td>"
+        f"<td>{esc({k: v for k, v in e.items() if k not in ('t', 'event', 'run', 'char', 'side', 'resume', 'opponent')})[:160]}</td></tr>"
+        for e in events
+    )
+    finals_html = (
+        "".join(
+            f"<li>{esc(PRETTY[f['char']])} vs {esc(PRETTY[f['vs']])}: {'<b>promoted</b> to models/brains/' + esc(f['char']) + '_final_vs_' + esc(f['vs']) + ' from ' + esc(f['best_run']) if f['promoted'] else 'kept the shipped brain (best candidate ' + esc(f['best_run']) + ' scored ' + fmt(f['score'], 2) + ')'}</li>"
+            for f in results.get("finals", [])
+        )
+        or "<li>no finals written yet (the queue is still running)</li>"
+    )
 
     athlete_html = ""
     for a in athletes:
         who = PRETTY[a["char"]]
-        charts = "".join(f'<figure><figcaption><b>{esc(c["title"])}</b> &middot; {esc(c["caption"])}</figcaption><div class="chart" id="{c["id"]}"></div>'
-                         f'<details><summary>table view</summary><div class="tbl" id="{c["id"]}_tbl"></div></details></figure>' for c in a["charts"])
-        ex_rows = "".join(f"<tr><td>{esc(e['run'])}</td><td>{fmt(e['steps_m'])}</td>" + "".join(f"<td>{esc(k)} {pct(v) if isinstance(v, float) and v <= 1 else fmt(v, 2)}</td>" for k, v in e.items() if k not in ('run', 'steps_m', 'passed')) + f"<td>{'PASS' if e['passed'] else 'not yet'}</td></tr>" for e in a["exams"])
-        athlete_html += (f'<section><h2 style="border-left:6px solid {COLORS[a["char"]]};padding-left:10px">{who}</h2>'
-                         f'<p class="muted">{len(a["stages"])} stage(s): ' + ", ".join(esc(s["run"]) for s in a["stages"]) + "</p>"
-                         f'<div class="grid">{charts}</div>'
-                         + (f"<details><summary>train.py's own exams during the night ({len(a['exams'])})</summary><table><tr><th>run</th><th>M steps</th><th colspan=5>result</th><th></th></tr>{ex_rows}</table></details>" if a["exams"] else ""))
+        charts = "".join(
+            f'<figure><figcaption><b>{esc(c["title"])}</b> &middot; {esc(c["caption"])}</figcaption><div class="chart" id="{c["id"]}"></div>'
+            f'<details><summary>table view</summary><div class="tbl" id="{c["id"]}_tbl"></div></details></figure>'
+            for c in a["charts"]
+        )
+        ex_rows = "".join(
+            f"<tr><td>{esc(e['run'])}</td><td>{fmt(e['steps_m'])}</td>"
+            + "".join(
+                f"<td>{esc(k)} {pct(v) if isinstance(v, float) and v <= 1 else fmt(v, 2)}</td>"
+                for k, v in e.items()
+                if k not in ("run", "steps_m", "passed")
+            )
+            + f"<td>{'PASS' if e['passed'] else 'not yet'}</td></tr>"
+            for e in a["exams"]
+        )
+        athlete_html += (
+            f'<section><h2 style="border-left:6px solid {COLORS[a["char"]]};padding-left:10px">{who}</h2>'
+            f'<p class="muted">{len(a["stages"])} stage(s): ' + ", ".join(esc(s["run"]) for s in a["stages"]) + "</p>"
+            f'<div class="grid">{charts}</div>'
+            + (
+                f"<details><summary>train.py's own exams during the night ({len(a['exams'])})</summary><table><tr><th>run</th><th>M steps</th><th colspan=5>result</th><th></th></tr>{ex_rows}</table></details>"
+                if a["exams"]
+                else ""
+            )
+        )
         athlete_html += "</section>"
 
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Night training report {esc(name)}</title>
@@ -254,7 +408,7 @@ tr.base td{{background:rgba(42,120,214,.08)}} details{{margin:6px 0}} summary{{c
 .db svg{{width:100%;height:auto}} ul.story li{{margin:6px 0}}
 </style></head><body>
 <h1>Night training report &mdash; {esc(name)}</h1>
-<p class="muted">Generated {time.strftime('%Y-%m-%d %H:%M')} &middot; queue started {esc(t_start)} {('&middot; ended ' + esc(t_end)) if t_end else '&middot; still running'} &middot; one RTX 5070 Ti laptop GPU, one stage at a time, match gates on the CPU alongside.</p>
+<p class="muted">Generated {time.strftime("%Y-%m-%d %H:%M")} &middot; queue started {esc(t_start)} {("&middot; ended " + esc(t_end)) if t_end else "&middot; still running"} &middot; one RTX 5070 Ti laptop GPU, one stage at a time, match gates on the CPU alongside.</p>
 <div class="kpis">{kpi_html}</div>
 
 <h2>What happened, stage by stage</h2>

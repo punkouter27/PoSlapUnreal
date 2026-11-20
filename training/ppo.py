@@ -4,11 +4,11 @@
 - Running observation normalisation, baked into the exported ONNX graph.
 - GAE with time-out bootstrapping, clipped value loss, adaptive learning rate on KL.
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 import numpy as np
 import torch
@@ -44,16 +44,16 @@ class RunningMeanStd:
     def normalize(self, x: torch.Tensor, clip: float = 10.0) -> torch.Tensor:
         return torch.clamp((x - self.mean) / torch.sqrt(self.var + 1e-8), -clip, clip)
 
-    def state_dict(self) -> Dict[str, torch.Tensor]:
+    def state_dict(self) -> dict[str, torch.Tensor]:
         return {"mean": self.mean, "var": self.var, "count": torch.tensor(self.count)}
 
-    def load_state_dict(self, sd: Dict[str, torch.Tensor]) -> None:
+    def load_state_dict(self, sd: dict[str, torch.Tensor]) -> None:
         self.mean = sd["mean"].to(self.mean.device)
         self.var = sd["var"].to(self.var.device)
         self.count = float(sd["count"])
 
 
-def mlp(inp: int, hidden: Tuple[int, ...], out: int, proj: "torch.Tensor | None" = None) -> nn.Sequential:
+def mlp(inp: int, hidden: tuple[int, ...], out: int, proj: torch.Tensor | None = None) -> nn.Sequential:
     """The policy's MLP.  `proj` is the FIXED linear projection (Realism 5: the redundant observation channels
     pruned inside the network's input layer, so the brain I/O stays the same 136 floats).  Its weight is not
     learned: it is the PCA basis of a sample of real observations, and it is baked into the exported ONNX -
@@ -75,14 +75,20 @@ def mlp(inp: int, hidden: Tuple[int, ...], out: int, proj: "torch.Tensor | None"
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, obs_dim: int, act_dim: int, hidden=(512, 256, 128), init_std: float = 0.8,
-                 proj: "torch.Tensor | None" = None):
+    def __init__(
+        self,
+        obs_dim: int,
+        act_dim: int,
+        hidden=(512, 256, 128),
+        init_std: float = 0.8,
+        proj: torch.Tensor | None = None,
+    ):
         super().__init__()
         self.actor = mlp(obs_dim, hidden, act_dim, proj)
         self.critic = mlp(obs_dim, hidden, 1, proj)
         self.log_std = nn.Parameter(torch.full((act_dim,), float(np.log(init_std))))
         for m in self.modules():
-            if isinstance(m, nn.Linear) and m.weight.requires_grad:   # the fixed projection is not re-initialised
+            if isinstance(m, nn.Linear) and m.weight.requires_grad:  # the fixed projection is not re-initialised
                 nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
                 nn.init.zeros_(m.bias)
         nn.init.orthogonal_(self.actor[-1].weight, gain=0.01)
@@ -118,7 +124,7 @@ class PPOConfig:
     desired_kl: float = 0.01
     max_grad_norm: float = 1.0
     obs_clip: float = 10.0
-    group_obs: int = -1      # obs index holding the role: advantages normalised per role (-1: one batch)
+    group_obs: int = -1  # obs index holding the role: advantages normalised per role (-1: one batch)
     # Step size of the KL-adaptive learning rate, applied once per minibatch. At the rsl_rl
     # default of 1.5 and 5 epochs x 8 minibatches, one iteration can move the rate by 1.5^40 --
     # and measurably does: the baseline run swung between 1e-5 and 3.4e-3 from iteration to
@@ -143,8 +149,9 @@ class PPOConfig:
 
 
 class PPO:
-    def __init__(self, obs_dim: int, act_dim: int, num_envs: int, device: str, cfg: PPOConfig,
-                 proj: "torch.Tensor | None" = None):
+    def __init__(
+        self, obs_dim: int, act_dim: int, num_envs: int, device: str, cfg: PPOConfig, proj: torch.Tensor | None = None
+    ):
         self.cfg = cfg
         self.device = device
         self.num_envs = num_envs
@@ -200,7 +207,7 @@ class PPO:
         b, c = self.buf, self.cfg
         T = c.steps_per_env
         adv = torch.zeros_like(b["rew"])
-        rew = b["rew"] + c.gamma * b["val"] * b["timeout"]   # bootstrap through time-outs
+        rew = b["rew"] + c.gamma * b["val"] * b["timeout"]  # bootstrap through time-outs
         gae = torch.zeros(self.num_envs, device=self.device)
         for t in reversed(range(T)):
             next_val = last_val if t == T - 1 else b["val"][t + 1]
@@ -211,12 +218,12 @@ class PPO:
         ret = adv + b["val"]
         return adv, ret
 
-    def update(self, last_raw_obs: torch.Tensor) -> Dict[str, float]:
+    def update(self, last_raw_obs: torch.Tensor) -> dict[str, float]:
         c, b = self.cfg, self.buf
         with torch.no_grad():
             last_val = self.model.critic(self.obs_rms.normalize(last_raw_obs, c.obs_clip)).squeeze(-1)
         adv, ret = self._gae(last_val)
-        if c.group_obs >= 0:   # per group (role): a guard's returns (~3000) must not drown a striker's (~0)
+        if c.group_obs >= 0:  # per group (role): a guard's returns (~3000) must not drown a striker's (~0)
             adv_n = torch.empty_like(adv)
             for g in b["group"].unique():
                 sel = b["group"] == g
@@ -236,12 +243,16 @@ class PPO:
         for _ in range(c.epochs):
             perm = torch.randperm(T * N, device=self.device)
             for i in range(c.minibatches):
-                idx = perm[i * mb:(i + 1) * mb]
+                idx = perm[i * mb : (i + 1) * mb]
                 logp, ent, v, mu, sigma = self.model.evaluate(obs[idx], act[idx])
                 with torch.no_grad():
-                    kl = torch.sum(torch.log(sigma / sigma_old[idx] + 1e-5)
-                                   + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2)) - 0.5, dim=-1).mean()
-                    if self.actor_frozen:   # no policy step, so no KL: the rate must not climb to its max meanwhile
+                    kl = torch.sum(
+                        torch.log(sigma / sigma_old[idx] + 1e-5)
+                        + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2))
+                        - 0.5,
+                        dim=-1,
+                    ).mean()
+                    if self.actor_frozen:  # no policy step, so no KL: the rate must not climb to its max meanwhile
                         pass
                     elif kl > c.desired_kl * 2.0:
                         self.cfg.lr = max(c.lr_min, self.cfg.lr / c.lr_adapt)
@@ -255,7 +266,7 @@ class PPO:
                 # critic held within `clip` (0.2) of its last answer cannot follow a change of stage.
                 v_loss = (v - ret_f[idx]).pow(2).mean()
                 loss = surr + c.value_coef * v_loss - c.entropy_coef * ent.mean()
-                if self.actor_frozen:   # critic warm-up after a resume: the policy waits for advantages it can trust
+                if self.actor_frozen:  # critic warm-up after a resume: the policy waits for advantages it can trust
                     loss = c.value_coef * v_loss
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
@@ -267,22 +278,32 @@ class PPO:
                 if c.max_std > 0.0:
                     with torch.no_grad():
                         self.model.log_std.clamp_(max=float(np.log(c.max_std)))
-                stats["policy_loss"] += surr.item(); stats["value_loss"] += v_loss.item()
-                stats["entropy"] += ent.mean().item(); stats["kl"] += kl.item()
+                stats["policy_loss"] += surr.item()
+                stats["value_loss"] += v_loss.item()
+                stats["entropy"] += ent.mean().item()
+                stats["kl"] += kl.item()
                 n_updates += 1
         self.t = 0
-        for k in stats: stats[k] /= max(1, n_updates)
+        for k in stats:
+            stats[k] /= max(1, n_updates)
         stats["lr"] = self.cfg.lr
         stats["action_std"] = self.model.log_std.exp().mean().item()
         return stats
 
     # ---- persistence ---------------------------------------------------------------------------
-    def save(self, path: str, extra: Dict | None = None) -> None:
+    def save(self, path: str, extra: dict | None = None) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save({"model": self.model.state_dict(), "obs_rms": self.obs_rms.state_dict(),
-                    "opt": self.opt.state_dict(), "extra": extra or {}}, path)
+        torch.save(
+            {
+                "model": self.model.state_dict(),
+                "obs_rms": self.obs_rms.state_dict(),
+                "opt": self.opt.state_dict(),
+                "extra": extra or {},
+            },
+            path,
+        )
 
-    def load(self, path: str, widen: bool = False) -> Dict:
+    def load(self, path: str, widen: bool = False) -> dict:
         """widen: a checkpoint that reads fewer numbers than this model gets zero weights (and a unit scale) on the new
         ones, so it acts exactly as before while they are zero (tools/archive/widen_policy.py's rule); its optimiser state
         is dropped, being shaped for the old layer."""
@@ -329,20 +350,29 @@ class ExportPolicy(nn.Module):
         return self.actor(x), self.critic(x)
 
 
-def export_onnx(ppo: PPO, path: str, obs_dim: int, fixed_batch: bool = False, meta: Dict | None = None) -> None:
+def export_onnx(ppo: PPO, path: str, obs_dim: int, fixed_batch: bool = False, meta: dict | None = None) -> None:
     """fixed_batch: the graph takes exactly one observation, which is all the game ever gives it.
     meta: written into the model's metadata_props (the interface and physics tags, AGENTS.md section 3); the runtimes
     key on the input width, tools read the tags."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     wrapper = ExportPolicy(ppo.model, ppo.obs_rms, ppo.cfg.obs_clip).to("cpu").eval()
     dummy = torch.zeros(1, obs_dim)
-    torch.onnx.export(wrapper, dummy, path, input_names=["obs"], output_names=["actions", "value"],
-                      opset_version=17, dynamo=False,
-                      dynamic_axes=None if fixed_batch else {"obs": {0: "batch"}, "actions": {0: "batch"}, "value": {0: "batch"}})
+    torch.onnx.export(
+        wrapper,
+        dummy,
+        path,
+        input_names=["obs"],
+        output_names=["actions", "value"],
+        opset_version=17,
+        dynamo=False,
+        dynamic_axes=None if fixed_batch else {"obs": {0: "batch"}, "actions": {0: "batch"}, "value": {0: "batch"}},
+    )
     ppo.model.to(ppo.device)
     from constants import interface_of
+
     tags = {"interface": interface_of(obs_dim), "obs_dim": obs_dim, **(meta or {})}
     import onnx
+
     mo = onnx.load(path)
     for k, v in tags.items():
         mo.metadata_props.add(key=str(k), value=str(v))

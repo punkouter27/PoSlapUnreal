@@ -9,7 +9,11 @@ step are kept, before the env resets it. That is the state the director hands to
 get-up brain trains on. Written to models/v<physics>/getup/<char>_states.npz (qpos, qvel, role, source).
 The brain reads its own width (a shipped 136 brain: no foot contacts, no low-pass).
 """
-import argparse, json, os, time
+
+import argparse
+import json
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -36,10 +40,10 @@ def main():
     ap.add_argument("--minutes", type=float, default=6.0)
     a = ap.parse_args()
     os.environ["SLAP_PHYSICS"] = str(a.physics)
-    from constants import lpf_on, models_dir
+    from constants import lpf_on
+    from envs.getup import states_path
     from envs.slap import SlapEnv
     from ppo import PPO, PPOConfig, obs_dim_of
-    from envs.getup import states_path
 
     brain = Path(a.brain) if a.brain else default_brain(a.char, a.physics)
     n_in = obs_dim_of(str(brain))
@@ -49,17 +53,20 @@ def main():
     ppo.load(str(brain))
     env.roles = {-1: 0.5, 0: 0.5}
     env.cfg = {**env.cfg, "pushes": True}
-    env.push_scale = 2.5            # 375-750 N shoves on chest or head
-    env.slap_j = 15.0 * 2.5         # 22-52 N s slaps (training draws 0.6-1.4 x)
+    env.push_scale = 2.5  # 375-750 N shoves on chest or head
+    env.slap_j = 15.0 * 2.5  # 22-52 N s slaps (training draws 0.6-1.4 x)
     env.reset(torch.ones(env.N, dtype=torch.bool, device="cuda"))
     qs, vs, roles = [], [], []
     orig = env.reset
 
-    def capture(mask):   # the env resets fallen worlds inside step(): take their state first
+    def capture(mask):  # the env resets fallen worlds inside step(): take their state first
         down = mask & env.fell_now & ~torch.isnan(env.qpos).any(-1)
         if bool(down.any()):
-            qs.append(env.qpos[down].cpu().numpy()); vs.append(env.qvel[down].cpu().numpy()); roles.append(env.role[down].cpu().numpy())
+            qs.append(env.qpos[down].cpu().numpy())
+            vs.append(env.qvel[down].cpu().numpy())
+            roles.append(env.role[down].cpu().numpy())
         orig(mask)
+
     env.reset = capture
     obs, t0, have = env.observe(), time.time(), 0
     with torch.no_grad():
@@ -67,17 +74,33 @@ def main():
             act = ppo.model.actor(ppo.obs_rms.normalize(obs[:, :n_in], ppo.cfg.obs_clip))
             obs, _, _, _ = env.step(act)
             have = sum(len(q) for q in qs)
-    q, v, r = np.concatenate(qs)[:a.count], np.concatenate(vs)[:a.count], np.concatenate(roles)[:a.count]
-    ok = (np.abs(v).max(-1) < 50) & np.isfinite(q).all(-1)   # drop a blow-up mid-step
+    q, v, r = np.concatenate(qs)[: a.count], np.concatenate(vs)[: a.count], np.concatenate(roles)[: a.count]
+    ok = (np.abs(v).max(-1) < 50) & np.isfinite(q).all(-1)  # drop a blow-up mid-step
     q, v, r = q[ok], v[ok], r[ok]
     out = states_path(a.char, a.physics)
     out.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out, qpos=q.astype(np.float32), qvel=v.astype(np.float32), role=r.astype(np.int8),
-                        source=np.array(json.dumps({"brain": str(brain.relative_to(HERE) if brain.is_relative_to(HERE) else brain),
-                                                    "n_in": n_in, "physics": a.physics, "push_scale": 2.5, "slap_j": 37.5,
-                                                    "made": time.strftime("%Y-%m-%d %H:%M")})))
-    print(f"{out.relative_to(HERE)}: {len(q)} knockdown states ({int((r == -1).sum())} from slaps, {int((r == 0).sum())} from "
-          f"shoves) from {brain.name} ({n_in} inputs) in {time.time() - t0:.0f} s; pelvis z median {np.median(q[:, 2]):.2f} m")
+    np.savez_compressed(
+        out,
+        qpos=q.astype(np.float32),
+        qvel=v.astype(np.float32),
+        role=r.astype(np.int8),
+        source=np.array(
+            json.dumps(
+                {
+                    "brain": str(brain.relative_to(HERE) if brain.is_relative_to(HERE) else brain),
+                    "n_in": n_in,
+                    "physics": a.physics,
+                    "push_scale": 2.5,
+                    "slap_j": 37.5,
+                    "made": time.strftime("%Y-%m-%d %H:%M"),
+                }
+            )
+        ),
+    )
+    print(
+        f"{out.relative_to(HERE)}: {len(q)} knockdown states ({int((r == -1).sum())} from slaps, {int((r == 0).sum())} from "
+        f"shoves) from {brain.name} ({n_in} inputs) in {time.time() - t0:.0f} s; pelvis z median {np.median(q[:, 2]):.2f} m"
+    )
 
 
 if __name__ == "__main__":

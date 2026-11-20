@@ -1,20 +1,33 @@
 """A brain driving athletes in CPU MuJoCo (double precision), built exactly like Unreal's USlapController:
-same observation (DOCS/BRAIN_IO.md), same action rule, same timing. Used for checkpoint videos and for the
+same observation (docs/BRAIN_IO.md), same action rule, same timing. Used for checkpoint videos and for the
 live half of the matching check (Blueprint 8).
 
     .venv/Scripts/python.exe brain_cpu.py video models/brains/grandpa_L0.onnx out.gif
 """
-import json, math, sys
+
+import json
+import math
+import sys
 from pathlib import Path
 
 import mujoco
 import numpy as np
-
-from constants import HILL_K, LAGS, LPF_ALPHA, MIN_NECK, MIN_STAMINA, OBS, OBS_V3, REACT, lpf_on   # the shared numbers (DOCS/BRAIN_IO.md)
+from constants import (
+    HILL_K,
+    LAGS,
+    LPF_ALPHA,
+    MIN_NECK,
+    MIN_STAMINA,
+    OBS,
+    OBS_V3,
+    REACT,
+    lpf_on,
+)  # the shared numbers (docs/BRAIN_IO.md)
 
 HERE = Path(__file__).parent
 # OBS, LAGS, REACT, HILL_K, MIN_STAMINA and MIN_NECK live in constants.py (one source of truth for the three
 # engines); they are re-exported here so `from brain_cpu import OBS` keeps working.
+__all__ = ["HILL_K", "LAGS", "MIN_NECK", "MIN_STAMINA", "OBS", "OBS_V3", "REACT"]
 
 
 def card(fp):
@@ -35,17 +48,36 @@ def card(fp):
 # the reference path (this module) for logs and by the trainer for the projection's warm-up statistics.
 
 SUMMARY_FIELDS = (
-    "pelvis_z", "gravity_x", "gravity_y", "gravity_z",          # 60-63: height and the tilt of the body
-    "v_fwd", "v_lat", "v_up",                                  # 64-66: the velocity in the heading frame
-    "roll", "pitch", "yaw_rate",                               # 67-69: the angular velocity (scaled)
-    "action_mean", "action_std",                               # 70-99: the previous action, summarised
-    "role", "clock",                                           # 100-101
-    "target_fwd", "target_lat", "target_up",                   # 102-104: the target / foot box
-    "hand_fwd", "hand_lat", "hand_up",                         # 105-107: the opponent's hand (6 decisions late)
-    "mem_strike_time", "mem_strike_speed",                     # 126-127
-    "stamina", "neck_strength",                                # 128-129
-    "palm_fwd", "palm_lat", "palm_up",                         # 130-132
-    "palm_facing_x", "palm_facing_y", "palm_facing_z",         # 133-135
+    "pelvis_z",
+    "gravity_x",
+    "gravity_y",
+    "gravity_z",  # 60-63: height and the tilt of the body
+    "v_fwd",
+    "v_lat",
+    "v_up",  # 64-66: the velocity in the heading frame
+    "roll",
+    "pitch",
+    "yaw_rate",  # 67-69: the angular velocity (scaled)
+    "action_mean",
+    "action_std",  # 70-99: the previous action, summarised
+    "role",
+    "clock",  # 100-101
+    "target_fwd",
+    "target_lat",
+    "target_up",  # 102-104: the target / foot box
+    "hand_fwd",
+    "hand_lat",
+    "hand_up",  # 105-107: the opponent's hand (6 decisions late)
+    "mem_strike_time",
+    "mem_strike_speed",  # 126-127
+    "stamina",
+    "neck_strength",  # 128-129
+    "palm_fwd",
+    "palm_lat",
+    "palm_up",  # 130-132
+    "palm_facing_x",
+    "palm_facing_y",
+    "palm_facing_z",  # 133-135
 )
 
 
@@ -58,19 +90,41 @@ def summarise(obs):
     o = np.atleast_2d(np.asarray(obs, float))
     n = o.shape[-1]
     a = o[:, 70:100]
-    out = np.stack([
-        o[:, 60], o[:, 61], o[:, 62], o[:, 63],
-        o[:, 64], o[:, 65], o[:, 66],
-        o[:, 67], o[:, 68], o[:, 69],
-        a.mean(-1), a.std(-1),
-        o[:, 100], o[:, 101],
-        o[:, 102], o[:, 103], o[:, 104],
-        o[:, 105], o[:, 106], o[:, 107],
-        o[:, 126], o[:, 127],
-        o[:, 128], o[:, 129],
-        o[:, 130], o[:, 131], o[:, 132],
-        o[:, 133], o[:, 134], o[:, 135],
-    ], -1)
+    out = np.stack(
+        [
+            o[:, 60],
+            o[:, 61],
+            o[:, 62],
+            o[:, 63],
+            o[:, 64],
+            o[:, 65],
+            o[:, 66],
+            o[:, 67],
+            o[:, 68],
+            o[:, 69],
+            a.mean(-1),
+            a.std(-1),
+            o[:, 100],
+            o[:, 101],
+            o[:, 102],
+            o[:, 103],
+            o[:, 104],
+            o[:, 105],
+            o[:, 106],
+            o[:, 107],
+            o[:, 126],
+            o[:, 127],
+            o[:, 128],
+            o[:, 129],
+            o[:, 130],
+            o[:, 131],
+            o[:, 132],
+            o[:, 133],
+            o[:, 134],
+            o[:, 135],
+        ],
+        -1,
+    )
     assert out.shape[-1] == len(SUMMARY_FIELDS) == 31, (out.shape, len(SUMMARY_FIELDS))
     assert n >= OBS, f"the observation is {n} floats, expected {OBS}"
     return out
@@ -99,50 +153,55 @@ class Athlete:
         self.rq, self.rv = m.jnt_qposadr[root], m.jnt_dofadr[root]
         self.pelvis = m.body(prefix + "pelvis").id
         self.hand = m.geom(prefix + "hand_r").id
-        self.feet = [m.geom(prefix + "foot_l").id, m.geom(prefix + "foot_r").id]   # the soles (heel/toe inputs 136-139)
+        self.feet = [m.geom(prefix + "foot_l").id, m.geom(prefix + "foot_r").id]  # the soles (heel/toe inputs 136-139)
         self.m = m
-        self.lpf = lpf_on(OBS_V3)   # the action low-pass: off until set per brain from its width (match.py, rollout)
-        self.box = m.qpos0[self.rq:self.rq + 2].copy()   # foot-box centre = start pelvis x, y
-        self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])   # exact, as Unreal reads it
-        self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T   # listed in joint order (as Unreal reads it)
-        self.vmax = np.broadcast_to(np.asarray(fp["max_joint_speed_rad_s"], float), (len(self.order),))   # per joint
-        self.max_step = self.vmax * 0.02   # (a scalar in older fingerprints)
+        self.lpf = lpf_on(OBS_V3)  # the action low-pass: off until set per brain from its width (match.py, rollout)
+        self.box = m.qpos0[self.rq : self.rq + 2].copy()  # foot-box centre = start pelvis x, y
+        self.stand = np.array([fp["stand_pose_rad"].get(n, 0.0) for n in self.order])  # exact, as Unreal reads it
+        self.lo, self.hi = np.array(fp["ctrl_range_rad"]).T  # listed in joint order (as Unreal reads it)
+        self.vmax = np.broadcast_to(np.asarray(fp["max_joint_speed_rad_s"], float), (len(self.order),))  # per joint
+        self.max_step = self.vmax * 0.02  # (a scalar in older fingerprints)
         self.neck = np.array([a for a, n in zip(self.act, self.order) if n.startswith("neck")])
         self.goal, self.prev = self.stand.copy(), np.zeros(len(self.order))
-        self.hist = []                       # inputs 102-107 of earlier decisions this turn (memory)
-        self.mem = (0.0, 0.0)                # the opponent's last strike this match: touch time / 30, palm speed / 10
+        self.hist = []  # inputs 102-107 of earlier decisions this turn (memory)
+        self.mem = (0.0, 0.0)  # the opponent's last strike this match: touch time / 30, palm speed / 10
         self.stamina, self.neck_strength = 1.0, 1.0
 
     def obs(self, d, role=0.0, clock=0.0, target=None, hand=None, cmd=(0.0, 0.0)):
         o = np.zeros(OBS)
         N = len(self.order)
         o[:N] = d.qpos[self.qa] - self.stand
-        o[N:2 * N] = d.qvel[self.va] * 0.1
-        R = np.zeros(9); mujoco.mju_quat2Mat(R, d.qpos[self.rq + 3:self.rq + 7])
-        yaw = math.atan2(R[3], R[0]); c, s = math.cos(yaw), math.sin(yaw)
-        v = d.qvel[self.rv:self.rv + 3]
+        o[N : 2 * N] = d.qvel[self.va] * 0.1
+        R = np.zeros(9)
+        mujoco.mju_quat2Mat(R, d.qpos[self.rq + 3 : self.rq + 7])
+        yaw = math.atan2(R[3], R[0])
+        c, s = math.cos(yaw), math.sin(yaw)
+        v = d.qvel[self.rv : self.rv + 3]
         o[60] = d.xpos[self.pelvis][2]
         o[61:64] = -R[6:9]
         o[64:67] = [c * v[0] + s * v[1], -s * v[0] + c * v[1], v[2]]
-        o[67:70] = d.qvel[self.rv + 3:self.rv + 6] * 0.25
+        o[67:70] = d.qvel[self.rv + 3 : self.rv + 6] * 0.25
         o[70:100] = self.prev
         o[100] = role
-        if role == 0:      # own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
+        if role == 0:  # own foot-box centre (start pelvis x, y) - pelvis, heading frame; opponent hand stays zero
             bx, by = self.box[0] - d.qpos[self.rq], self.box[1] - d.qpos[self.rq + 1]
             o[102:105] = [c * bx + s * by, -s * bx + c * by, 0.0]
-        else:              # striker / defender: turn clock left, opponent's head centre - pelvis, heading frame
+        else:  # striker / defender: turn clock left, opponent's head centre - pelvis, heading frame
             o[101] = clock
             r = target - d.xpos[self.pelvis]
             o[102:105] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
-        if hand is not None:   # defender: the opponent's right hand - pelvis, heading frame
+        if hand is not None:  # defender: the opponent's right hand - pelvis, heading frame
             r = hand - d.xpos[self.pelvis]
             o[105:108] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         self.hist = (self.hist or [o[102:108].copy()] * 16)[-15:] + [o[102:108].copy()]
         for i, lag in enumerate(LAGS):
-            o[108 + 6 * i:114 + 6 * i] = self.hist[-1 - lag]
+            o[108 + 6 * i : 114 + 6 * i] = self.hist[-1 - lag]
         o[126:128] = self.mem
         o[128], o[129] = self.stamina, self.neck_strength
-        r, n = d.geom_xpos[self.hand] - d.xpos[self.pelvis], -d.geom_xmat[self.hand].reshape(3, 3)[:, 2]   # own palm: centre, facing
+        r, n = (
+            d.geom_xpos[self.hand] - d.xpos[self.pelvis],
+            -d.geom_xmat[self.hand].reshape(3, 3)[:, 2],
+        )  # own palm: centre, facing
         o[130:133] = [c * r[0] + s * r[1], -s * r[0] + c * r[1], r[2]]
         o[133:136] = [c * n[0] + s * n[1], -s * n[0] + c * n[1], n[2]]
         o[136:140] = foot_contacts(self.m, d, self.feet)
@@ -152,10 +211,12 @@ class Athlete:
 
     def decide(self, action):
         a = np.clip(np.asarray(action, float), -1.0, 1.0)
-        t = np.clip(self.stand + np.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi)   # a = +-1: the range ends
-        if self.lpf:   # interface 4: the 8 Hz first-order low-pass on the targets, before the rate limit
+        t = np.clip(
+            self.stand + np.where(a > 0, a * (self.hi - self.stand), a * (self.stand - self.lo)), self.lo, self.hi
+        )  # a = +-1: the range ends
+        if self.lpf:  # interface 4: the 8 Hz first-order low-pass on the targets, before the rate limit
             t = self.goal + LPF_ALPHA * (t - self.goal)
-        step = self.max_step * self.stamina   # fatigue: a tired athlete moves slower
+        step = self.max_step * self.stamina  # fatigue: a tired athlete moves slower
         self.goal = np.clip(t, self.goal - step, self.goal + step)
         self.prev = a.astype(np.float32)
 
@@ -173,7 +234,7 @@ def foot_contacts(m, d, feet):
             other = g1 if g0 == g else g0 if g1 == g else -1
             if other < 0 or m.geom_bodyid[other] != 0:
                 continue
-            X = d.geom_xmat[g]   # row-major: the box's x axis is column 0 (X[0], X[3], X[6])
+            X = d.geom_xmat[g]  # row-major: the box's x axis is column 0 (X[0], X[3], X[6])
             p = d.geom_xpos[g]
             ax = (c.pos[0] - p[0]) * X[0] + (c.pos[1] - p[1]) * X[3] + (c.pos[2] - p[2]) * X[6]
             out[2 * f + (1 if ax >= 0 else 0)] = 1.0
@@ -228,10 +289,11 @@ def stand(m, d, fp):
 
 def onnx_policy(path):
     import onnxruntime as ort
+
     s = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    n = s.get_inputs()[0].shape[1]   # brains from before memory read the first 108 numbers, interface 3 the first 136
+    n = s.get_inputs()[0].shape[1]  # brains from before memory read the first 108 numbers, interface 3 the first 136
     f = lambda o: s.run(None, {"obs": o[None, :n]})[0][0]
-    f.n_in = n   # the interface: the low-pass applies only to brains this wide (constants.lpf_on)
+    f.n_in = n  # the interface: the low-pass applies only to brains this wide (constants.lpf_on)
     return f
 
 
@@ -241,7 +303,7 @@ def rollout(m, fp, policy, prefixes=("",), seconds=5.0, on_step=None, obs=None, 
     stand(m, d, fp)
     ath = [Athlete(m, fp, p) for p in prefixes]
     for a in ath:
-        a.lpf = lpf_on(getattr(policy, "n_in", OBS_V3))   # unknown width: the shipped interface
+        a.lpf = lpf_on(getattr(policy, "n_in", OBS_V3))  # unknown width: the shipped interface
     obs = obs or (lambda a, d, k: a.obs(d))
     vmax = muscle_vmax(m, ath)
     if setup:
@@ -264,17 +326,19 @@ def video(policy, out, character="grandpa", seconds=6.0, size=(360, 480), role=0
     +1: striking the target sphere where the opponent's head is; -1: one `slap` N s slap to the face at 2 s
     (the training env's scripted slap, envs/slap.py)."""
     from PIL import Image
+
     fp = json.loads((HERE / "models" / f"{character}_fingerprint.json").read_text())
     m = mujoco.MjModel.from_xml_path(str(HERE / "models" / f"{character}_solo.xml"))
     r = mujoco.Renderer(m, size[1], size[0])
-    cam = mujoco.MjvCamera(); cam.azimuth, cam.elevation, cam.distance = 120, -12, 3.0
+    cam = mujoco.MjvCamera()
+    cam.azimuth, cam.elevation, cam.distance = 120, -12, 3.0
     frames = []
     head = m.body("head").id
     q0 = opp_head = head0 = None
     cheek, f = np.array([0.05, 0.07, -0.03]), np.array([-0.3, -1.0, 0.05])
     f = f / np.linalg.norm(f) * slap / 0.01
 
-    def opp_hand(t, head0):   # rest -> wound up -> our left cheek at 2 s -> rest, as envs/slap.py opp_hand()
+    def opp_hand(t, head0):  # rest -> wound up -> our left cheek at 2 s -> rest, as envs/slap.py opp_hand()
         rest, wind, hit = q0 + [0.80, 0.20, -0.05], q0 + [0.70, 0.60, 0.55], head0 + cheek
         t = t - 2.0
         if t < -0.15:
@@ -285,21 +349,28 @@ def video(policy, out, character="grandpa", seconds=6.0, size=(360, 480), role=0
 
     def setup(d):
         nonlocal q0, opp_head, head0
-        q0 = d.qpos[:3].copy(); opp_head = q0 + [0.8015, 0.0, 0.74]; head0 = d.xpos[head].copy()
+        q0 = d.qpos[:3].copy()
+        opp_head = q0 + [0.8015, 0.0, 0.74]
+        head0 = d.xpos[head].copy()
         d.mocap_pos[0] = opp_head if role == 1 else q0 + [5.0, 0.0, 0.7]
 
     def grab(k, d):
         d.xfrc_applied[:] = 0
-        if role == -1 and k in (400, 401):   # 2 s, 10 ms
+        if role == -1 and k in (400, 401):  # 2 s, 10 ms
             d.xfrc_applied[head, :3] = f
             d.xfrc_applied[head, 3:] = np.cross(cheek, f)
-        if k % 8 == 0:   # 25 fps
+        if k % 8 == 0:  # 25 fps
             cam.lookat[:] = [d.qpos[0], d.qpos[1], 0.9]
-            r.update_scene(d, cam); frames.append(Image.fromarray(r.render()))
+            r.update_scene(d, cam)
+            frames.append(Image.fromarray(r.render()))
+
     def obs(a, d, k):
         if role == 0:
             return a.obs(d)
-        return a.obs(d, role, 1 - k * 0.005 / 30, opp_head, opp_hand(k * 0.005 - REACT * 0.02, head0) if role == -1 else None)   # seen 0.12 s late
+        return a.obs(
+            d, role, 1 - k * 0.005 / 30, opp_head, opp_hand(k * 0.005 - REACT * 0.02, head0) if role == -1 else None
+        )  # seen 0.12 s late
+
     d = rollout(m, fp, policy, seconds=seconds, on_step=grab, obs=obs, setup=setup)
     frames[0].save(out, save_all=True, append_images=frames[1:], duration=40, loop=0)
     return float(d.qpos[2])

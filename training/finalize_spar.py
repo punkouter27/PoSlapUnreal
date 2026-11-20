@@ -6,12 +6,12 @@ safety net that still ships the weights.
 
     .venv/Scripts/python.exe finalize_spar.py spar3h2_queue
 """
+
 import json
 import sys
 from pathlib import Path
 
 import torch
-
 from brain_cpu import OBS
 from ppo import PPO, PPOConfig, export_onnx
 
@@ -39,7 +39,7 @@ def main():
             last_run[char] = stage["run"]
             if stage.get("vs"):
                 opponent[char] = stage["vs"]
-    for e in events:                       # the queue file may lag; the log is authoritative
+    for e in events:  # the queue file may lag; the log is authoritative
         if e.get("event") == "stage" and e.get("run"):
             run = e["run"]
             char = next((c for c in last_run if run.startswith(c)), None)
@@ -65,7 +65,7 @@ def main():
         sc = exam_of(run)
         if sc >= 0 and (char not in best_run or sc > exam_of(best_run[char])):
             best_run[char] = run
-    for char, run in last_run.items():      # fall back to the last run when nothing scored
+    for char, run in last_run.items():  # fall back to the last run when nothing scored
         best_run.setdefault(char, run)
 
     # a head-to-head (eval_candidates.py) picks the winner against one fixed opponent; that beats
@@ -99,11 +99,13 @@ def main():
         export_onnx(ppo, str(final.with_suffix(".onnx")), OBS, fixed_batch=True)
         meta_p = d / "meta.json"
         meta = json.loads(meta_p.read_text()) if meta_p.exists() else {}
-        print("  %-10s %-42s -> %s.pt / .onnx   [%s] best_exam=%s steps=%s"
-              % (char, run, final.name, note, meta.get("best_exam"), meta.get("steps")))
+        print(
+            "  %-10s %-42s -> %s.pt / .onnx   [%s] best_exam=%s steps=%s"
+            % (char, run, final.name, note, meta.get("best_exam"), meta.get("steps"))
+        )
 
     print("\nverify:")
-    for char, run in best_run.items():
+    for char in best_run:
         suffix = "_vs_%s" % opponent[char] if char in opponent else ""
         onnx = BRAINS / ("%s_final%s.onnx" % (char, suffix))
         pt = BRAINS / ("%s_final%s.pt" % (char, suffix))
@@ -111,19 +113,28 @@ def main():
             print("  %-28s MISSING" % onnx.name)
             continue
         try:
-            sess = torch.onnx.load(str(onnx), ) if hasattr(torch.onnx, "load") else None
+            (
+                torch.onnx.load(
+                    str(onnx),
+                )
+                if hasattr(torch.onnx, "load")
+                else None
+            )
         except Exception:
-            sess = None
+            pass
         try:
             import onnxruntime as ort
+
             s = ort.InferenceSession(str(onnx), providers=["CPUExecutionProvider"])
             shapes = {i.name: (i.shape, i.type) for i in s.get_inputs()}
             outs = {o.name: o.shape for o in s.get_outputs()}
             import numpy as np
+
             res = s.run(None, {shapes and list(shapes)[0]: np.zeros((1, OBS), dtype=np.float32)})
-            print("  %-28s in=%s out=%s  ran ok, action shape=%s  pt=%.1f KB"
-                  % (onnx.name, {k: v[0] for k, v in shapes.items()}, outs,
-                     list(res[0].shape), pt.stat().st_size / 1024))
+            print(
+                "  %-28s in=%s out=%s  ran ok, action shape=%s  pt=%.1f KB"
+                % (onnx.name, {k: v[0] for k, v in shapes.items()}, outs, list(res[0].shape), pt.stat().st_size / 1024)
+            )
         except Exception as e:
             print("  %-28s %s" % (onnx.name, str(e)[:120]))
 

@@ -5,13 +5,16 @@
 
 The numbers to tune the realism options against (2026-10-26): muscle ramp, reaction delay, force-velocity, shoulder cone.
 """
-import json, sys, time
+
+import json
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
 
 LOGS = Path(__file__).resolve().parents[1] / "Logs" / "Gameplay"
-CONCUSSION_G, CONCUSSION_RAD_S2 = 80.0, 5000.0   # rough thresholds from helmet-sensor studies
+CONCUSSION_G, CONCUSSION_RAD_S2 = 80.0, 5000.0  # rough thresholds from helmet-sensor studies
 
 
 def load(days):
@@ -35,8 +38,11 @@ def stats(ev):
         "hand_speed_p90_m_s": float(np.percentile([s["speed"] for s in strikes], 90)) if strikes else float("nan"),
         "head_peak_g_median": med([h["peak_g"] for h in heads]),
         "head_peak_rad_s2_median": med([h["peak_rad_s2"] for h in heads]),
-        "head_over_concussion_share": float(np.mean([h["peak_g"] > CONCUSSION_G or h["peak_rad_s2"] > CONCUSSION_RAD_S2
-                                                     for h in heads])) if heads else float("nan"),
+        "head_over_concussion_share": float(
+            np.mean([h["peak_g"] > CONCUSSION_G or h["peak_rad_s2"] > CONCUSSION_RAD_S2 for h in heads])
+        )
+        if heads
+        else float("nan"),
         "chain_trunk_leads_shoulder_share": float(np.mean([c > 0 for c in chain])) if chain else float("nan"),
         "chain_lead_median_ms": med(chain),
         "action_jerk_mean": float(np.mean([r["jerk"] for r in rz])) if rz else float("nan"),

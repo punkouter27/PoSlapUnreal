@@ -4,10 +4,15 @@ and the change vs the previous run of the same level.
 
     .venv/Scripts/python.exe report.py runs/<run>
 """
-import base64, io, json, sys
+
+import base64
+import io
+import json
+import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -24,8 +29,13 @@ ROLES = {
 def _chart(rows, key, title):
     fig, ax = plt.subplots(figsize=(6, 2.6), dpi=110)
     ax.plot([r["steps"] / 1e6 for r in rows], [r[key] for r in rows], color="#3b6fd8")
-    ax.set_title(title, fontsize=10); ax.set_xlabel("million steps"); ax.grid(alpha=.3)
-    buf = io.BytesIO(); fig.tight_layout(); fig.savefig(buf, format="png"); plt.close(fig)
+    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("million steps")
+    ax.grid(alpha=0.3)
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
 
@@ -48,8 +58,10 @@ def write_report(run: Path) -> Path:
     run = Path(run)
     rows = [json.loads(l) for l in (run / "telemetry.jsonl").read_text().splitlines() if l.strip()]
     meta = json.loads((run / "meta.json").read_text())
-    prev = sorted((p for p in run.parent.glob(f"{meta['char']}_{meta['level']}_*/meta.json") if p.parent != run),
-                  key=lambda p: p.stat().st_mtime)
+    prev = sorted(
+        (p for p in run.parent.glob(f"{meta['char']}_{meta['level']}_*/meta.json") if p.parent != run),
+        key=lambda p: p.stat().st_mtime,
+    )
     last = json.loads(prev[-1].read_text()) if prev else {}
     table = ""
     for role, st in stages(rows).items():
@@ -58,15 +70,26 @@ def write_report(run: Path) -> Path:
         delta = f"{meta[rk] - last[rk]:+.0f}" if rk in meta and rk in last else "first run"
         table += f"<tr><th>{role} ({what})</th>{cells}<td>{delta}</td></tr>"
     head = "".join(f"<th>{n}<br>reward</th><th>{n}<br>success</th>" for n, _, _ in STAGES)
-    keys = [k for k in ("strike_hit", "absorb_ok", "guard_return", "strike_return", "absorb_return", "episode_return", "fall_rate")
-            if k in rows[-1]][:3]
+    keys = [
+        k
+        for k in (
+            "strike_hit",
+            "absorb_ok",
+            "guard_return",
+            "strike_return",
+            "absorb_return",
+            "episode_return",
+            "fall_rate",
+        )
+        if k in rows[-1]
+    ][:3]
     charts = "".join(f'<img src="data:image/png;base64,{_chart(rows, k, k.replace("_", " "))}">' for k in keys)
     html = f"""<!doctype html><meta charset="utf-8"><title>{run.name}</title>
 <style>body{{font:15px system-ui;max-width:860px;margin:24px auto;padding:0 16px}} img{{width:100%}}
 table{{border-collapse:collapse;margin:12px 0}} td,th{{padding:4px 10px;border-bottom:1px solid #ccc;text-align:right}}</style>
 <h1>{run.name}</h1>
-<p>{meta['level']}: {meta['minutes']:.0f} min, {meta['steps'] / 1e6:.0f} M steps. Exam: {meta['graduated'] or 'not passed'}.
-NaN: {meta['nan']}.</p>
+<p>{meta["level"]}: {meta["minutes"]:.0f} min, {meta["steps"] / 1e6:.0f} M steps. Exam: {meta["graduated"] or "not passed"}.
+NaN: {meta["nan"]}.</p>
 <table><tr><th>role</th>{head}<th>reward vs last run</th></tr>{table}</table>
 <p>Stages by training steps: Beginner = first 10 %, Intermediate = 45-55 %, Advanced = final 10 %.</p>{charts}"""
     out = run / "report.html"

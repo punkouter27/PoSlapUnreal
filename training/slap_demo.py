@@ -14,18 +14,21 @@ is the arena opponent's head (L2's mocap sphere); the podium is in the model and
 Scored on the first contact with the target: palm, speed, staying up 1.5 s after, feet in the box; averaged over
 target jitter and start noise so the motion is robust enough to imitate. Search: cross-entropy from an anatomical guess.
 """
-import json, math, os, sys
+
+import json
+import math
+import os
+import sys
 from multiprocessing import Pool
 from pathlib import Path
 
 import mujoco
 import numpy as np
-
 from brain_cpu import Athlete, muscle_step, muscle_vmax, stand
 from constants import models_dir
 
 HERE = Path(__file__).parent
-if "--char" in sys.argv:   # before the pool starts: workers re-import this module and read it from the environment
+if "--char" in sys.argv:  # before the pool starts: workers re-import this module and read it from the environment
     os.environ["POSLAP_CHAR"] = sys.argv[sys.argv.index("--char") + 1]
 if "--physics" in sys.argv:
     os.environ["SLAP_PHYSICS"] = sys.argv[sys.argv.index("--physics") + 1]
@@ -35,18 +38,39 @@ BOX = (0.20, 0.25)
 # joint: (wind-up, strike, follow-through) degrees, the anatomical starting guess (probed: + twist = right shoulder forward,
 # + flex = lean forward, raise 0 = arm horizontal, - swing = arm forward across, - shoulder twist = palm toward the face)
 GUESS = {
-    "waist_twist": (-30, 30, 34), "waist_flex": (0, 15, 12), "waist_side": (0, 5, 5),
-    "shoulder_swing_r": (30, -80, -105), "shoulder_raise_r": (25, 25, 15), "shoulder_twist_r": (-40, -50, -45),
-    "elbow_r": (70, 15, 30), "wrist_flex_r": (0, 0, 0), "wrist_dev_r": (0, 0, 0),
-    "shoulder_swing_l": (0, 20, 20), "shoulder_raise_l": (-70, -60, -60), "elbow_l": (10, 30, 30),
-    "hip_flex_l": (5, 15, 15), "hip_flex_r": (5, 15, 15), "knee_l": (10, 15, 15), "knee_r": (10, 15, 15),
-    "hip_rot_l": (0, 0, 0), "hip_rot_r": (0, 0, 0),
+    "waist_twist": (-30, 30, 34),
+    "waist_flex": (0, 15, 12),
+    "waist_side": (0, 5, 5),
+    "shoulder_swing_r": (30, -80, -105),
+    "shoulder_raise_r": (25, 25, 15),
+    "shoulder_twist_r": (-40, -50, -45),
+    "elbow_r": (70, 15, 30),
+    "wrist_flex_r": (0, 0, 0),
+    "wrist_dev_r": (0, 0, 0),
+    "shoulder_swing_l": (0, 20, 20),
+    "shoulder_raise_l": (-70, -60, -60),
+    "elbow_l": (10, 30, 30),
+    "hip_flex_l": (5, 15, 15),
+    "hip_flex_r": (5, 15, 15),
+    "knee_l": (10, 15, 15),
+    "knee_r": (10, 15, 15),
+    "hip_rot_l": (0, 0, 0),
+    "hip_rot_r": (0, 0, 0),
 }
 # strike-phase start delay per joint (s): the kinetic chain whips proximal to distal (hips, trunk, shoulder, elbow, wrist)
-DELAY = {"hip_rot_l": 0.0, "hip_rot_r": 0.0, "waist_twist": 0.02, "waist_flex": 0.02, "shoulder_swing_r": 0.05,
-         "shoulder_raise_r": 0.05, "shoulder_twist_r": 0.07, "elbow_r": 0.09, "wrist_flex_r": 0.11}
+DELAY = {
+    "hip_rot_l": 0.0,
+    "hip_rot_r": 0.0,
+    "waist_twist": 0.02,
+    "waist_flex": 0.02,
+    "shoulder_swing_r": 0.05,
+    "shoulder_raise_r": 0.05,
+    "shoulder_twist_r": 0.07,
+    "elbow_r": 0.09,
+    "wrist_flex_r": 0.11,
+}
 KEYS = list(GUESS)
-TIMES = (0.45, 0.22, 0.20)          # s to reach each pose
+TIMES = (0.45, 0.22, 0.20)  # s to reach each pose
 SIG_DEG, SIG_T = 15.0, 0.06
 # a card's slapping style replaces the starting guess, timing, whip delays and how far the search may wander from them
 _card = json.loads((HERE / "characters" / f"{CHAR}.json").read_text())
@@ -72,9 +96,9 @@ def demo_path(read=False):
 
 def unpack(x):
     n = len(KEYS)
-    poses = x[:3 * n].reshape(3, n)
-    times = np.clip(x[3 * n:3 * n + 3], 0.08, 0.8)
-    delays = np.clip(x[3 * n + 3:], 0.0, 0.2)
+    poses = x[: 3 * n].reshape(3, n)
+    times = np.clip(x[3 * n : 3 * n + 3], 0.08, 0.8)
+    delays = np.clip(x[3 * n + 3 :], 0.0, 0.2)
     return poses, times, delays
 
 
@@ -85,7 +109,7 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
     stand(m, d, fp)
     A = Athlete(m, fp, "")
     J = {n: i for i, n in enumerate(A.order)}
-    vmax = muscle_vmax(m, [A])   # Hill's force-velocity cap, as in every engine since realism round 2
+    vmax = muscle_vmax(m, [A])  # Hill's force-velocity cap, as in every engine since realism round 2
     if seed:
         d.qpos[A.qa] += rng.uniform(-0.05, 0.05, len(A.qa))
     d.mocap_pos[0] = d.qpos[:3] + OPP_HEAD + (rng.uniform(-jitter, jitter, 3) if seed else 0)
@@ -107,14 +131,15 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
         t = k * 0.005
         if k % 4 == 0:
             tgt = A.stand.copy()
-            for j, name in enumerate(KEYS):   # each joint enters the strike late by its delay (the whip)
+            for j, name in enumerate(KEYS):  # each joint enters the strike late by its delay (the whip)
                 ph = int(np.searchsorted(ends + np.array([0, late.get(name, 0.0), 0]), t, side="right"))
                 if ph < 3:
                     tgt[J[name]] = math.radians(poses[ph][j])
             tgt = np.clip(tgt, A.lo, A.hi)
             goal = np.clip(tgt, goal - A.max_step, goal + A.max_step)
             if record:
-                ref_goal.append(goal.copy()); ref_q.append(d.qpos[A.qa].copy())
+                ref_goal.append(goal.copy())
+                ref_q.append(d.qpos[A.qa].copy())
         d.ctrl[A.act] = goal
         muscle_step(m, d, vmax)
         k += 1
@@ -123,7 +148,7 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
         prev = p
         dmin = min(dmin, float(np.linalg.norm(p - d.mocap_pos[0])) - 0.09)
         down = False
-        for c in d.contact[:d.ncon]:
+        for c in d.contact[: d.ncon]:
             g = {c.geom[0], c.geom[1]}
             if g & surf and (g - surf) and (x_ := (g - surf).pop()) in mine and x_ not in feet:
                 down = True
@@ -133,17 +158,42 @@ def run(m, fp, x, seed=0, record=False, jitter=0.03):
                 hit, speed = (other == hand), v
                 palm = other == hand and float(normal @ -d.geom_xmat[hand].reshape(3, 3)[:, 2]) > 0.5
                 if not hit:
-                    return dict(score=-10.0 - dmin * 10, fell=False, hit=False, palm=False, speed=0.0, body_touch=True), ref_goal, ref_q
+                    return (
+                        dict(score=-10.0 - dmin * 10, fell=False, hit=False, palm=False, speed=0.0, body_touch=True),
+                        ref_goal,
+                        ref_q,
+                    )
         off = np.abs(np.array([d.geom_xpos[f][:2] for f in sorted(feet)]) - feet0)
         out = (off[:, 0] > BOX[0]).any() or (off[:, 1] > BOX[1]).any()
-        if down or out:   # partial credit for getting closer and lasting longer, so the search can climb out of falling
+        if down or out:  # partial credit for getting closer and lasting longer, so the search can climb out of falling
             s = (20 + 3 * speed if palm else 0.0) - 80.0 - 10.0 * dmin + 5.0 * min(t, ends[1])
-            why = "out of the box" if out else next(m.geom(g).name for c in d.contact[:d.ncon] for g in (c.geom[0], c.geom[1])
-                                                     if g in mine and g not in feet and ({c.geom[0], c.geom[1]} & surf))
-            return dict(score=s, fell=True, hit=hit is not None, palm=palm, speed=speed, t=round(t, 2), why=why, dmin=round(dmin, 2)), ref_goal, ref_q
+            why = (
+                "out of the box"
+                if out
+                else next(
+                    m.geom(g).name
+                    for c in d.contact[: d.ncon]
+                    for g in (c.geom[0], c.geom[1])
+                    if g in mine and g not in feet and ({c.geom[0], c.geom[1]} & surf)
+                )
+            )
+            return (
+                dict(
+                    score=s,
+                    fell=True,
+                    hit=hit is not None,
+                    palm=palm,
+                    speed=speed,
+                    t=round(t, 2),
+                    why=why,
+                    dmin=round(dmin, 2),
+                ),
+                ref_goal,
+                ref_q,
+            )
         if hit is not None:
             after += 1
-            if after >= 300:   # up 1.5 s after
+            if after >= 300:  # up 1.5 s after
                 break
         elif t > total:
             return dict(score=-10.0 * dmin - 5.0, fell=False, hit=False, palm=False, speed=0.0), ref_goal, ref_q
@@ -162,10 +212,15 @@ def _eval(args):
 def search(iters=150, pop=96, elite=12, nseeds=3):
     x0 = np.array([GUESS[k][i] for i in range(3) for k in KEYS] + list(TIMES) + list(DELAY.values()), float)
     prev = demo_path(read=True)
-    if prev.exists():   # continue from the last search: its poses and times, new joints at the guess
+    if prev.exists():  # continue from the last search: its poses and times, new joints at the guess
         d = json.loads(prev.read_text())
         old = dict(zip(d["joints"], zip(*d["poses_deg"])))
-        x0 = np.array([old.get(k, GUESS[k])[i] for i in range(3) for k in KEYS] + d["times_s"] + d.get("delays_s", list(DELAY.values())), float)
+        x0 = np.array(
+            [old.get(k, GUESS[k])[i] for i in range(3) for k in KEYS]
+            + d["times_s"]
+            + d.get("delays_s", list(DELAY.values())),
+            float,
+        )
     sig = np.array([SIG_DEG] * (3 * len(KEYS)) + [SIG_T] * 3 + [0.03] * len(DELAY))
     mu, best = x0.copy(), (-1e9, x0)
     rng = np.random.default_rng(0)
@@ -173,7 +228,7 @@ def search(iters=150, pop=96, elite=12, nseeds=3):
         for it in range(iters):
             xs = mu + rng.standard_normal((pop, len(mu))) * sig
             xs[0] = best[1]
-            seeds = [0] + [1 + nseeds * it + i for i in range(nseeds)]   # fresh variations plus nominal seed 0
+            seeds = [0] + [1 + nseeds * it + i for i in range(nseeds)]  # fresh variations plus nominal seed 0
             sc = np.array(P.map(_eval, [(x, seeds) for x in xs]))
             idx = np.argsort(sc)[::-1][:elite]
             mu = xs[idx].mean(0)
@@ -184,7 +239,10 @@ def search(iters=150, pop=96, elite=12, nseeds=3):
                 best = (float(sc[idx[0]]), xs[idx[0]].copy())
             if it % 5 == 0 or it == iters - 1:
                 r = run(m, fp, best[1])[0]
-                print(f"it {it:3d} best {best[0]:7.2f} | nominal: hit {r['hit']} palm {r['palm']} {r['speed']:.1f} m/s fell {r['fell']}", flush=True)
+                print(
+                    f"it {it:3d} best {best[0]:7.2f} | nominal: hit {r['hit']} palm {r['palm']} {r['speed']:.1f} m/s fell {r['fell']}",
+                    flush=True,
+                )
     return best[1]
 
 
@@ -192,10 +250,18 @@ def save(x):
     m, fp = setup()
     r, goals, qs = run(m, fp, x, seed=0, record=True)
     poses, times, delays = unpack(x)
-    out = {"joints": KEYS, "poses_deg": poses.round(2).tolist(), "times_s": times.round(4).tolist(),
-           "delays_s": delays.round(4).tolist(), "delay_joints": list(DELAY), "result": r,
-           "joint_order": fp["joint_order"], "ref_goal": np.round(goals, 5).tolist(), "ref_q": np.round(qs, 5).tolist(),
-           "note": "per brain step (50 Hz) from the stand pose; ref_q = the joint angles the slap actually produced"}
+    out = {
+        "joints": KEYS,
+        "poses_deg": poses.round(2).tolist(),
+        "times_s": times.round(4).tolist(),
+        "delays_s": delays.round(4).tolist(),
+        "delay_joints": list(DELAY),
+        "result": r,
+        "joint_order": fp["joint_order"],
+        "ref_goal": np.round(goals, 5).tolist(),
+        "ref_q": np.round(qs, 5).tolist(),
+        "note": "per brain step (50 Hz) from the stand pose; ref_q = the joint angles the slap actually produced",
+    }
     p = demo_path()
     p.write_text(json.dumps(out))
     print("saved", p, r)
@@ -206,8 +272,10 @@ def check(n=20):
     m, fp = setup()
     rs = [run(m, fp, x, s)[0] for s in range(1, n + 1)]
     ok = [r for r in rs if r["palm"] and r["speed"] >= 8 and not r["fell"]]
-    print(f"{len(ok)}/{n} clean (palm, >= 8 m/s, up 1.5 s); falls {sum(r['fell'] for r in rs)}; "
-          f"speeds {np.round([r['speed'] for r in rs], 1).tolist()}")
+    print(
+        f"{len(ok)}/{n} clean (palm, >= 8 m/s, up 1.5 s); falls {sum(r['fell'] for r in rs)}; "
+        f"speeds {np.round([r['speed'] for r in rs], 1).tolist()}"
+    )
 
 
 def demo_x():
@@ -217,23 +285,28 @@ def demo_x():
 
 def video(out):
     from PIL import Image
+
     m, fp = setup()
-    x = demo_x()
+    demo_x()
     r_ = mujoco.Renderer(m, 480, 360)
-    cam = mujoco.MjvCamera(); cam.azimuth, cam.elevation, cam.distance = 90, -8, 2.6
+    cam = mujoco.MjvCamera()
+    cam.azimuth, cam.elevation, cam.distance = 90, -8, 2.6
     frames = []
     d0 = json.loads(demo_path(read=True).read_text())
-    d = mujoco.MjData(m); stand(m, d, fp)
+    d = mujoco.MjData(m)
+    stand(m, d, fp)
     A = Athlete(m, fp, "")
     vmax = muscle_vmax(m, [A])
-    d.mocap_pos[0] = d.qpos[:3] + OPP_HEAD; mujoco.mj_forward(m, d)
+    d.mocap_pos[0] = d.qpos[:3] + OPP_HEAD
+    mujoco.mj_forward(m, d)
     for k in range(len(d0["ref_goal"]) * 4):
         if k % 4 == 0:
             d.ctrl[A.act] = d0["ref_goal"][k // 4]
-        muscle_step(m, d, vmax)   # Hill's cap, as the search and every engine
+        muscle_step(m, d, vmax)  # Hill's cap, as the search and every engine
         if k % 8 == 0:
             cam.lookat[:] = [d.qpos[0] + 0.3, d.qpos[1], 1.2]
-            r_.update_scene(d, cam); frames.append(Image.fromarray(r_.render()))
+            r_.update_scene(d, cam)
+            frames.append(Image.fromarray(r_.render()))
     frames[0].save(out, save_all=True, append_images=frames[1:], duration=40, loop=0)
     print("video", out, len(frames), "frames")
 

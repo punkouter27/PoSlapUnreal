@@ -18,6 +18,7 @@ What it NEVER deletes (AGENTS.md)
 
 Nothing is deleted unless --apply is given.
 """
+
 import argparse
 import json
 import shutil
@@ -96,8 +97,12 @@ def classify(run_dir, referenced, older_than_h):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="actually delete (without it, nothing is touched)")
-    ap.add_argument("--older-than-hours", type=float, default=72.0,
-                    help="how old a finished run must be before it is purged (default 72)")
+    ap.add_argument(
+        "--older-than-hours",
+        type=float,
+        default=72.0,
+        help="how old a finished run must be before it is purged (default 72)",
+    )
     opts = ap.parse_args()
 
     if not RUNS.exists():
@@ -106,8 +111,10 @@ def main():
 
     referenced = queue_referenced()
     print(f"=== PoSlap run purge ({'APPLYING' if opts.apply else 'dry run'}) ===")
-    print(f"  {len(referenced)} run(s) are named by a training queue and are never touched: "
-          f"{', '.join(sorted(referenced)) or 'none'}")
+    print(
+        f"  {len(referenced)} run(s) are named by a training queue and are never touched: "
+        f"{', '.join(sorted(referenced)) or 'none'}"
+    )
 
     victims, kept, freed = [], [], 0
     for run_dir in sorted(RUNS.iterdir()):
@@ -134,8 +141,10 @@ def main():
     for f, size in stale_logs:
         print(f"    {f.name:34s} {size / 1024:8.2f} KB  stale log")
     print(f"\n  kept {len(kept)} run(s)")
-    print(f"  space freed: {freed / 1024 / 1024:.1f} MB (runs) + {log_bytes / 1024:.1f} KB (logs) "
-          f"= {(freed + log_bytes) / 1024 / 1024:.1f} MB")
+    print(
+        f"  space freed: {freed / 1024 / 1024:.1f} MB (runs) + {log_bytes / 1024:.1f} KB (logs) "
+        f"= {(freed + log_bytes) / 1024 / 1024:.1f} MB"
+    )
 
     if not opts.apply:
         print("\n  dry run: nothing was deleted. Re-run with --apply to delete.")

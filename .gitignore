@@ -23,7 +23,7 @@ training/logs/
 # URLab clone (local commits saved in Plugins/urlab_poslap.patch)
 Plugins/UnrealRoboticsLab/
 training/replays/
-Scripts/__pycache__/
+scripts/__pycache__/
 Logs/
 
 # Blender backups; FBX importers re-extract embedded textures
@@ -41,3 +41,7 @@ MUJOCO_LOG.TXT
 
 # URLab writes unused per-import material instances on every arena import
 Content/MuJoCoImports/
+
+# Web build output and dependencies (also in Web/.gitignore)
+Web/node_modules/
+Web/dist/

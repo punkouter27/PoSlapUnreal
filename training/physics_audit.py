@@ -1,4 +1,4 @@
-"""Physics audit (DOCS/20261104/physics3.md): what the strike does to the physics, per physics version, on the CPU.
+"""Physics audit (docs/20261104/physics3.md): what the strike does to the physics, per physics version, on the CPU.
 
     .venv/Scripts/python.exe physics_audit.py strikes --physics 3 --pairing gk --matches 6     (tunnelling, first-contact depth,
                                                                                                momentum, head kinematics)
@@ -7,9 +7,14 @@
     .venv/Scripts/python.exe physics_audit.py tunnel --physics 3                              (the regression gate, item 29:
                                                                                                exit 1 if a hand at the peak speed
                                                                                                passes through a face shape)
-Matches are match.py's own (jittered exam starts), the brains as Scripts/collision_review.py --brains v2.
+Matches are match.py's own (jittered exam starts), the brains as scripts/collision_review.py --brains v2.
 """
-import argparse, json, math, os, sys, time
+
+import argparse
+import json
+import os
+import sys
+import time
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -17,10 +22,12 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 BRAINS = HERE / "models" / "brains"
-PAIR = {"gg": ("grandpa_L4_v2", "grandpa_L4_v2", "grandpa", "grandpa"),
-        "gk": ("grandpa_final_vs_kim_v2", "kim_final_vs_grandpa_v2", "grandpa", "kim"),
-        "kk": ("kim_L4_v2_candidate", "kim_L4_v2_candidate", "kim", "kim")}
-HAND_HALF = 0.015   # the hand box's half thickness (build_body: size 0.042 x L/2 x 0.015)
+PAIR = {
+    "gg": ("grandpa_L4_v2", "grandpa_L4_v2", "grandpa", "grandpa"),
+    "gk": ("grandpa_final_vs_kim_v2", "kim_final_vs_grandpa_v2", "grandpa", "kim"),
+    "kk": ("kim_L4_v2_candidate", "kim_L4_v2_candidate", "kim", "kim"),
+}
+HAND_HALF = 0.015  # the hand box's half thickness (build_body: size 0.042 x L/2 x 0.015)
 
 
 def seg_dist(p, a, b):
@@ -38,32 +45,38 @@ def seg_seg(p0, p1, a, b, n=12):
 def one_strikes(args):
     phys, pairing, i = args
     os.environ["SLAP_PHYSICS"] = str(phys)
-    import mujoco
     import match
+    import mujoco
     from brain_cpu import muscle_step as real
+
     rb, bb, rc, bc = PAIR[pairing]
     m, _, pre = match.load(None, rc, bc)
-    gid = lambda n: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
+    gid = lambda n, m=m: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
     face = {p: [g for g in (gid(p + "head"), gid(p + "jaw_l"), gid(p + "jaw_r")) if g >= 0] for p in pre}
     hands = {p: [gid(p + "hand_l"), gid(p + "hand_r")] for p in pre}
     pelvis = {p: m.body(p + "pelvis").id for p in pre}
     world = {g for g in range(m.ngeom) if m.geom_bodyid[g] == 0}
-    owner = {g: next((p for p in pre if m.body_rootid[m.geom_bodyid[g]] == pelvis[p]), None) for g in range(m.ngeom)}
+    {g: next((p for p in pre if m.body_rootid[m.geom_bodyid[g]] == pelvis[p]), None) for g in range(m.ngeom)}
     out = dict(first_pen=[], approach=[], tunnel=0, sweeps=0, kicks=[], resid=[], steps=0, t_step=0.0)
     st = dict(prev=None, touching=set(), P=None, win=None)
     f6 = np.zeros(6)
 
-    d2 = mujoco.MjData(m)   # scratch: after mj_step d's kinematics are the step's start (stale); match.py reads them as they are
+    d2 = mujoco.MjData(
+        m
+    )  # scratch: after mj_step d's kinematics are the step's start (stale); match.py reads them as they are
 
     def momentum(d):
         d2.qpos[:], d2.qvel[:] = d.qpos, d.qvel
-        mujoco.mj_kinematics(m, d2); mujoco.mj_comPos(m, d2); mujoco.mj_comVel(m, d2); mujoco.mj_subtreeVel(m, d2)
+        mujoco.mj_kinematics(m, d2)
+        mujoco.mj_comPos(m, d2)
+        mujoco.mj_comVel(m, d2)
+        mujoco.mj_subtreeVel(m, d2)
         return sum(m.body_subtreemass[pelvis[p]] * d2.subtree_linvel[pelvis[p]] for p in pre)
 
     def step(m_, d, vmax):
         hp = {p: d.geom_xpos[hands[p]].copy() for p in pre}
         P0 = momentum(d)
-        kick = d.xfrc_applied[:, :3].sum(0).copy()   # the slap impulse's force this step (world)
+        kick = d.xfrc_applied[:, :3].sum(0).copy()  # the slap impulse's force this step (world)
         t = time.perf_counter()
         real(m_, d, vmax)
         out["t_step"] += time.perf_counter() - t
@@ -76,7 +89,7 @@ def one_strikes(args):
             g1, g2 = int(c.geom[0]), int(c.geom[1])
             if g1 in world or g2 in world:
                 mujoco.mj_contactForce(m, d, ci, f6)
-                fw = np.asarray(c.frame).reshape(3, 3).T @ f6[:3]   # on geom2, from geom1 (normal 1 -> 2)
+                fw = np.asarray(c.frame).reshape(3, 3).T @ f6[:3]  # on geom2, from geom1 (normal 1 -> 2)
                 F = F + (fw if g1 in world else -fw)
             for s, o in (pre, pre[::-1]):
                 if (g1 in hands[s] and g2 in face[o]) or (g2 in hands[s] and g1 in face[o]):
@@ -85,7 +98,9 @@ def one_strikes(args):
                     if key not in st["touching"]:
                         out["first_pen"].append(max(0.0, -float(c.dist)))
                         h = g1 if g1 in hands[s] else g2
-                        out["approach"].append(float(np.linalg.norm(d.geom_xpos[h] - hp[s][hands[s].index(h)]) / m.opt.timestep))
+                        out["approach"].append(
+                            float(np.linalg.norm(d.geom_xpos[h] - hp[s][hands[s].index(h)]) / m.opt.timestep)
+                        )
         # a sweep through a face shape with no contact in this step (tunnelling)
         for s, o in (pre, pre[::-1]):
             for k, h in enumerate(hands[s]):
@@ -111,8 +126,16 @@ def one_strikes(args):
         out["resid"].append(float(np.linalg.norm(res)))
 
     match.muscle_step = step
-    res, turns, log = match.play(str(BRAINS / f"{rb}.onnx"), i % 2, blue=str(BRAINS / f"{bb}.onnx"), character=rc,
-                                 blue_character=bc, seed=i, jitter=match.EXAM_JITTER, log=True)
+    res, turns, log = match.play(
+        str(BRAINS / f"{rb}.onnx"),
+        i % 2,
+        blue=str(BRAINS / f"{bb}.onnx"),
+        character=rc,
+        blue_character=bc,
+        seed=i,
+        jitter=match.EXAM_JITTER,
+        log=True,
+    )
     ev = [json.loads(l) for l in Path(log).read_text().splitlines() if l.strip()]
     Path(log).unlink()
     out["head"] = [(e["peak_g"], e["peak_rad_s2"]) for e in ev if e["type"] == "head"]
@@ -124,23 +147,40 @@ def one_strikes(args):
 def strikes(a):
     with Pool(min(a.workers, a.matches)) as p:
         outs = p.map(one_strikes, [(a.physics, a.pairing, i) for i in range(a.matches)])
-    cat = lambda k: np.concatenate([np.asarray(o[k], float) for o in outs if len(o[k])]) if any(len(o[k]) for o in outs) else np.zeros(0)
+    cat = lambda k: (
+        np.concatenate([np.asarray(o[k], float) for o in outs if len(o[k])])
+        if any(len(o[k]) for o in outs)
+        else np.zeros(0)
+    )
     fp, ap = cat("first_pen") * 1000, cat("approach")
     q = lambda x, p: round(float(np.percentile(x, p)), 2) if len(x) else None
     kicks = [k for o in outs for k in o["kicks"]]
     head = np.array([h for o in outs for h in o["head"]]) if any(o["head"] for o in outs) else np.zeros((0, 2))
     snap = np.array([s for o in outs for s in o["snap"]]) if any(o["snap"] for o in outs) else np.zeros((0, 2))
     steps = sum(o["steps"] for o in outs)
-    r = dict(physics=a.physics, pairing=a.pairing, matches=a.matches, steps=steps,
-             us_per_step=round(1e6 * sum(o["t_step"] for o in outs) / max(1, steps), 1),
-             first_contact_pen_mm=dict(n=len(fp), median=q(fp, 50), p90=q(fp, 90), max=q(fp, 100), over_15mm_pct=round(100 * float((fp > 15).mean()), 1) if len(fp) else None),
-             approach_mps=dict(median=q(ap, 50), max=q(ap, 100)),
-             sweeps_through_face=sum(o["sweeps"] for o in outs), tunnelled=sum(o["tunnel"] for o in outs),
-             momentum_resid_Ns_p99_per_step=round(max(o["resid"] for o in outs), 4),
-             kick_J_Ns=dict(n=len(kicks), median=q([k["J"] for k in kicks], 50), max=q([k["J"] for k in kicks], 100)),
-             head_g=dict(n=len(head), median=q(head[:, 0], 50), p90=q(head[:, 0], 90)),
-             head_rad_s2=dict(median=q(head[:, 1], 50), p90=q(head[:, 1], 90)),
-             strike_speed=dict(median=q(snap[:, 0], 50)), head_peak_mps=dict(median=q(snap[:, 1], 50), p90=q(snap[:, 1], 90)))
+    r = dict(
+        physics=a.physics,
+        pairing=a.pairing,
+        matches=a.matches,
+        steps=steps,
+        us_per_step=round(1e6 * sum(o["t_step"] for o in outs) / max(1, steps), 1),
+        first_contact_pen_mm=dict(
+            n=len(fp),
+            median=q(fp, 50),
+            p90=q(fp, 90),
+            max=q(fp, 100),
+            over_15mm_pct=round(100 * float((fp > 15).mean()), 1) if len(fp) else None,
+        ),
+        approach_mps=dict(median=q(ap, 50), max=q(ap, 100)),
+        sweeps_through_face=sum(o["sweeps"] for o in outs),
+        tunnelled=sum(o["tunnel"] for o in outs),
+        momentum_resid_Ns_p99_per_step=round(max(o["resid"] for o in outs), 4),
+        kick_J_Ns=dict(n=len(kicks), median=q([k["J"] for k in kicks], 50), max=q([k["J"] for k in kicks], 100)),
+        head_g=dict(n=len(head), median=q(head[:, 0], 50), p90=q(head[:, 0], 90)),
+        head_rad_s2=dict(median=q(head[:, 1], 50), p90=q(head[:, 1], 90)),
+        strike_speed=dict(median=q(snap[:, 0], 50)),
+        head_peak_mps=dict(median=q(snap[:, 1], 50), p90=q(snap[:, 1], 90)),
+    )
     print(json.dumps(r))
     (HERE / "runs" / "exam_v3" / f"audit_p{a.physics}_{a.pairing}.json").write_text(json.dumps(r, indent=1))
 
@@ -148,27 +188,43 @@ def strikes(a):
 def record_ctrl(phys, pairing, seed=0):
     """One match's per-step ctrl stream and its start state (open loop replays it on any model of the same layout)."""
     os.environ["SLAP_PHYSICS"] = str(phys)
-    import importlib, constants, match
-    importlib.reload(constants); importlib.reload(match)
+    import importlib
+
+    import constants
+    import match
+
+    importlib.reload(constants)
+    importlib.reload(match)
     from brain_cpu import muscle_step as real
+
     rb, bb, rc, bc = PAIR[pairing]
     rec = dict(ctrl=[], qpos0=None, qvel0=None, act0=None)
 
     def step(m, d, vmax):
         if rec["qpos0"] is None:
             rec.update(qpos0=d.qpos.copy(), qvel0=d.qvel.copy(), act0=d.act.copy(), vmax=vmax)
-        if len(rec["ctrl"]) < 1000:   # 5 s
+        if len(rec["ctrl"]) < 1000:  # 5 s
             rec["ctrl"].append((d.ctrl.copy(), d.xfrc_applied.copy()))
         real(m, d, vmax)
+
     match.muscle_step = step
-    match.play(str(BRAINS / f"{rb}.onnx"), 0, blue=str(BRAINS / f"{bb}.onnx"), character=rc, blue_character=bc, seed=seed,
-               jitter=match.EXAM_JITTER, log=False)
+    match.play(
+        str(BRAINS / f"{rb}.onnx"),
+        0,
+        blue=str(BRAINS / f"{bb}.onnx"),
+        character=rc,
+        blue_character=bc,
+        seed=seed,
+        jitter=match.EXAM_JITTER,
+        log=False,
+    )
     return rec
 
 
 def replay(m, rec, n=1000):
     import mujoco
     from brain_cpu import muscle_step as real
+
     d = mujoco.MjData(m)
     d.qpos[:], d.qvel[:], d.act[:] = rec["qpos0"], rec["qvel0"], rec["act0"]
     mujoco.mj_forward(m, d)
@@ -182,26 +238,35 @@ def replay(m, rec, n=1000):
 
 
 def cost(a):
-    import mujoco
     import constants
+    import mujoco
+
     rb, bb, rc, bc = PAIR[a.pairing]
     rows = []
     for phys in (1, 2, 3):
         rec = record_ctrl(phys, a.pairing)
         path = constants.models_dir(phys) / f"{rc}_vs_{bc}_arena.xml"
-        base = mujoco.MjModel.from_xml_path(str(path))
+        mujoco.MjModel.from_xml_path(str(path))
         variants = {"as built": lambda m: None}
         if phys == 3:
-            variants.update({
-                "nativeccd off": lambda m: setattr(m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_NATIVECCD),
-                "multiccd off": lambda m: setattr(m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_MULTICCD),
-                "island off": lambda m: setattr(m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_ISLAND),
-                "elliptic cones": lambda m: setattr(m.opt, "cone", mujoco.mjtCone.mjCONE_ELLIPTIC),
-                "tolerance 1e-6": lambda m: setattr(m.opt, "tolerance", 1e-6),
-                "iterations 10": lambda m: setattr(m.opt, "iterations", 10),
-                "ls_iterations 25": lambda m: setattr(m.opt, "ls_iterations", 25),
-                "noslip 2": lambda m: setattr(m.opt, "noslip_iterations", 2),
-            })
+            variants.update(
+                {
+                    "nativeccd off": lambda m: setattr(
+                        m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_NATIVECCD
+                    ),
+                    "multiccd off": lambda m: setattr(
+                        m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_MULTICCD
+                    ),
+                    "island off": lambda m: setattr(
+                        m.opt, "disableflags", m.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_ISLAND
+                    ),
+                    "elliptic cones": lambda m: setattr(m.opt, "cone", mujoco.mjtCone.mjCONE_ELLIPTIC),
+                    "tolerance 1e-6": lambda m: setattr(m.opt, "tolerance", 1e-6),
+                    "iterations 10": lambda m: setattr(m.opt, "iterations", 10),
+                    "ls_iterations 25": lambda m: setattr(m.opt, "ls_iterations", 25),
+                    "noslip 2": lambda m: setattr(m.opt, "noslip_iterations", 2),
+                }
+            )
         ref = None
         for name, fn in variants.items():
             m = mujoco.MjModel.from_xml_path(str(path))
@@ -213,15 +278,23 @@ def cost(a):
             if ref is None:
                 ref = xs
             dev = float(np.abs(xs - ref).max()) * 1000
-            rows.append(dict(physics=phys, variant=name, us_per_step=round(best * 1e6, 1), max_body_dev_mm_5s=round(dev, 3),
-                             npair=m.npair, ngeom=m.ngeom))
+            rows.append(
+                dict(
+                    physics=phys,
+                    variant=name,
+                    us_per_step=round(best * 1e6, 1),
+                    max_body_dev_mm_5s=round(dev, 3),
+                    npair=m.npair,
+                    ngeom=m.ngeom,
+                )
+            )
             print(json.dumps(rows[-1]), flush=True)
     (HERE / "runs" / "exam_v3" / f"audit_cost_{a.pairing}.json").write_text(json.dumps(rows, indent=1))
 
 
-PEAK_MPS = 15.0     # the gate's hand speed: 1.5 x the fastest clean slap measured (~10 m/s, physics3.md); MuJoCo 3.10 has
-                    # no swept collision, so a shape is only caught if the hand lands inside it (+ margin) at some 5 ms step
-INFO_MPS = (5.0, 10.0, 20.0)   # also reported, not gated
+PEAK_MPS = 15.0  # the gate's hand speed: 1.5 x the fastest clean slap measured (~10 m/s, physics3.md); MuJoCo 3.10 has
+# no swept collision, so a shape is only caught if the hand lands inside it (+ margin) at some 5 ms step
+INFO_MPS = (5.0, 10.0, 20.0)  # also reported, not gated
 
 SHOT_XML = """<mujoco><option timestep="{dt}" gravity="0 0 0" integrator="implicitfast"/>
 <worldbody><geom name="face" type="{gtype}" size="{size}" pos="{pos}" quat="{quat}" contype="0" conaffinity="0"/>
@@ -231,7 +304,7 @@ SHOT_XML = """<mujoco><option timestep="{dt}" gravity="0 0 0" integrator="implic
 
 
 def tunnel(a):
-    """Item 29, a deterministic regression (Scripts/verify_all.ps1): the striker's hand box, shot at the defender's
+    """Item 29, a deterministic regression (scripts/verify_all.ps1): the striker's hand box, shot at the defender's
     face shapes at the 5 ms step, never passes through one without a contact.
 
     The shapes are the model's own (every pairing's arena on this physics: the defender's head sphere and jaw capsules
@@ -239,19 +312,25 @@ def tunnel(a):
     or the geoms' own on physics 1/2). Shots: the palm leading (the box's thin axis along the path: the worst case),
     along the slap's lateral swing, straight in and two diagonals, at offsets across the shape's cross-section out to
     5 mm inside the touching distance (the strikes audit's tunnel rule); gravity off, one free body."""
-    import mujoco
     import constants
+    import mujoco
+
     os.environ["SLAP_PHYSICS"] = str(a.physics)
     md = constants.models_dir(a.physics)
     arenas = sorted(md.glob("*_vs_*_arena.xml"))
     rows, fails = [], 0
-    dirs = {"lateral": (0.0, -1.0, 0.0), "straight": (1.0, 0.0, 0.0), "diag_up": (0.7, -0.7, 0.2), "diag_down": (0.7, -0.6, -0.4)}
+    dirs = {
+        "lateral": (0.0, -1.0, 0.0),
+        "straight": (1.0, 0.0, 0.0),
+        "diag_up": (0.7, -0.7, 0.2),
+        "diag_down": (0.7, -0.6, -0.4),
+    }
     f = lambda xs: " ".join(f"{x:.6g}" for x in xs)
     for path in arenas:
         m = mujoco.MjModel.from_xml_path(str(path))
         d = mujoco.MjData(m)
-        mujoco.mj_forward(m, d)   # qpos0: both athletes in their stand pose at their boxes
-        gid = lambda n: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
+        mujoco.mj_forward(m, d)  # qpos0: both athletes in their stand pose at their boxes
+        gid = lambda n, m=m: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
         hand = gid("red_hand_r")
         hs = m.geom_size[hand]
         for fname in ("blue_head", "blue_jaw_l", "blue_jaw_r"):
@@ -262,7 +341,11 @@ def tunnel(a):
             if pair is not None:
                 margin, solref, solimp = float(m.pair_margin[pair]), m.pair_solref[pair][:2], m.pair_solimp[pair][:5]
             else:
-                margin, solref, solimp = float(max(m.geom_margin[hand], m.geom_margin[g])), m.geom_solref[g][:2], m.geom_solimp[g][:5]
+                margin, solref, solimp = (
+                    float(max(m.geom_margin[hand], m.geom_margin[g])),
+                    m.geom_solref[g][:2],
+                    m.geom_solimp[g][:5],
+                )
             sphere = m.geom_type[g] == mujoco.mjtGeom.mjGEOM_SPHERE
             q = np.zeros(4)
             mujoco.mju_mat2Quat(q, d.geom_xmat[g])
@@ -270,7 +353,7 @@ def tunnel(a):
             half_len = 0.0 if sphere else float(m.geom_size[g][1])
             ax = d.geom_xmat[g].reshape(3, 3)[:, 2] * half_len
             a0, b0 = c - ax, c + ax
-            lim = float(m.geom_size[g][0]) + float(hs[2]) - 0.005   # 5 mm inside: radius + the hand's half thickness
+            lim = float(m.geom_size[g][0]) + float(hs[2]) - 0.005  # 5 mm inside: radius + the hand's half thickness
             for speed in (PEAK_MPS,) + INFO_MPS:
                 n_shot = n_miss = 0
                 for dv in dirs.values():
@@ -282,12 +365,22 @@ def tunnel(a):
                         for o2 in np.linspace(-lim, lim, 7):
                             start = c + o1 * e1 + o2 * e2 - u * 0.30
                             if seg_seg(start, start + u * 0.60, a0, b0, n=60) > lim:
-                                continue   # the path never comes 5 mm inside the touching distance
+                                continue  # the path never comes 5 mm inside the touching distance
                             hq = np.zeros(4)
-                            mujoco.mju_quatZ2Vec(hq, -u)   # the palm (the box's -z) leads
-                            xml = SHOT_XML.format(dt=m.opt.timestep, gtype="sphere" if sphere else "capsule",
-                                                  size=f(m.geom_size[g][:1 if sphere else 2]), pos=f(c), quat=f(q), start=f(start),
-                                                  hq=f(hq), hsize=f(hs), margin=f"{margin:.6g}", solref=f(solref), solimp=f(solimp))
+                            mujoco.mju_quatZ2Vec(hq, -u)  # the palm (the box's -z) leads
+                            xml = SHOT_XML.format(
+                                dt=m.opt.timestep,
+                                gtype="sphere" if sphere else "capsule",
+                                size=f(m.geom_size[g][: 1 if sphere else 2]),
+                                pos=f(c),
+                                quat=f(q),
+                                start=f(start),
+                                hq=f(hq),
+                                hsize=f(hs),
+                                margin=f"{margin:.6g}",
+                                solref=f(solref),
+                                solimp=f(solimp),
+                            )
                             tm = mujoco.MjModel.from_xml_string(xml)
                             td = mujoco.MjData(tm)
                             td.qvel[:3] = u * speed
@@ -301,16 +394,29 @@ def tunnel(a):
                             n_miss += not touched
                 gated = speed == PEAK_MPS
                 fails += n_miss if gated else 0
-                rows.append(dict(arena=path.stem, face=fname.replace("blue_", ""), mps=speed, shots=n_shot, tunnelled=n_miss, gated=gated))
+                rows.append(
+                    dict(
+                        arena=path.stem,
+                        face=fname.replace("blue_", ""),
+                        mps=speed,
+                        shots=n_shot,
+                        tunnelled=n_miss,
+                        gated=gated,
+                    )
+                )
     for r in rows:
         if r["gated"] or r["tunnelled"]:
             tag = ("FAIL" if r["tunnelled"] else "PASS") if r["gated"] else "info"
-            print(f"  [{tag}] physics {a.physics} {r['arena']} {r['face']}: {r['mps']:g} m/s, {r['tunnelled']} of {r['shots']} shots passed through")
+            print(
+                f"  [{tag}] physics {a.physics} {r['arena']} {r['face']}: {r['mps']:g} m/s, {r['tunnelled']} of {r['shots']} shots passed through"
+            )
     total = sum(r["shots"] for r in rows if r["gated"])
     (HERE / "runs" / "exam_v3").mkdir(parents=True, exist_ok=True)
     (HERE / "runs" / "exam_v3" / f"audit_tunnel_p{a.physics}.json").write_text(json.dumps(rows, indent=1))
-    print(f"tunnel gate, physics {a.physics}: {total} palm-first shots at {PEAK_MPS:g} m/s on {len(arenas)} arenas' face shapes, "
-          f"{fails} passed through -> {'FAIL' if fails else 'PASS'}")
+    print(
+        f"tunnel gate, physics {a.physics}: {total} palm-first shots at {PEAK_MPS:g} m/s on {len(arenas)} arenas' face shapes, "
+        f"{fails} passed through -> {'FAIL' if fails else 'PASS'}"
+    )
     return 1 if fails else 0
 
 

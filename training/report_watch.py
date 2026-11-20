@@ -1,13 +1,19 @@
 """Write a queue's HTML training report when its driver ends (and an interim one at a deadline).
 
-    .venv/Scripts/python.exe report_watch.py retrain_v4_queue DOCS/20261106/training_8h_report.html --deadline "2026-11-06 08:05"
+    .venv/Scripts/python.exe report_watch.py retrain_v4_queue docs/20261106/training_8h_report.html --deadline "2026-11-06 08:05"
 
 Polls runs/<queue>.lock every minute: the report is written once the PID in it has exited (overnight.py removes the lock
 at its end; a killed driver leaves it behind with a dead PID). At the deadline, if the driver is still going, an interim
 report goes to the same path with "_interim" before .html, and the watch carries on. The output path is relative to the
 repo root (training/..). Each extra --copy-to <dir> gets a copy of the final report.
 """
-import argparse, json, os, shutil, subprocess, sys, time
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -46,7 +52,7 @@ def main():
     lock = HERE / "runs" / f"{a.queue}.lock"
     out = (ROOT / a.out).resolve()
     deadline = time.mktime(time.strptime(a.deadline, "%Y-%m-%d %H:%M")) if a.deadline else None
-    time.sleep(120)                                   # let a driver that is starting write its lock
+    time.sleep(120)  # let a driver that is starting write its lock
     while driver_running(lock):
         if deadline and time.time() >= deadline:
             report(a.queue, out.with_name(out.stem + "_interim.html"))

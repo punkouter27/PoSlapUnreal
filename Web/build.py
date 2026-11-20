@@ -1,6 +1,7 @@
 """Bundle the web version for static hosting: python Web/build.py  ->  Web/dist/ (same layout as the dev server:
 dist/Web/ holds the page and its libraries, dist/training/ the arena, fingerprints, cards and the two brains loader.js names).
 """
+
 import re
 import shutil
 import time
@@ -8,45 +9,102 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent
 ROOT, DIST = WEB.parent, WEB / "dist"
-LIBS = ["@mujoco/mujoco/mujoco.js", "@mujoco/mujoco/mujoco.wasm",
-        "onnxruntime-web/dist/ort.min.mjs", "onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs",
-        "onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm",
-        "three/build/three.module.js", "three/examples/jsm/controls/OrbitControls.js",
-        "three/examples/jsm/loaders/GLTFLoader.js", "three/examples/jsm/utils/BufferGeometryUtils.js",
-        "three/examples/jsm/libs/meshopt_decoder.module.js"]     + [f"three/examples/jsm/{f}" for f in (   # fx.js: the post chain and its imports
-        "environments/RoomEnvironment.js", "math/SimplexNoise.js", "objects/Reflector.js", "postprocessing/EffectComposer.js",
-        "postprocessing/GTAOPass.js", "postprocessing/MaskPass.js", "postprocessing/OutputPass.js", "postprocessing/Pass.js",
-        "postprocessing/RenderPass.js", "postprocessing/SMAAPass.js", "postprocessing/ShaderPass.js",
-        "postprocessing/UnrealBloomPass.js", "shaders/CopyShader.js", "shaders/GTAOShader.js",
-        "shaders/LuminosityHighPassShader.js", "shaders/OutputShader.js", "shaders/PoissonDenoiseShader.js", "shaders/SMAAShader.js")]
+LIBS = [
+    "@mujoco/mujoco/mujoco.js",
+    "@mujoco/mujoco/mujoco.wasm",
+    "onnxruntime-web/dist/ort.min.mjs",
+    "onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs",
+    "onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm",
+    "three/build/three.module.js",
+    "three/examples/jsm/controls/OrbitControls.js",
+    "three/examples/jsm/loaders/GLTFLoader.js",
+    "three/examples/jsm/utils/BufferGeometryUtils.js",
+    "three/examples/jsm/libs/meshopt_decoder.module.js",
+] + [
+    f"three/examples/jsm/{f}"
+    for f in (  # fx.js: the post chain and its imports
+        "environments/RoomEnvironment.js",
+        "math/SimplexNoise.js",
+        "objects/Reflector.js",
+        "postprocessing/EffectComposer.js",
+        "postprocessing/GTAOPass.js",
+        "postprocessing/MaskPass.js",
+        "postprocessing/OutputPass.js",
+        "postprocessing/Pass.js",
+        "postprocessing/RenderPass.js",
+        "postprocessing/SMAAPass.js",
+        "postprocessing/ShaderPass.js",
+        "postprocessing/UnrealBloomPass.js",
+        "shaders/CopyShader.js",
+        "shaders/GTAOShader.js",
+        "shaders/LuminosityHighPassShader.js",
+        "shaders/OutputShader.js",
+        "shaders/PoissonDenoiseShader.js",
+        "shaders/SMAAShader.js",
+    )
+]
 
 loader = (WEB / "loader.js").read_text(encoding="utf-8")
 chars = sorted(set(re.findall(r'char: "(\w+)"', loader)))
 brains = re.findall(r'brain: "(\w+)"', loader)
 xmls = re.findall(r'xml: "([\w.]+)"', loader)
-data = [f"training/models/{x}" for x in xmls] + [f"training/models/{c}_fingerprint.json" for c in chars] \
-    + [f"training/characters/{c}.json" for c in chars] + [f"training/models/brains/{b}.onnx" for b in brains] \
-    + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]   # scouting (app.js reads it if present)
+data = (
+    [f"training/models/{x}" for x in xmls]
+    + [f"training/models/{c}_fingerprint.json" for c in chars]
+    + [f"training/characters/{c}.json" for c in chars]
+    + [f"training/models/brains/{b}.onnx" for b in brains]
+    + [f for f in ["training/models/league.json"] if (ROOT / f).exists()]
+)  # scouting (app.js reads it if present)
 
 shutil.rmtree(DIST, ignore_errors=True)
-for src, dst in [(WEB / f, DIST / "Web" / f) for f in ("index.html", "diag.html", "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "assets/arena.glb", "assets/tex/skin_detail.png")]         + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))] \
-        + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars] \
-        + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS] \
-        + [(ROOT / f, DIST / f) for f in data]:
+for src, dst in (
+    [
+        (WEB / f, DIST / "Web" / f)
+        for f in (
+            "index.html",
+            "diag.html",
+            "app.js",
+            "sim.js",
+            "shared.gen.js",
+            "loader.js",
+            "art.js",
+            "fx.js",
+            "audio.js",
+            "broadcast.js",
+            "contacts.js",
+            "assets/arena.glb",
+            "assets/tex/skin_detail.png",
+        )
+    ]
+    + [(f, DIST / "Web" / "assets" / "audio" / f.name) for f in sorted((WEB / "assets" / "audio").glob("*.wav"))]
+    + [(WEB / "assets" / f"{c}.glb", DIST / "Web" / "assets" / f"{c}.glb") for c in chars]
+    + [(WEB / "node_modules" / f, DIST / "Web" / "node_modules" / f) for f in LIBS]
+    + [(ROOT / f, DIST / f) for f in data]
+):
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 for html_name in ("index.html", "diag.html"):
-    page = DIST / "Web" / html_name   # the build stamp (bottom right): the build date
+    page = DIST / "Web" / html_name  # the build stamp (bottom right): the build date
     # the stamp is <div class="... stamp ..." ...>dev</div>: only the text between the tags is replaced
-    page.write_text(re.sub(r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)', rf'\g<1>{time.strftime("%y%m%d")}\g<2>',
-                            page.read_text(encoding="utf-8")), encoding="utf-8")
-(DIST / "index.html").write_text('<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
-                                 '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>', encoding="utf-8")
+    page.write_text(
+        re.sub(
+            r'(<div class="[^"]*\bstamp\b[^"]*"[^>]*>)[^<]*(</div>)',
+            rf"\g<1>{time.strftime('%y%m%d')}\g<2>",
+            page.read_text(encoding="utf-8"),
+        ),
+        encoding="utf-8",
+    )
+(DIST / "index.html").write_text(
+    '<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
+    '<meta http-equiv="refresh" content="0; url=Web/"><a href="Web/">PoSlap Arena</a>',
+    encoding="utf-8",
+)
 # No Content-Security-Policy (user 2026-11-03): the old one sat under "headers", which Azure Static Web Apps does not
 # read (it reads "globalHeaders"), so it was never served; served as written it blocks MuJoCo's WASM bindings (new Function).
 (DIST / "staticwebapp.config.json").write_text(
     '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
-    '"routes": [ { "route": "/diag", "rewrite": "/Web/diag.html" } ] }\n')
+    '"routes": [ { "route": "/diag", "rewrite": "/Web/diag.html" } ] }\n'
+)
 
 
 def _fail_lfs_pointers():
@@ -59,8 +117,9 @@ def _fail_lfs_pointers():
         raise SystemExit("LFS pointers in dist (run 'git lfs pull'): " + ", ".join(bad))
 
 
-
 _fail_lfs_pointers()
 
 size = sum(p.stat().st_size for p in DIST.rglob("*") if p.is_file())
-print(f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB (brains: {', '.join(brains)})")
+print(
+    f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB (brains: {', '.join(brains)})"
+)

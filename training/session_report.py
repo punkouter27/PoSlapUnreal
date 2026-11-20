@@ -6,6 +6,7 @@ Advanced = final 10 % - comparing mean reward and success rate per role, plus lo
 
     .venv/Scripts/python.exe session_report.py spar3h2_queue
 """
+
 import base64
 import io
 import json
@@ -14,13 +15,13 @@ import time
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
-STAGES = [("Beginner", 0.0, 0.10), ("Intermediate", 0.45, 0.55),
-          ("Advanced", 0.90, 1.0)]
+STAGES = [("Beginner", 0.0, 0.10), ("Intermediate", 0.45, 0.55), ("Advanced", 0.90, 1.0)]
 # role tag -> (reward key, success key, success from the row)
 ROLES = {
     "strike": ("strike_return", "clean hits", lambda r: r.get("strike_hit", 0.0)),
@@ -52,7 +53,7 @@ def chart(series, title, ylabel="reward"):
     ax.set_title(title, fontsize=10)
     ax.set_xlabel("million session steps", fontsize=8)
     ax.set_ylabel(ylabel, fontsize=8)
-    ax.grid(alpha=.3)
+    ax.grid(alpha=0.3)
     ax.legend(fontsize=6)
     buf = io.BytesIO()
     fig.tight_layout()
@@ -76,8 +77,7 @@ def stage_stats(rows):
             sel = [r for r in rows if lo * span <= (r["steps"] - s0) <= hi * span and rk in r]
             if not sel:
                 sel = [rows[-1]]
-            out[role].append((name, sum(r[rk] for r in sel) / len(sel),
-                              sum(ok(r) for r in sel) / len(sel)))
+            out[role].append((name, sum(r[rk] for r in sel) / len(sel), sum(ok(r) for r in sel) / len(sel)))
     return out
 
 
@@ -88,7 +88,6 @@ def main():
     log = read_jsonl(RUNS / (name + ".jsonl"))
 
     body, all_rows, cum = [], [], 0.0
-    xs = []
     stage_table = ""
     charts = []
     for stage in queue:
@@ -111,18 +110,26 @@ def main():
         ss = stage_stats(rows)
         for role, vals in ss.items():
             rk, what, _ = ROLES[role]
-            cells = "".join("<td>%.1f</td><td>%.0f %%</td>" % (rew, 100 * s)
-                            for _, rew, s in vals)
+            cells = "".join("<td>%.1f</td><td>%.0f %%</td>" % (rew, 100 * s) for _, rew, s in vals)
             gain = vals[-1][1] - vals[0][1]
-            stage_table += ("<tr><th>%s &middot; %s<br><small>%s</small></th>%s"
-                            "<td>%+.1f</td></tr>"
-                            % (run, role, what, cells, gain))
+            stage_table += "<tr><th>%s &middot; %s<br><small>%s</small></th>%s<td>%+.1f</td></tr>" % (
+                run,
+                role,
+                what,
+                cells,
+                gain,
+            )
         body.append(
             "<tr><td>%s</td><td>%s</td><td>%s</td><td>%.1f M</td><td>%s</td><td>%s</td></tr>"
-            % (run, stage.get("char", "?"), stage.get("level", "?"),
-               meta.get("steps", 0) / 1e6,
-               ("%.3f" % meta["best_exam"]) if meta.get("best_exam") is not None else "-",
-               (json.dumps(meta["graduated"]) if meta.get("graduated") else "-")))
+            % (
+                run,
+                stage.get("char", "?"),
+                stage.get("level", "?"),
+                meta.get("steps", 0) / 1e6,
+                ("%.3f" % meta["best_exam"]) if meta.get("best_exam") is not None else "-",
+                (json.dumps(meta["graduated"]) if meta.get("graduated") else "-"),
+            )
+        )
 
     # session-wide charts (x = cumulative session steps): one line per run
     COLORS = ["#3b6fd8", "#d8743b", "#2fa05a", "#8e5bd0", "#c2356e", "#3aa8b0"]
@@ -136,8 +143,9 @@ def main():
         for i, run in enumerate(runs_in_order):
             rs = [r for r in all_rows if r.get("_run") == run]
             if rs:
-                out.append((run, [r["sess_steps"] / 1e6 for r in rs],
-                            [r.get(key, 0.0) for r in rs], COLORS[i % len(COLORS)]))
+                out.append(
+                    (run, [r["sess_steps"] / 1e6 for r in rs], [r.get(key, 0.0) for r in rs], COLORS[i % len(COLORS)])
+                )
         return out
 
     charts.append(chart(series("strike_return"), "strike reward (session)"))
@@ -158,7 +166,7 @@ def main():
         span_r = max(1.0, rows_r[-1]["sess_steps"] - t0_r)
         cells = ""
         first = None
-        for sname, lo, hi in STAGES:
+        for _sname, lo, hi in STAGES:
             sel = [r for r in rows_r if lo * span_r <= (r["sess_steps"] - t0_r) <= hi * span_r]
             if not sel:
                 sel = [rows_r[-1]]
@@ -167,15 +175,19 @@ def main():
             if first is None:
                 first = rew
             cells += "<td>%.1f</td><td>%.0f %%</td>" % (rew, 100 * suc)
-        sess_stage_rows += ("<tr><th>%s<br><small>%s</small></th>%s"
-                            "<td>%+.1f</td></tr>" % (role, what, cells, rew - first))
+        sess_stage_rows += "<tr><th>%s<br><small>%s</small></th>%s<td>%+.1f</td></tr>" % (
+            role,
+            what,
+            cells,
+            rew - first,
+        )
 
     milestones = "".join(
         "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-        % (e.get("t", "")[11:], e.get("event", ""), e.get("run", "-"),
-           e.get("level", "-"), e.get("best_exam", "-"))
-        for e in log if e.get("event") in ("stage", "milestone", "crash", "final",
-                                          "final_skipped", "stopped"))
+        % (e.get("t", "")[11:], e.get("event", ""), e.get("run", "-"), e.get("level", "-"), e.get("best_exam", "-"))
+        for e in log
+        if e.get("event") in ("stage", "milestone", "crash", "final", "final_skipped", "stopped")
+    )
 
     html = f"""<!doctype html><meta charset="utf-8"><title>Spar session report</title>
 <style>body{{font:15px system-ui;max-width:980px;margin:24px auto;padding:0 16px;line-height:1.45}}
@@ -184,20 +196,20 @@ table{{border-collapse:collapse;margin:12px 0}} td,th{{padding:4px 10px;border-b
 td:first-child,th:first-child{{text-align:left}}small{{color:#777;font-weight:normal}}
 h2{{margin-top:26px}}</style>
 <h1>Unattended spar session &mdash; {name}</h1>
-<p>Generated {time.strftime('%Y-%m-%d %H:%M:%S')}. {len(queue)} stages, both athletes alternating
+<p>Generated {time.strftime("%Y-%m-%d %H:%M:%S")}. {len(queue)} stages, both athletes alternating
 in the mixed arena: each stage trains one athlete against the other's latest frozen brain
 (adversarial curriculum), so the policy keeps meeting a moving target.</p>
 <h2>Stages</h2>
 <table><tr><th>run</th><th>athlete</th><th>level</th><th>steps</th><th>best exam</th><th>graduated</th></tr>
-{''.join(body)}</table>
+{"".join(body)}</table>
 <h2>Session skill stages (Beginner = first 10 %, Intermediate = 45-55 %, Advanced = final 10 % of session steps)</h2>
-<table><tr><th>role</th>{''.join('<th>%s<br>reward</th><th>%s<br>success</th>' % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
+<table><tr><th>role</th>{"".join("<th>%s<br>reward</th><th>%s<br>success</th>" % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
 {sess_stage_rows}</table>
 <h2>Per-run skill stages (Beginner = first 10 %, Intermediate = 45-55 %, Advanced = final 10 %)</h2>
-<table><tr><th>run / role</th>{''.join('<th>%s<br>reward</th><th>%s<br>success</th>' % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
+<table><tr><th>run / role</th>{"".join("<th>%s<br>reward</th><th>%s<br>success</th>" % (n, n) for n, _, _ in STAGES)}<th>gain</th></tr>
 {stage_table}</table>
 <h2>Loss curves and reward curves</h2>
-{''.join(f'<img src="data:image/png;base64,{c}">' for c in charts)}
+{"".join(f'<img src="data:image/png;base64,{c}">' for c in charts)}
 <h2>Milestones</h2>
 <table><tr><th>time</th><th>event</th><th>run</th><th>level</th><th>best exam</th></tr>
 {milestones}</table>

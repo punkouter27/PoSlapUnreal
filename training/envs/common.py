@@ -7,6 +7,7 @@
   called once per training iteration by train.py, so a future crash can be read against the buffers in the
   telemetry instead of guessed at.
 """
+
 from __future__ import annotations
 
 import mujoco
@@ -28,11 +29,17 @@ def buffer_health(dw):
     bits = 0
     for b in torch.unique(ovf).tolist():
         bits |= int(b)
-    return {"nefc_max": int(nefc.max()), "njmax": int(dw.njmax), "nacon": int(T(dw.nacon)[0]),
-            "ncollision": int(T(dw.ncollision)[0]), "naconmax": int(dw.naconmax), "overflow": bits}
+    return {
+        "nefc_max": int(nefc.max()),
+        "njmax": int(dw.njmax),
+        "nacon": int(T(dw.nacon)[0]),
+        "ncollision": int(T(dw.ncollision)[0]),
+        "naconmax": int(dw.naconmax),
+        "overflow": bits,
+    }
 
 
-wp.config.quiet = True   # clean runtime logs: no "Module ... load on device" line per kernel in every run's log
+wp.config.quiet = True  # clean runtime logs: no "Module ... load on device" line per kernel in every run's log
 
 
 def per_world(mw, name, num_envs):
@@ -47,7 +54,10 @@ def per_world(mw, name, num_envs):
 def capture(mw, dw):
     """Compile once, then replay: the step and the kinematics as CUDA graphs (g_step, g_kin)."""
     import mujoco_warp as mjw
-    mjw.step(mw, dw); mjw.kinematics(mw, dw); wp.synchronize()
+
+    mjw.step(mw, dw)
+    mjw.kinematics(mw, dw)
+    wp.synchronize()
     with wp.ScopedCapture() as c:
         mjw.step(mw, dw)
     g_step = c.graph
@@ -83,7 +93,7 @@ def contact_slots(env, worlds):
     return idx < env.nacon[0], g[:, 0], g[:, 1], env.con_world.long().clamp(0, worlds - 1)
 
 
-# ---------------------------------------------------------------- interface 4 (DOCS/BRAIN_IO.md, 2026-11-04)
+# ---------------------------------------------------------------- interface 4 (docs/BRAIN_IO.md, 2026-11-04)
 def world_geoms(m, device):
     """(ngeom,) True for geoms of the world body (floor, podium, the course's step): what a sole stands on."""
     return torch.tensor([int(m.geom_bodyid[g]) == 0 for g in range(m.ngeom)], dtype=torch.bool, device=device)
@@ -111,9 +121,9 @@ def foot_contacts(env, worlds, foot_of, is_world, athletes=1):
     on = valid & (sole >= 0) & is_world[other]
     g = torch.where(f0 >= 0, g0, g1)
     pos = env.con_pos[:, :3]
-    axis = env.geom_xmat[w, g][:, :, 0]                       # the box's local x axis in world coordinates
+    axis = env.geom_xmat[w, g][:, :, 0]  # the box's local x axis in world coordinates
     toe = (((pos - env.geom_xpos[w, g]) * axis).sum(-1) >= 0).long()
-    slot = w * (4 * athletes) + sole.clamp(min=0) * 2 + toe   # world, athlete, foot, heel/toe
+    slot = w * (4 * athletes) + sole.clamp(min=0) * 2 + toe  # world, athlete, foot, heel/toe
     out = torch.zeros(worlds * 4 * athletes, device=env.device)
     out.scatter_reduce_(0, torch.where(on, slot, torch.zeros_like(slot)), on.float(), "amax")
     return out.view(worlds, athletes, 4)
@@ -123,6 +133,7 @@ def lowpass(tgt, goal, on):
     """The interface-4 action low-pass (constants.LPF_ALPHA, before the rate limit) on rows where `on` ((rows, 1) bool,
     or a bool): target = goal + alpha (target - goal). Rows of older brains (interface <= 3) pass through unchanged."""
     from constants import LPF_ALPHA
+
     f = goal + LPF_ALPHA * (tgt - goal)
     return torch.where(on, f, tgt) if isinstance(on, torch.Tensor) else (f if on else tgt)
 
@@ -131,9 +142,9 @@ def lowpass(tgt, goal, on):
 # What the referee's new calls cost in reward (training only). A foul is one point on every card; in reward units a
 # point is put at 20: a clean palm strike pays ~120 (50 + 8 v), a striker's time-out without a strike costs 20, so a
 # foul is as bad as not striking at all and a sixth of a clean slap.
-FOUL = 20.0        # the defender's flinch (once a turn); the striker's clubbing (on top of the reduced pay)
-CLUB_PAY = 0.25    # a first touch that is not a palm still is the strike, at a quarter of its pay: about +10 net at
-                   # 9 m/s against +120 for the palm - never better than a palm, never worse than refusing to strike
+FOUL = 20.0  # the defender's flinch (once a turn); the striker's clubbing (on top of the reduced pay)
+CLUB_PAY = 0.25  # a first touch that is not a palm still is the strike, at a quarter of its pay: about +10 net at
+# 9 m/s against +120 for the palm - never better than a palm, never worse than refusing to strike
 
 
 def palm_led(env, on, g0, other, w, worlds):
@@ -149,9 +160,11 @@ def palm_led(env, on, g0, other, w, worlds):
 
 
 # The motion-style terms every policy shares (AGENTS.md §3 hand-overs): training only, never an input.
-HF_BETA = (1.0 / (2 * 3.141592653589793 * 10.0)) / (1.0 / (2 * 3.141592653589793 * 10.0) + 0.02)   # 10 Hz high-pass at 50 Hz
-HF_W, HF_CAP = 0.002, 2.0          # cost per (rad/s)^2 of >10 Hz joint velocity, summed over joints, capped per step
-COM_W, COM_VAR = 0.3, 0.0025       # CoM recovery: 0.3 exp(-e^2 / (5 cm)^2), e = horizontal CoM drift from its stance spot
+HF_BETA = (1.0 / (2 * 3.141592653589793 * 10.0)) / (
+    1.0 / (2 * 3.141592653589793 * 10.0) + 0.02
+)  # 10 Hz high-pass at 50 Hz
+HF_W, HF_CAP = 0.002, 2.0  # cost per (rad/s)^2 of >10 Hz joint velocity, summed over joints, capped per step
+COM_W, COM_VAR = 0.3, 0.0025  # CoM recovery: 0.3 exp(-e^2 / (5 cm)^2), e = horizontal CoM drift from its stance spot
 
 
 def hf_oscillation(v, v_prev, hp):
@@ -159,14 +172,14 @@ def hf_oscillation(v, v_prev, hp):
     (hp = beta (hp + v - v_prev)): cheap, one (rows, joints) state. Returns (penalty per row, new hp state); a smooth
     swing leaves hp near 0, a joint buzzing at 15-25 Hz drives it to the swing's amplitude."""
     hp = HF_BETA * (hp + v - v_prev)
-    return (HF_W * (hp ** 2).sum(-1)).clamp(max=HF_CAP), hp
+    return (HF_W * (hp**2).sum(-1)).clamp(max=HF_CAP), hp
 
 
 def com_recovery(com_xy, feet_xy, ref):
     """Item 46: the L3 criterion (CoM back within 5 cm) as a per-step pay at every level: e = |(CoM - mid-feet) - ref|,
     ref = the same offset at the episode's stance (each body's own lean). Returns (pay, e)."""
     e = ((com_xy - feet_xy.mean(-2)) - ref).norm(dim=-1)
-    return COM_W * torch.exp(-e ** 2 / COM_VAR), e
+    return COM_W * torch.exp(-(e**2) / COM_VAR), e
 
 
 # ---------------------------------------------------------------- interface 5: player command vector (140-141)
@@ -179,5 +192,5 @@ def cmd_strike_bonus(cmd_power, speed, hit_v, clean, phi):
 
 def cmd_brace_reward(cmd_brace, upright, qvel):
     """Defence stability pay while timed brace command (141) is active (+1); 0 when neutral."""
-    vel_pen = 0.1 * (qvel ** 2).mean(-1).clamp(max=10.0) / 10.0
+    vel_pen = 0.1 * (qvel**2).mean(-1).clamp(max=10.0) / 10.0
     return cmd_brace * (0.4 * upright.clamp(min=0.0) - vel_pen)

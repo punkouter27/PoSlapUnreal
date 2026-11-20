@@ -30,7 +30,7 @@ export async function loadMatch(mj, ort, get, emit, key = "gg") {
   const corners = await Promise.all(mu.corners.map(async (c, i) => {
     const s = await ort.InferenceSession.create(await get(`training/models/brains/${c.brain}.onnx`, "bytes"));
     const n = s.inputNames[0], out = s.outputNames[0];
-    // each brain reads its own width (a shipped 136 brain: no foot contacts, no low-pass; DOCS/BRAIN_IO.md)
+    // each brain reads its own width (a shipped 136 brain: no foot contacts, no low-pass; docs/BRAIN_IO.md)
     const nIn = Number(s.inputMetadata?.[0]?.shape?.[1]) || 136;
     const policy = async obs => (await s.run({ [n]: new ort.Tensor("float32", obs.subarray(0, nIn), [1, nIn]) }))[out].data;
     policy.nIn = Math.min(nIn, OBS);

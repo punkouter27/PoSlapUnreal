@@ -1,6 +1,6 @@
 // The broadcast sound in the browser. Two engines behind one set of cues (the ones ASlapHUD plays):
 //
-// samples (phones, the low tier, or the user's pick): the synthesised takes Unreal plays (Scripts/broadcast_audio.py
+// samples (phones, the low tier, or the user's pick): the synthesised takes Unreal plays (scripts/broadcast_audio.py
 //   writes both), stereo-panned by where they happened, filtered by the air, sent to the arena's impulse response.
 // synth (desktop, 2026-11-04): every impact is synthesised the moment it happens from what MuJoCo says about it. A
 //   material matrix (MATERIALS: palm-cheek, palm-jaw, back of the hand on the face, sole-mat, sole-deck, body-mat,

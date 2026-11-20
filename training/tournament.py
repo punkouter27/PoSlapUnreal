@@ -8,7 +8,11 @@ results.jsonl (every match's log stays in Logs/Gameplay/), and prints the Unreal
 Mixed cards work: match.py takes per-corner fingerprints and the <red>_vs_<blue> arena (build_body.py --blue); a pairing
 whose arena xml is missing is skipped with a warning (build it first: build_body.py <red_card> --blue <blue_card>).
 """
-import argparse, itertools, json, time
+
+import argparse
+import itertools
+import json
+import time
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -19,9 +23,20 @@ HERE = Path(__file__).parent
 
 def one(job):
     red, blue, first = job
-    res, turns, path = match.play(red["brain"], first, blue=blue["brain"], character=red["card"], blue_character=blue["card"])
-    return dict(red=red["name"], blue=blue["name"], first=first, how=res["how"], winner=res["winner"], log=path,
-                strikes={c: sum(t["touch"] is not None and t["palm"] for t in turns if t["striker"] == c) for c in ("red", "blue")})
+    res, turns, path = match.play(
+        red["brain"], first, blue=blue["brain"], character=red["card"], blue_character=blue["card"]
+    )
+    return dict(
+        red=red["name"],
+        blue=blue["name"],
+        first=first,
+        how=res["how"],
+        winner=res["winner"],
+        log=path,
+        strikes={
+            c: sum(t["touch"] is not None and t["palm"] for t in turns if t["striker"] == c) for c in ("red", "blue")
+        },
+    )
 
 
 def main():
@@ -32,15 +47,19 @@ def main():
     roster = json.loads(Path(a.roster).read_text())
     jobs, skipped = [], []
     for x, y in itertools.combinations(roster, 2):
-        if not (HERE / "models" / f'{x["card"]}_vs_{y["card"]}_arena.xml').exists():   # mixed pairing, arena not built yet
-            skipped.append(f'{x["card"]} vs {y["card"]}')
+        if not (
+            HERE / "models" / f"{x['card']}_vs_{y['card']}_arena.xml"
+        ).exists():  # mixed pairing, arena not built yet
+            skipped.append(f"{x['card']} vs {y['card']}")
             continue
         for i in range(a.matches):
-            red, blue = (x, y) if i % 2 == 0 else (y, x)   # swap corners every match
-            jobs.append((red, blue, (i // 2) % 2))         # and the toss every two
+            red, blue = (x, y) if i % 2 == 0 else (y, x)  # swap corners every match
+            jobs.append((red, blue, (i // 2) % 2))  # and the toss every two
     if skipped:
-        print(f"skipped {len(skipped)} pairing(s) with no arena xml: {', '.join(sorted(set(skipped)))} "
-              f'(build: build_body.py <red_card> --blue <blue_card>)')
+        print(
+            f"skipped {len(skipped)} pairing(s) with no arena xml: {', '.join(sorted(set(skipped)))} "
+            f"(build: build_body.py <red_card> --blue <blue_card>)"
+        )
     if not jobs:
         raise SystemExit("no playable pairings")
     with Pool(min(20, len(jobs))) as p:
@@ -65,22 +84,33 @@ def main():
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in out))
     brain = {e["name"]: e["brain"] for e in roster}
-    rows = "".join(f"<tr><td>{i + 1}</td><td>{n}</td>" + "".join(f"<td>{s[k]}</td>" for k in ("played", "won", "drawn", "lost", "ko", "points"))
-                   + "</tr>" for i, (n, s) in enumerate(ranked))
-    games = "".join(f"<tr><td>{r['red']}</td><td>{r['blue']}</td><td>{r['first']}</td><td>{r['winner'] or '-'}</td><td>{r['how']}</td>"
-                    f"<td>{r['strikes']['red']}-{r['strikes']['blue']}</td></tr>" for r in out)
+    rows = "".join(
+        f"<tr><td>{i + 1}</td><td>{n}</td>"
+        + "".join(f"<td>{s[k]}</td>" for k in ("played", "won", "drawn", "lost", "ko", "points"))
+        + "</tr>"
+        for i, (n, s) in enumerate(ranked)
+    )
+    games = "".join(
+        f"<tr><td>{r['red']}</td><td>{r['blue']}</td><td>{r['first']}</td><td>{r['winner'] or '-'}</td><td>{r['how']}</td>"
+        f"<td>{r['strikes']['red']}-{r['strikes']['blue']}</td></tr>"
+        for r in out
+    )
     (dest / "standings.html").write_text(
         "<!doctype html><meta charset='utf-8'><title>Tournament</title><style>body{font:15px system-ui;margin:24px}"
         "td,th{padding:4px 10px;border-bottom:1px solid #ccc;text-align:left}</style>"
         f"<h1>Tournament {time.strftime('%Y-%m-%d %H:%M')}</h1><table><tr><th>#</th><th>Fighter</th><th>P</th><th>W</th>"
         f"<th>D</th><th>L</th><th>KO</th><th>Pts</th></tr>{rows}</table><h2>Matches</h2><table><tr><th>Red</th><th>Blue</th>"
-        f"<th>Toss (0 red)</th><th>Winner</th><th>How</th><th>Clean strikes</th></tr>{games}</table>", encoding="utf-8")
+        f"<th>Toss (0 red)</th><th>Winner</th><th>How</th><th>Clean strikes</th></tr>{games}</table>",
+        encoding="utf-8",
+    )
     for i, (n, s) in enumerate(ranked):
         print(f"{i + 1}. {n:24s} {s['points']:3d} pts  W{s['won']} D{s['drawn']} L{s['lost']} KO{s['ko']}")
     print("standings:", dest / "standings.html")
     if len(ranked) >= 2:
         r, b = brain[ranked[0][0]], brain[ranked[1][0]]
-        print(f"watch the top two in Unreal: UnrealEditor.exe PoSlapUnreal.uproject -game -SlapRedBrain=training/{r} -SlapBlueBrain=training/{b}")
+        print(
+            f"watch the top two in Unreal: UnrealEditor.exe PoSlapUnreal.uproject -game -SlapRedBrain=training/{r} -SlapBlueBrain=training/{b}"
+        )
 
 
 if __name__ == "__main__":

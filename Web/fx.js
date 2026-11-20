@@ -7,7 +7,7 @@
 // In the scene: image-based light, the key light's dust motes, the impact spray, the knockdown dust, the contact ring,
 // a planar reflection on the stage floor, and the skin shader (wrapped subsurface diffuse, peach-fuzz rim, a tileable
 // pore/wrinkle micro-relief baked in Blender, a wet sweat lobe that beads as stamina drops, the cheek ripple, flush
-// and the greyer tired skin: the same parameters as Unreal's M_<athlete>, Scripts/broadcast_fx.py).
+// and the greyer tired skin: the same parameters as Unreal's M_<athlete>, scripts/broadcast_fx.py).
 //
 // Quality tiers (?gfx=low|high|ultra|cinema, or View), each a set of effects (TIER_FX); ?fx=sss:0,vol:48,... overrides
 // single effects (Web/fps_ladder.mjs steps through them; wet:1 forces a late-match sweat for the report's shots).
@@ -967,7 +967,7 @@ export function surface(std, kind) {
 // ---- skin -----------------------------------------------------------------------------------------------------------
 // The glTF's standard material with Unreal's skin parameters: wrapped light per channel (red travels furthest under the
 // skin: pre-integrated subsurface), a warm rim where the surface turns away (peach fuzz), a micro-relief from the baked
-// skin detail map (R: pores and fine wrinkles, G: sweat beads; tileable, Scripts/blender_skin_detail.py) sampled
+// skin detail map (R: pores and fine wrinkles, G: sweat beads; tileable, scripts/blender_skin_detail.py) sampled
 // triplanar in the bind pose (it rides with the skin, it does not swim), a water lobe (GGX, roughness 0.12, F0 0.02) on
 // the sweat that beads as the stamina drops, the cheek ripple and push (RipplePoint/Dir/Time/Amp, cm as in Unreal), the
 // flush round FlushPoint and the grey of Tired. The skin writes alpha 0 when the SSS pass runs (skinFlag).

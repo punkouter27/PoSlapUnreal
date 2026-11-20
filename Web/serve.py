@@ -6,17 +6,23 @@ and Unreal do; .mjs and .wasm get their browser MIME types.
 Only Web/ and training/ are served: the rest of the checkout (.git with the full history, Saved/, Logs/, the venv)
 is refused, so --host 0.0.0.0 does not publish it to the network.
 """
+
 import argparse
 import functools
 import http.server
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED = ("Web", "training")   # the two directories the page actually reads
+ALLOWED = ("Web", "training")  # the two directories the page actually reads
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".mjs": "text/javascript", ".wasm": "application/wasm", ".js": "text/javascript"}
+    extensions_map = {
+        **http.server.SimpleHTTPRequestHandler.extensions_map,
+        ".mjs": "text/javascript",
+        ".wasm": "application/wasm",
+        ".js": "text/javascript",
+    }
 
     def send_error(self, code, message=None, explain=None):
         if code == 404:
@@ -31,7 +37,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if not self._guard():
-            return          # refuse: do NOT fall through and serve the file anyway
+            return  # refuse: do NOT fall through and serve the file anyway
         try:
             super().do_GET()
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError):
@@ -62,13 +68,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return False
         return True
 
-    def end_headers(self):   # always the files on disk: new brains and code show on a plain reload
+    def end_headers(self):  # always the files on disk: new brains and code show on a plain reload
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 serves phones on the network (the second screen, Web/live.py)")
+ap.add_argument(
+    "--host", default="127.0.0.1", help="0.0.0.0 serves phones on the network (the second screen, Web/live.py)"
+)
 ap.add_argument("--port", type=int, default=8080)
 opts = ap.parse_args()
 host, port = opts.host, opts.port

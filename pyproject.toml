@@ -7,4 +7,20 @@ requires-python = ">=3.10"
 dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
-pythonpath = [".", "training"]
+pythonpath = [".", "training", "tests"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["Plugins", "Content", "Web/node_modules", "Web/dist", ".venv*", "training/.venv", "training/runs"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+ignore = [
+  "E731",  # short one-line math helpers (f = lambda x: ...) are kept as lambdas next to the code that uses them
+  "E741",  # l / I / O names: the physics code uses the papers' symbols (I = inertia, l = segment length)
+  "E402",  # scripts put sys.path setup and editor-only imports (unreal, bpy) before their module imports
+  "B905",  # zip(strict=) on fixed-size physics arrays adds noise; lengths are asserted where they matter
+  "UP031", # %-format strings in the report generators are kept as written
+]

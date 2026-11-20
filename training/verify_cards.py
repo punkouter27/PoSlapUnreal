@@ -7,11 +7,14 @@ Every expectation is DERIVED from the same file the app reads - no live value is
 hard-coded here (the physics rate comes from the model's timestep, the joint set from
 the reference arena, the card numbers from the card itself).
 """
+
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -51,9 +54,20 @@ def check_cards():
             fail(f"{name}: no card at {card_path}")
             continue
         card = json.loads(card_path.read_text())
-        for key in ("name", "display", "height_m", "mass_kg", "strength", "speed",
-                    "flexibility", "toughness", "strike_mass", "stamina_per_strike",
-                    "neck_damage_per_snap", "skeleton"):
+        for key in (
+            "name",
+            "display",
+            "height_m",
+            "mass_kg",
+            "strength",
+            "speed",
+            "flexibility",
+            "toughness",
+            "strike_mass",
+            "stamina_per_strike",
+            "neck_damage_per_snap",
+            "skeleton",
+        ):
             if key not in card:
                 fail(f"{name}: card is missing '{key}'")
         if card.get("name") != name:
@@ -63,19 +77,29 @@ def check_cards():
             fail(f"{name}: skeleton '{card['skeleton']}' not found")
         if card.get("strike_mass", 0) <= 0:
             fail(f"{name}: strike_mass is {card.get('strike_mass')} - the slap impulse would be zero (no KO possible)")
-        print(f"  [PASS] {name}: {card['display']}, {card['height_m']} m, {card['mass_kg']} kg, "
-              f"strike_mass {card['strike_mass']} kg")
+        print(
+            f"  [PASS] {name}: {card['display']}, {card['height_m']} m, {card['mass_kg']} kg, "
+            f"strike_mass {card['strike_mass']} kg"
+        )
     if FAILURES == before:
         print("  [PASS] every roster card is complete.")
+
+
+def _text(path):
+    """A model file's text with line endings normalised (git may check out CRLF on Windows)."""
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
 def check_build():
     print("\n=== [2/5] Body build (rig, self-collision, balance, shoulder cone) ===")
     before = FAILURES
+    tmp = Path(tempfile.mkdtemp(prefix="slap_models_"))  # build_body writes here, never into the tracked models/
     for name in cards():
         res = subprocess.run(
             [sys.executable, str(HERE / "build_body.py"), str(HERE / "characters" / f"{name}.json")],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "SLAP_MODELS_OUT": str(tmp)},
         )
         if res.returncode != 0:
             fail(f"{name}: build_body.py failed\n{res.stdout[-2000:]}\n{res.stderr[-2000:]}")
@@ -83,9 +107,20 @@ def check_build():
         for line in res.stdout.splitlines():
             if line.startswith(("A8 ", "A9 ", "A10 ", "A11 ", "A12 ", "A13 ")):
                 print("    " + line)
-        for expect in ("A9 realism limits", "A10 self-collision", "A11 balance", "A12 fingerprint", "A13 shoulder cone"):
+        for expect in (
+            "A9 realism limits",
+            "A10 self-collision",
+            "A11 balance",
+            "A12 fingerprint",
+            "A13 shoulder cone",
+        ):
             if expect not in res.stdout:
                 fail(f"{name}: build did not report '{expect}'")
+        # the committed models are what the build writes today (a card or build_body.py change must be rebuilt)
+        for built in sorted(tmp.glob(f"{name}_*")):
+            shipped = MODELS / built.name
+            if not shipped.exists() or _text(shipped) != _text(built):
+                fail(f"{name}: models/{built.name} is not what build_body.py writes today (rebuild and commit it)")
     if FAILURES == before:
         print("  [PASS] every card builds and passes A8-A13.")
 
@@ -132,15 +167,14 @@ def per_athlete_layout(path):
     """
     root = ET.parse(path).getroot()
     joints = [(j.get("name"), j.get("type", "hinge")) for j in root.iter("joint") if j.get("name")]
-    acts = [m.get("joint") for m in root.iter()
-            if m.tag in ACTUATOR_TAGS and m.get("joint")]
+    acts = [m.get("joint") for m in root.iter() if m.tag in ACTUATOR_TAGS and m.get("joint")]
     jg, ag, free = {}, {}, {}
     for name, jtype in joints:
         for p in CORNER_PREFIXES:
             if name.startswith(p):
-                jg.setdefault(p, []).append(name[len(p):])
+                jg.setdefault(p, []).append(name[len(p) :])
                 if jtype == "free":
-                    free.setdefault(p, []).append(name[len(p):])
+                    free.setdefault(p, []).append(name[len(p) :])
                 break
         else:
             jg.setdefault("", []).append(name)
@@ -149,14 +183,16 @@ def per_athlete_layout(path):
     for n in acts:
         for p in CORNER_PREFIXES:
             if n.startswith(p):
-                ag.setdefault(p, []).append(n[len(p):])
+                ag.setdefault(p, []).append(n[len(p) :])
                 break
         else:
             ag.setdefault("", []).append(n)
     # The pelvis is the free-floating root: it has a joint but no motor, by design.
-    return ({k: sorted(v) for k, v in jg.items()},
-            {k: sorted(v) for k, v in ag.items()},
-            {k: sorted(v) for k, v in free.items()})
+    return (
+        {k: sorted(v) for k, v in jg.items()},
+        {k: sorted(v) for k, v in ag.items()},
+        {k: sorted(v) for k, v in free.items()},
+    )
 
 
 def check_models():
@@ -172,21 +208,27 @@ def check_models():
         jg, ag, free = per_athlete_layout(xml)
         for corner, joints in jg.items():
             if joints != ref_joint:
-                fail(f"{xml.name} [{corner or 'solo'}]: joint set differs from the reference "
-                     f"(missing {sorted(set(ref_joint) - set(joints))}, "
-                     f"extra {sorted(set(joints) - set(ref_joint))})")
+                fail(
+                    f"{xml.name} [{corner or 'solo'}]: joint set differs from the reference "
+                    f"(missing {sorted(set(ref_joint) - set(joints))}, "
+                    f"extra {sorted(set(joints) - set(ref_joint))})"
+                )
         for corner, acts in ag.items():
             if acts != ref_act:
-                fail(f"{xml.name} [{corner or 'solo'}]: actuator set differs from the reference "
-                     f"(missing {sorted(set(ref_act) - set(acts))}, "
-                     f"extra {sorted(set(acts) - set(ref_act))})")
+                fail(
+                    f"{xml.name} [{corner or 'solo'}]: actuator set differs from the reference "
+                    f"(missing {sorted(set(ref_act) - set(acts))}, "
+                    f"extra {sorted(set(acts) - set(ref_act))})"
+                )
             else:
                 # every joint needs a motor, except the free-floating pelvis root
                 motors_needed = [j for j in jg.get(corner, []) if j not in free.get(corner, [])]
                 if sorted(motors_needed) != sorted(acts):
-                    fail(f"{xml.name} [{corner or 'solo'}]: {len(motors_needed)} motorised joints "
-                         f"but {len(acts)} actuators - "
-                         f"{sorted(set(motors_needed) ^ set(acts))} has no motor")
+                    fail(
+                        f"{xml.name} [{corner or 'solo'}]: {len(motors_needed)} motorised joints "
+                        f"but {len(acts)} actuators - "
+                        f"{sorted(set(motors_needed) ^ set(acts))} has no motor"
+                    )
     cfg = json.loads((HERE / "configs" / "joint_and_strength_config.json").read_text())
     hz = cfg.get("physics_engine", {}).get("physics_hz")
     dt = None
@@ -202,8 +244,10 @@ def check_models():
         else:
             print(f"  [PASS] the model steps at {model_hz} Hz, the config says {hz} Hz.")
     if FAILURES == before:
-        print(f"  [PASS] {len(list(MODELS.glob('*.xml')))} models share "
-              f"{len(ref_joint)} joints / {len(ref_act)} actuators per athlete.")
+        print(
+            f"  [PASS] {len(list(MODELS.glob('*.xml')))} models share "
+            f"{len(ref_joint)} joints / {len(ref_act)} actuators per athlete."
+        )
 
 
 def check_brains():
@@ -222,8 +266,7 @@ def check_brains():
         for bin_file in sorted(brains_dir.glob("*.bin")):
             stem = bin_file.stem
             if not (MODELS / "brains" / f"{stem}.onnx").exists():
-                fail(f"Content/Data/Brains/{bin_file.name} has no source brain "
-                     f"training/models/brains/{stem}.onnx")
+                fail(f"Content/Data/Brains/{bin_file.name} has no source brain training/models/brains/{stem}.onnx")
     if FAILURES == before:
         print(f"  [PASS] {len(roster)} roster entries and the packaged brains all resolve.")
 

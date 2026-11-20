@@ -1,0 +1,22 @@
+{
+  "_doc": "Reward penalty weights and curriculum thresholds. training/reward_config.py loads this file for the trainer (envs/locomotion.py, envs/slap.py, levels.py); the Unreal DataAsset USlapRewardConfig (Source/PoSlapUnreal/SlapRewardConfig.h) mirrors the same values for the editor and the diagnostics overlay. Weights are added to the per-step reward (negative = penalty). torque_sq = sum of squared joint torques (qfrc_actuator, N m); joint_ang_vel_sq = sum of squared joint angular velocities (rad/s); action_rate_sq = |a_t - a_(t-1)|^2; foot_slip = planar foot speed above foot_slip_deadband_mps while the sole is on the floor (m/s). The shipped brains predate torque_sq and joint_ang_vel_sq (added 2026-11-20, not retrained): see docs/reward_config.md.",
+  "penalties": {
+    "torque_sq": -2e-06,
+    "joint_ang_vel_sq": -0.0001,
+    "action_rate_sq": -0.01,
+    "foot_slip": -0.3
+  },
+  "foot_slip_deadband_mps": 0.18,
+  "curriculum": [
+    {"stage": "L0", "threshold": 2400.0, "metric": "mean episode return over 100 episodes (guard role): stand 30 s", "role_targets": {"0": 2400.0}},
+    {"stage": "L1", "threshold": 2500.0, "metric": "mean episode return over 100 episodes (guard role): guard hold in the foot box", "role_targets": {"0": 2500.0}},
+    {"stage": "L2", "threshold": 100.0, "metric": "mean episode return over 100 episodes (strike role): strike a fixed head target", "role_targets": {"1": 100.0, "0": 2500.0}},
+    {"stage": "L3", "threshold": 800.0, "metric": "mean episode return over 100 episodes (absorb role): absorb a scripted slap", "role_targets": {"-1": 800.0, "1": 100.0}},
+    {"stage": "L4", "threshold": 100.0, "metric": "mean episode return over 100 episodes (strike role): self-play duel", "role_targets": {"1": 100.0, "-1": 300.0}},
+    {"stage": "S2", "threshold": 1800.0, "metric": "mean episode return over 100 episodes: steady alternating steps", "role_targets": {"0": 1800.0}},
+    {"stage": "S3", "threshold": 2400.0, "metric": "mean episode return over 100 episodes: step up / down, around the podium", "role_targets": {"0": 2400.0}},
+    {"stage": "S4", "threshold": 3000.0, "metric": "mean episode return over 100 episodes: the aisle lap", "role_targets": {"0": 3000.0}},
+    {"stage": "S5", "threshold": 2400.0, "metric": "mean episode return over 100 episodes: S3 course on slopes", "role_targets": {"0": 2400.0}},
+    {"stage": "G1", "threshold": 250.0, "metric": "mean episode return over 100 episodes: get up from a fall", "role_targets": {"0": 250.0}}
+  ]
+}

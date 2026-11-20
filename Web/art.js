@@ -14,7 +14,7 @@ export async function loadArena(scene) {
   const gltf = await load("./assets/arena.glb");
   const root = new THREE.Group();
   root.rotation.x = Math.PI / 2;   // glTF is Y-up; the arena was modelled in MuJoCo's Z-up frame
-  // the broadcast side (Scripts/arena_env.py SET_YAW): the dressing turned 180 degrees about the centre, so the camera
+  // the broadcast side (scripts/arena_env.py SET_YAW): the dressing turned 180 degrees about the centre, so the camera
   // at -Y sees the set as designed (judges' table across, press row behind it); the foot boxes keep the physics frame
   gltf.scene.rotation.y = Math.PI;
   for (const n of [...gltf.scene.children]) {
@@ -165,7 +165,7 @@ export async function loadAthlete(scene, url, mj, m, prefix, tint) {
 // ---- the mesh clamp: the drawn palm stays out of the drawn face ------------------------------------------------------
 // MuJoCo's palm sinks into the head sphere (1-7 cm), and the sphere does not cover the drawn jaw, so the old clamp
 // (the hand box pushed off the sphere) left the drawn palm 3 cm into the jaw in most mirror-match slaps
-// (Scripts/collision_mesh_clip.py, DOCS/20261103/collision_review.md). clipData keeps the hands', the head's and the
+// (scripts/collision_mesh_clip.py, docs/20261103/collision_review.md). clipData keeps the hands', the head's and the
 // neck's (the lower jaw is skinned to it) vertices (weight >= 0.5) in their MuJoCo body's frame, from the bind pose;
 // clipPush (once against the head, once against the neck) moves the drawn hand out along
 // the mean normal of the face vertices it is under by the deepest 5 % of its vertices (+2 mm), up to 5 times.

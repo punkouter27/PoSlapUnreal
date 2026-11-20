@@ -2,6 +2,8 @@
 
 A high-fidelity competitive Power Slap sports biomechanics simulation and autonomous AI tournament arena built in **Unreal Engine 5.8** using **MuJoCo 3.10.0**, **UnrealRoboticsLab (URLab)**, and **Unreal NNE (Neural Network Engine)**.
 
+**Browser port (PoSlap Arena):** https://ashy-plant-0f75ec30f.3.azurestaticapps.net (status: `/diag`), deployed by `.github/workflows/deploy.yml` on every push to `master`.
+
 ---
 
 ## Overview & Architecture Highlights
@@ -23,7 +25,7 @@ A high-fidelity competitive Power Slap sports biomechanics simulation and autono
 ## Required Plugins & Engine Version
 
 * **Unreal Engine:** Version `5.8` (Windows x64).
-* **UnrealRoboticsLab (`Plugins/UnrealRoboticsLab`):** Pinned to MuJoCo `3.10.0` with custom UE 5.8 JSON key patches (`Plugins/urlab_poslap.patch`).
+* **UnrealRoboticsLab (`Plugins/UnrealRoboticsLab`):** vendored, pinned to MuJoCo `3.10.0` with this repo's UE 5.8 patches applied.
 * **NNERuntimeORT:** Unreal Engine Neural Network Engine ONNX Runtime plugin (CPU execution on physics thread).
 * **ModelContextProtocol (`ModelContextProtocol` & `AllToolsets`):** Unreal MCP server enabled on `127.0.0.1:8000/mcp`.
 * **PythonScriptPlugin:** Automated editor scene generation, lighting setup, and material compilation.
@@ -34,17 +36,15 @@ A high-fidelity competitive Power Slap sports biomechanics simulation and autono
 ## Quick-Start Instructions
 
 ### 1. Repository Setup & Dependencies
+`Plugins/UnrealRoboticsLab` is vendored in this repo (URLab source with this repo's patch applied and its prebuilt
+third-party libraries, MuJoCo 3.10.0; see the README inside the plugin), so a fresh clone builds the editor target
+directly. `scripts/setup_urlab.ps1` only installs the editor-Python packages URLab's MJCF importer needs.
 ```powershell
-# Clone submodules and apply URLab patches
-git submodule update --init --recursive
-git -C Plugins/UnrealRoboticsLab am ../urlab_poslap.patch
-
-# Build URLab native libraries (MuJoCo, CoACD, ZMQ)
-Push-Location Plugins/UnrealRoboticsLab/third_party; powershell -ExecutionPolicy Bypass -File .\build_all.ps1; Pop-Location   # must run from its own folder (or use Scripts/setup_urlab.ps1)
-
-# Set up Python training virtual environment
-uv venv training/.venv --python 3.11
-training/.venv/Scripts/python.exe -m pip install -r training/requirements.txt
+# Python: trainer + checks (Python 3.12; MuJoCo pinned in training/requirements.txt)
+uv venv training/.venv --python 3.12
+uv pip install -p training/.venv -r training/requirements.txt
+training/.venv/Scripts/python.exe -m pytest           # the CPU test suite (tests/)
+ruff check . ; ruff format --check .
 ```
 
 ### 2. Generate Character Bodies & Build Unreal Scene
@@ -53,7 +53,7 @@ training/.venv/Scripts/python.exe -m pip install -r training/requirements.txt
 training/.venv/Scripts/python.exe training/build_body.py training/characters/grandpa.json --blue training/characters/kim.json
 
 # Build the arena level pairing in Unreal Editor (idempotent commandlet)
-UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="Scripts/build_scene.py" -unattended
+UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="scripts/build_scene.py" -unattended
 ```
 
 ### 3. Launching the Game & Running Matches

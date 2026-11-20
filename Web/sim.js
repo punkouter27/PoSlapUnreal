@@ -470,7 +470,7 @@ export class Match {
         }
         const feint = this.fe.n > 0;
         Object.assign(this.rec, { touch: this.k * dt, part, palm, speed: Math.round(speed * 100) / 100, feint });
-        // hand_speed / feint / feints: additive fields (DOCS/20261103/events.md)
+        // hand_speed / feint / feints: additive fields (docs/20261103/events.md)
         this.emit({ type: "strike", t: this.k * dt, striker: S.name, part, palm, speed, pos,
           hand_speed: Math.round(handSpeed * 100) / 100, feint, feints: this.fe.n });
         if (this.r2) {   // rules 2: nothing added - what the contact passes on is the blow; a touch that is not a palm is clubbing

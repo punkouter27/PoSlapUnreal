@@ -10,6 +10,7 @@ those. So the check is:
   3. the observation layout and the rates still hold.
 No expected number is written in this file: every expectation is the python constant itself.
 """
+
 import math
 import re
 import sys
@@ -53,16 +54,45 @@ def check_generated():
 
 # each engine file and the generated names it must read (a use, not a retyped number)
 USES = {
-    "Source/PoSlapUnreal/SlapControllerInternal.h": ["SlapGen::Decim", "SlapGen::Obs", "SlapGen::LpfHz", "SlapGen::LpfFromObs",
-                                                     "SlapGen::Lags", "SlapGen::HillK", "SlapGen::React", "SlapGen::BoxX",
-                                                     "SlapGen::KickSteps", "SlapGen::ControlHz"],
-    "Source/PoSlapUnreal/SlapController.h": ["SlapGen::Rounds", "SlapGen::MinStamina", "SlapGen::MinNeck", "SlapGen::StrikeClock",
-                                             "SlapGen::Recovery", "SlapGen::GazeGain", "SlapGen::GazeMaxStep", "SlapGen::WatchMaxStep"],
-    "Source/PoSlapUnreal/SlapSwingRead.h": ["SlapGen::FeintMinPeak", "SlapGen::FeintPullback", "SlapGen::FeintAfterS",
-                                            "SlapGen::FeintRearm", "SlapGen::FeintRearmS"],
+    "Source/PoSlapUnreal/SlapControllerInternal.h": [
+        "SlapGen::Decim",
+        "SlapGen::Obs",
+        "SlapGen::LpfHz",
+        "SlapGen::LpfFromObs",
+        "SlapGen::Lags",
+        "SlapGen::HillK",
+        "SlapGen::React",
+        "SlapGen::BoxX",
+        "SlapGen::KickSteps",
+        "SlapGen::ControlHz",
+    ],
+    "Source/PoSlapUnreal/SlapController.h": [
+        "SlapGen::Rounds",
+        "SlapGen::MinStamina",
+        "SlapGen::MinNeck",
+        "SlapGen::StrikeClock",
+        "SlapGen::Recovery",
+        "SlapGen::GazeGain",
+        "SlapGen::GazeMaxStep",
+        "SlapGen::WatchMaxStep",
+    ],
+    "Source/PoSlapUnreal/SlapSwingRead.h": [
+        "SlapGen::FeintMinPeak",
+        "SlapGen::FeintPullback",
+        "SlapGen::FeintAfterS",
+        "SlapGen::FeintRearm",
+        "SlapGen::FeintRearmS",
+    ],
     "Source/PoSlapUnreal/SlapReferee.cpp": ["SlapGen::JudgeWeights"],
-    "Web/sim.js": ['from "./shared.gen.js"', "RULES.rounds", "RULES.strike_clock", "RULES.recovery", "RULES.box",
-                   "RULES.kick_steps", "RULES.judge_weights"],
+    "Web/sim.js": [
+        'from "./shared.gen.js"',
+        "RULES.rounds",
+        "RULES.strike_clock",
+        "RULES.recovery",
+        "RULES.box",
+        "RULES.kick_steps",
+        "RULES.judge_weights",
+    ],
     "Web/broadcast.js": ['from "./shared.gen.js"'],
     "Web/app.js": ['from "./shared.gen.js"'],
     "Web/build.py": ["shared.gen.js"],
@@ -70,10 +100,10 @@ USES = {
 # a shared constant typed again as a literal: <name> = <number> in an engine file (the generated files are exempt)
 RETYPED = {
     "Source/PoSlapUnreal": r"\b(NumObs|LpfHz|LpfFromObs|HillK|React|ControlEvery|MinStamina|MinNeck|StrikeClock|Recovery|Rounds|"
-                           r"BoxX|BoxY|KickSteps|GazeGain|GazeMaxStep|WatchMaxStep|FeintMinPeak|FeintPullBack|FeintAfter|"
-                           r"RearmShare|RearmAfter)\s*=\s*[0-9]",
+    r"BoxX|BoxY|KickSteps|GazeGain|GazeMaxStep|WatchMaxStep|FeintMinPeak|FeintPullBack|FeintAfter|"
+    r"RearmShare|RearmAfter)\s*=\s*[0-9]",
     "Web": r"\b(OBS|LPF_HZ|LPF_FROM_OBS|REACT|HILL_K|MIN_STAMINA|MIN_NECK|ROUNDS|STRIKE_CLOCK|RECOVERY|KICK_STEPS|GAZE_GAIN|"
-           r"GAZE_MAX_STEP|WATCH_MAX_STEP|FEINT_MIN_PEAK|FEINT_AFTER_S|FEINT_PULLBACK|FEINT_REARM|FEINT_REARM_S)\s*=\s*[0-9]",
+    r"GAZE_MAX_STEP|WATCH_MAX_STEP|FEINT_MIN_PEAK|FEINT_AFTER_S|FEINT_PULLBACK|FEINT_REARM|FEINT_REARM_S)\s*=\s*[0-9]",
 }
 
 
@@ -111,15 +141,21 @@ def check_observation_sizes():
     if (constants.CMD.start, constants.CMD.stop) != (constants.OBS_V4, constants.OBS):
         fail(f"the command vector {constants.CMD} is not appended at the end of the {constants.OBS_V4} inputs")
     if constants.interface_of(constants.OBS) != constants.INTERFACE:
-        fail(f"interface_of({constants.OBS}) is {constants.interface_of(constants.OBS)}, INTERFACE is {constants.INTERFACE}")
+        fail(
+            f"interface_of({constants.OBS}) is {constants.interface_of(constants.OBS)}, INTERFACE is {constants.INTERFACE}"
+        )
     edges = [a for a, _, _ in constants.LAYOUT] + [constants.LAYOUT[-1][1]]
-    if edges[0] != 0 or edges[-1] != constants.OBS or any(b != c for (_, b, _), (c, _, _) in zip(constants.LAYOUT, constants.LAYOUT[1:])):
+    if (
+        edges[0] != 0
+        or edges[-1] != constants.OBS
+        or any(b != c for (_, b, _), (c, _, _) in zip(constants.LAYOUT, constants.LAYOUT[1:]))
+    ):
         fail(f"constants.LAYOUT does not tile 0..{constants.OBS} without a gap or an overlap")
-    doc = read("DOCS/BRAIN_IO.md")
+    doc = read("docs/BRAIN_IO.md")
     for a, b, name in constants.LAYOUT:
         row = f"| {a} |" if b == a + 1 else f"| {a}–{b - 1} |"
         if row not in doc:
-            fail(f"DOCS/BRAIN_IO.md has no row '{row}' ({name})")
+            fail(f"docs/BRAIN_IO.md has no row '{row}' ({name})")
     if "FootContacts" not in io:
         fail("SlapBrainIO.cpp has no FootContacts (inputs 136-139)")
     if "footContacts" not in js:
@@ -131,9 +167,11 @@ def check_observation_sizes():
     if abs(constants.LPF_ALPHA - (1.0 - math.exp(-2.0 * math.pi * constants.LPF_HZ / constants.CONTROL_HZ))) > 1e-12:
         fail(f"LPF_ALPHA {constants.LPF_ALPHA} is not 1 - exp(-2 pi LPF_HZ / CONTROL_HZ)")
     if FAILURES == before:
-        print(f"  [PASS] OBS {constants.OBS} (interface {constants.INTERFACE}: foot contacts {constants.FOOT.start}-"
-              f"{constants.FOOT.stop - 1}, cmd {constants.CMD.start}-{constants.CMD.stop - 1}); "
-              f"low-pass {constants.LPF_HZ:g} Hz (alpha {constants.LPF_ALPHA:.6f}) from width {constants.LPF_FROM_OBS}")
+        print(
+            f"  [PASS] OBS {constants.OBS} (interface {constants.INTERFACE}: foot contacts {constants.FOOT.start}-"
+            f"{constants.FOOT.stop - 1}, cmd {constants.CMD.start}-{constants.CMD.stop - 1}); "
+            f"low-pass {constants.LPF_HZ:g} Hz (alpha {constants.LPF_ALPHA:.6f}) from width {constants.LPF_FROM_OBS}"
+        )
 
 
 def check_rates():
@@ -153,7 +191,9 @@ def check_rates():
     elif constants.PHYSICS_HZ // constants.DECIM != constants.CONTROL_HZ:
         fail(f"{constants.PHYSICS_HZ} Hz / {constants.DECIM} is not {constants.CONTROL_HZ} Hz")
     else:
-        print(f"  [PASS] the model steps at {hz:.0f} Hz, the brain every {constants.DECIM} steps ({constants.CONTROL_HZ} Hz)")
+        print(
+            f"  [PASS] the model steps at {hz:.0f} Hz, the brain every {constants.DECIM} steps ({constants.CONTROL_HZ} Hz)"
+        )
 
 
 def check_rules():
@@ -161,9 +201,26 @@ def check_rules():
     print("\n=== The match rules (rules.json) ===")
     before = FAILURES
     r = constants.RULES
-    need = ("rounds", "strike_clock", "recovery", "box", "kick_steps", "judge_weights", "rules2_from_physics", "stun_speed",
-            "stun_window_s", "stun_strength", "stun_s", "stun_max", "count_s", "up_hold_s", "up_height", "flinch_m",
-            "judge_noise", "daze_react")
+    need = (
+        "rounds",
+        "strike_clock",
+        "recovery",
+        "box",
+        "kick_steps",
+        "judge_weights",
+        "rules2_from_physics",
+        "stun_speed",
+        "stun_window_s",
+        "stun_strength",
+        "stun_s",
+        "stun_max",
+        "count_s",
+        "up_hold_s",
+        "up_height",
+        "flinch_m",
+        "judge_noise",
+        "daze_react",
+    )
     for k in need:
         if k not in r:
             fail(f"rules.json has no '{k}'")

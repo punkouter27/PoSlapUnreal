@@ -7,87 +7,144 @@ guard episode is 1500 control steps, so 2400 = standing the whole time at 1.6 re
 `check[role]` is that role's pass/fail exam, run on the deterministic policy before an ONNX is exported. A level passes
 only when every role in it passes.
 """
+
+from reward_config import role_targets  # the thresholds live in configs/reward_config.json
+
 GUARD = dict(episodes=100, min_no_fall=0.95, min_in_box=0.95)
-STRIKE = dict(episodes=100, min_hit=0.90, min_no_fall=0.90)        # hit = any touch, >= 8 m/s, up 1.5 s after
+STRIKE = dict(episodes=100, min_hit=0.90, min_no_fall=0.90)  # hit = any touch, >= 8 m/s, up 1.5 s after
 # and the striker's feet stay in the box (2026-10-23: Kim scored 94 % clean, 99 % up, then stepped out in every arena turn)
 STRIKE["min_in_box"] = 0.90
-ABSORB = dict(episodes=100, min_absorbed=0.90)                       # up 5 s after a median slap, COM back within 5 cm
+ABSORB = dict(episodes=100, min_absorbed=0.90)  # up 5 s after a median slap, COM back within 5 cm
 
 LEVELS = {
     "L0": dict(  # Stand: upright 30 s, feet planted, survives random pushes
-        roles={0: 1.0}, seconds=30.0, pushes=True,
-        reward_target={0: 2400.0},
+        roles={0: 1.0},
+        seconds=30.0,
+        pushes=True,
+        reward_target=role_targets("L0"),
         check={0: dict(episodes=100, min_no_fall=0.95)},
     ),
     "L1": dict(  # Guard hold: stand in the foot box facing the opponent, 30 s
-        roles={0: 1.0}, seconds=30.0, pushes=True, foot_box=(0.20, 0.25),
+        roles={0: 1.0},
+        seconds=30.0,
+        pushes=True,
+        foot_box=(0.20, 0.25),
         max_push=0.6,  # 90-180 N. User 2026-10-21: full 300 N head shoves with planted feet are beyond a 0.5-strength
-                       # grandpa (stalled at 60 %); real slap impacts are tested in L3.
-        reward_target={0: 2500.0},
+        # grandpa (stalled at 60 %); real slap impacts are tested in L3.
+        reward_target=role_targets("L1"),
         check={0: GUARD},
     ),
     "L2": dict(  # Strike a fixed head target: palm first, >= 8 m/s, striker stays up, inside the 30 s clock
-        roles={1: 0.7, 0: 0.3}, seconds=30.0, pushes=True, foot_box=(0.20, 0.25), max_push=0.6,
-        hit_speed=8.0, hit_speed_start=2.0,   # curriculum: clean-hit speed bar 2 -> 8 m/s (stuck at 1 m/s taps without it)
+        roles={1: 0.7, 0: 0.3},
+        seconds=30.0,
+        pushes=True,
+        foot_box=(0.20, 0.25),
+        max_push=0.6,
+        hit_speed=8.0,
+        hit_speed_start=2.0,  # curriculum: clean-hit speed bar 2 -> 8 m/s (stuck at 1 m/s taps without it)
         reach_start=1.0,  # the real head from the start: the striker imitates the reference slap (slap_demo.py), which reaches it
-        imit_start=1.0,   # imitation weight per brain step, faded by the trainer as clean hits come (floor 0.2)
-        reward_target={1: 100.0, 0: 2500.0},  # a clean 8 m/s hit pays 114 (v3); the exam is what counts
+        imit_start=1.0,  # imitation weight per brain step, faded by the trainer as clean hits come (floor 0.2)
+        reward_target=role_targets("L2"),  # a clean 8 m/s hit pays 114 (v3); the exam is what counts
         check={1: STRIKE, 0: GUARD},
     ),
     "L3": dict(  # Absorb one scripted slap of rising impulse; COM back within 5 cm in 5 s
-        roles={-1: 0.6, 1: 0.4}, seconds=30.0, pushes=False, foot_box=(0.20, 0.25), max_push=0.6,
+        roles={-1: 0.6, 1: 0.4},
+        seconds=30.0,
+        pushes=False,
+        foot_box=(0.20, 0.25),
+        max_push=0.6,
         hit_speed=8.0,
-        slap_impulse=15.0,        # N s, the median slap (exam). Estimate: Grandpa's palm at 8 m/s, ~2.8 kg of hand+forearm+
-                                  # upper arm into ~4.5 kg of head on the neck, e = 0.2: 1.73 kg x 8 m/s x 1.2 = 16.6 N s
-        slap_impulse_start=3.0,   # curriculum 3 -> 15 N s (training slaps are 0.6-1.4 x the current value)
-        reward_target={-1: 800.0, 1: 100.0},   # absorb: ~360 steps at ~2 + the COM term after the slap
+        slap_impulse=15.0,  # N s, the median slap (exam). Estimate: Grandpa's palm at 8 m/s, ~2.8 kg of hand+forearm+
+        # upper arm into ~4.5 kg of head on the neck, e = 0.2: 1.73 kg x 8 m/s x 1.2 = 16.6 N s
+        slap_impulse_start=3.0,  # curriculum 3 -> 15 N s (training slaps are 0.6-1.4 x the current value)
+        reward_target=role_targets("L3"),  # absorb: ~360 steps at ~2 + the COM term after the slap
         check={-1: ABSORB, 1: STRIKE},
     ),
     "L4": dict(  # Duel, self-play in the arena (envs/arena.py): trained striker vs trained defender, one brain
-        model="arena", roles={1: 0.5, -1: 0.5}, seconds=30.0, pushes=False, foot_box=(0.20, 0.25), max_push=0.6,
+        model="arena",
+        roles={1: 0.5, -1: 0.5},
+        seconds=30.0,
+        pushes=False,
+        foot_box=(0.20, 0.25),
+        max_push=0.6,
         hit_speed=8.0,
-        reward_target={1: 100.0, -1: 300.0},
-        check=dict(episodes=100, ko_rate=(0.10, 0.40), max_self_fall=0.05, min_strikes=0.90),   # KO rate per landed strike
+        reward_target=role_targets("L4"),
+        check=dict(
+            episodes=100, ko_rate=(0.10, 0.40), max_self_fall=0.05, min_strikes=0.90
+        ),  # KO rate per landed strike
     ),
     "L5": dict(  # Full match: 3 rounds, clocks, judges; Unreal replay must match
-        model="arena", seconds=None, pushes=False, role=None,
+        model="arena",
+        seconds=None,
+        pushes=False,
+        role=None,
         check=dict(matches=100, max_blowups=0),
     ),
     # Walking (training/envs/locomotion.py): the opt-in -SlapWalkBrain walk-in. S1 (= L0) and S3 (jog) removed 2026-10-26
     "S2": dict(  # Stage 2: Take steady, alternating steps (swing-foot clearance) and walk at 1.0-1.4 m/s
-        model="locomotion", roles={0: 1.0}, seconds=20.0, pushes=False, target_speed=(1.0, 1.4),
-        box_dist=(1.8, 3.0),   # the walk-in: Unreal's walkers start 2.4 m from the box and stop there
-        reward_target={0: 1800.0},
-        check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_stop=0.9)},   # pace: walked / commanded distance
+        model="locomotion",
+        roles={0: 1.0},
+        seconds=20.0,
+        pushes=False,
+        target_speed=(1.0, 1.4),
+        box_dist=(1.8, 3.0),  # the walk-in: Unreal's walkers start 2.4 m from the box and stop there
+        reward_target=role_targets("S2"),
+        check={
+            0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_stop=0.9)
+        },  # pace: walked / commanded distance
     ),
     # S3/S4 (2026-10-29): the podium obstacle course and the aisle lap. The observation and the action rule are
     # unchanged (the brain I/O is the same 136 floats); only the course, the reward and the exam are new.
     "S3": dict(  # Stage 3: step UP onto the low step, cross it, step DOWN off it, go AROUND the podium, reach the far waypoint
-        model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),
-        target_speed=(0.9, 1.3), box_dist=(1.3, 1.9),   # the distance to the step (randomised per episode)
-        course="podium", reaction=(0.15, 0.35),        # the human reaction latency (the command lands 0.15-0.35 s late)
-        step_scale_start=0.0,                           # the step from a 1 cm sill up to 10-20 cm as the clear rate comes (train.py)
-        slope_deg=3.0,                                  # the per-world gravity tilt (a slope of up to 3 deg)
-        reward_target={0: 2400.0},
+        model="locomotion",
+        roles={0: 1.0},
+        seconds=30.0,
+        pushes=True,
+        max_push=0.3,
+        push_start=(6.0, 9.0),
+        target_speed=(0.9, 1.3),
+        box_dist=(1.3, 1.9),  # the distance to the step (randomised per episode)
+        course="podium",
+        reaction=(0.15, 0.35),  # the human reaction latency (the command lands 0.15-0.35 s late)
+        step_scale_start=0.0,  # the step from a 1 cm sill up to 10-20 cm as the clear rate comes (train.py)
+        slope_deg=3.0,  # the per-world gravity tilt (a slope of up to 3 deg)
+        reward_target=role_targets("S3"),
         # clear: a sole on the step's top; down: both soles back on the floor beyond it; reach: past the podium to the
         # last waypoint, still on his feet (graduation only at the full step height)
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_down=0.70, min_reach=0.70)},
     ),
     "S4": dict(  # Stage 4: the aisle lap - 2-4 waypoints around the podium, a jog speed band, slopes
-        model="locomotion", roles={0: 1.0}, seconds=40.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),
-        target_speed=(1.6, 2.2), box_dist=(1.5, 2.2),
-        course="aisle", reaction=(0.15, 0.35), slope_deg=4.0,
-        reward_target={0: 3000.0},
+        model="locomotion",
+        roles={0: 1.0},
+        seconds=40.0,
+        pushes=True,
+        max_push=0.3,
+        push_start=(6.0, 9.0),
+        target_speed=(1.6, 2.2),
+        box_dist=(1.5, 2.2),
+        course="aisle",
+        reaction=(0.15, 0.35),
+        slope_deg=4.0,
+        reward_target=role_targets("S4"),
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_reach=0.70)},
     ),
     # S5 (item 45, 2026-11-04): the S3 podium course on a tilted floor, a per-world gravity tilt up to +-5 deg in pitch
     # and roll. slope_scale ramps 0 -> 1 (train.py) while the no-fall rate holds; graduation only at the full 5 deg.
     "S5": dict(
-        model="locomotion", roles={0: 1.0}, seconds=30.0, pushes=True, max_push=0.3, push_start=(6.0, 9.0),
-        target_speed=(0.9, 1.3), box_dist=(1.3, 1.9), course="podium", reaction=(0.15, 0.35),
-        step_scale_start=1.0,                           # from an S3 brain: the full step
-        slope_deg=5.0, slope_scale_start=0.0,           # the tilt from 0 to +-5 deg
-        reward_target={0: 2400.0},
+        model="locomotion",
+        roles={0: 1.0},
+        seconds=30.0,
+        pushes=True,
+        max_push=0.3,
+        push_start=(6.0, 9.0),
+        target_speed=(0.9, 1.3),
+        box_dist=(1.3, 1.9),
+        course="podium",
+        reaction=(0.15, 0.35),
+        step_scale_start=1.0,  # from an S3 brain: the full step
+        slope_deg=5.0,
+        slope_scale_start=0.0,  # the tilt from 0 to +-5 deg
+        reward_target=role_targets("S5"),
         check={0: dict(episodes=100, min_no_fall=0.95, min_pace=0.6, min_clear=0.70, min_down=0.70, min_reach=0.70)},
     ),
     # G1 (item 44, 2026-11-04): get up. Each episode starts from a REAL knockdown state (getup_states.py: the moment a
@@ -96,8 +153,11 @@ LEVELS = {
     # snapped pose). Up = pelvis >= 0.85 x stand height, upright >= 0.9, only the soles on floor/podium, held 1 s.
     # Same observation (role 0: the own foot box), joint order, action map and timing as every other policy.
     "G1": dict(
-        model="getup", roles={0: 1.0}, seconds=10.0, pushes=False,
-        reward_target={0: 250.0},
+        model="getup",
+        roles={0: 1.0},
+        seconds=10.0,
+        pushes=False,
+        reward_target=role_targets("G1"),
         check={0: dict(episodes=100, min_up=0.80)},
     ),
 }

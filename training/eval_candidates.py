@@ -7,19 +7,19 @@ brain), with the exam's own fixed seed, so the numbers line up.
 
     .venv/Scripts/python.exe eval_candidates.py spar3h2_queue
 """
+
 import json
 import sys
 from pathlib import Path
 
 import torch
-
 import train as T
 from brain_cpu import OBS
 from ppo import PPO, PPOConfig
 
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
-TRIALS = 13         # paired trials per candidate (one exam is +-0.12 on the same checkpoint)
+TRIALS = 13  # paired trials per candidate (one exam is +-0.12 on the same checkpoint)
 
 
 def main():
@@ -36,8 +36,7 @@ def main():
         if p.exists():
             cands.setdefault(c, []).append((run, p))
         finals[c] = p
-    opp_for = {"kim": ("grandpa", finals.get("grandpa")),
-               "grandpa": ("kim", finals.get("kim"))}
+    opp_for = {"kim": ("grandpa", finals.get("grandpa")), "grandpa": ("kim", finals.get("kim"))}
 
     results = {}
     for char, lst in cands.items():
@@ -46,8 +45,7 @@ def main():
             print("no opponent for %s" % char)
             continue
         print("=" * 78)
-        print("%s candidates, all vs the same opponent (%s, last stage), %d paired trials"
-              % (char, opp_char, TRIALS))
+        print("%s candidates, all vs the same opponent (%s, last stage), %d paired trials" % (char, opp_char, TRIALS))
         print("=" * 78)
         env = T.VsFrozen(char, opp_char, str(opp_ck), "L4", num_envs=100, seed=12345)
         T.ppo_stream = env.stream
@@ -70,21 +68,36 @@ def main():
             spread = (max(scores) - min(scores)) / 2
             meta_p = RUNS / run / "meta.json"
             meta = json.loads(meta_p.read_text()) if meta_p.exists() else {}
-            results[(char, run)] = {"mean": mean, "median": med, "spread": spread,
-                                    "scores": scores,
-                                    "strikes": sum(d["strikes"] for d in details) / len(details),
-                                    "ko_rate": sum(d["ko_rate"] for d in details) / len(details),
-                                    "self_fall": sum(d["self_fall"] for d in details) / len(details),
-                                    "train_strike_return": meta.get("strike_return"),
-                                    "train_absorb_return": meta.get("absorb_return"),
-                                    "train_hit": meta.get("strike_hit"),
-                                    "train_absorb_ok": meta.get("absorb_ok")}
-            print("  %-42s mean %.4f  median %.4f (+-%.4f)  strikes %.2f  ko %.3f  self_fall %.2f"
-                  "   [train: strike %.0f, absorb %.0f, hit %.2f, absorb_ok %.2f]"
-                  % (run, mean, med, spread, results[(char, run)]["strikes"],
-                     results[(char, run)]["ko_rate"], results[(char, run)]["self_fall"],
-                     meta.get("strike_return", 0), meta.get("absorb_return", 0),
-                     meta.get("strike_hit", 0), meta.get("absorb_ok", 0)))
+            results[(char, run)] = {
+                "mean": mean,
+                "median": med,
+                "spread": spread,
+                "scores": scores,
+                "strikes": sum(d["strikes"] for d in details) / len(details),
+                "ko_rate": sum(d["ko_rate"] for d in details) / len(details),
+                "self_fall": sum(d["self_fall"] for d in details) / len(details),
+                "train_strike_return": meta.get("strike_return"),
+                "train_absorb_return": meta.get("absorb_return"),
+                "train_hit": meta.get("strike_hit"),
+                "train_absorb_ok": meta.get("absorb_ok"),
+            }
+            print(
+                "  %-42s mean %.4f  median %.4f (+-%.4f)  strikes %.2f  ko %.3f  self_fall %.2f"
+                "   [train: strike %.0f, absorb %.0f, hit %.2f, absorb_ok %.2f]"
+                % (
+                    run,
+                    mean,
+                    med,
+                    spread,
+                    results[(char, run)]["strikes"],
+                    results[(char, run)]["ko_rate"],
+                    results[(char, run)]["self_fall"],
+                    meta.get("strike_return", 0),
+                    meta.get("absorb_return", 0),
+                    meta.get("strike_hit", 0),
+                    meta.get("absorb_ok", 0),
+                )
+            )
         del env
 
     print("\n" + "=" * 78)
