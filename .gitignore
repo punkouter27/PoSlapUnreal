@@ -44,3 +44,6 @@ Content/MuJoCoImports/
 # Web build output and dependencies (also in Web/.gitignore)
 Web/node_modules/
 Web/dist/
+
+# Local clone of the URLab plugin (own git repo, ~2.3 GB with build output); not part of this repo
+Plugins/UnrealRoboticsLab/
