@@ -32,7 +32,7 @@ void ASlapHUD::Announce(const FString& LineKey)
 	{
 		USoundBase* Line = LoadNamed<USoundBase>(TEXT("/Game/Audio/Announcer"), *Name);
 		AnnounceSounds.Add(Name, Line);
-		if (!Line) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no announcer line %s (Scripts/announcer.py, then voice_import.py)"), *Name);
+		if (!Line) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no announcer line %s (scripts/announcer.py, then voice_import.py)"), *Name);
 	}
 	if (AnnounceSounds[Name]) AnnounceQueue.Add(Name);
 }
@@ -62,7 +62,7 @@ void ASlapHUD::Caption(const FString& Big, const FString& Small, FColor C, doubl
 
 void ASlapHUD::PlayByPlay(const FString& Line)
 {
-	// into the commentary box, wrapped at ~44 characters (as Scripts/commentator.py's lines are)
+	// into the commentary box, wrapped at ~44 characters (as scripts/commentator.py's lines are)
 	Commentary.Reset();
 	FString Cur;
 	TArray<FString> Words;

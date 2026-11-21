@@ -121,7 +121,7 @@ namespace Slap
 		for (int32 i = 0; i < Size; ++i)
 		{
 			if (!Out[i].Key.IsEmpty()) continue;
-			Out[i].Value = FString::Printf(TEXT("Slot %d is open.\nA new athlete: a rigged FBX -> Scripts/rig_mixamo.py -> a card\ntraining/characters/<name>.json with \"slot\": %d -> build_body.py\n-> its own ladder (overnight.py --char <name> --queue)"), i + 1, i + 1);
+			Out[i].Value = FString::Printf(TEXT("Slot %d is open.\nA new athlete: a rigged FBX -> scripts/rig_mixamo.py -> a card\ntraining/characters/<name>.json with \"slot\": %d -> build_body.py\n-> its own ladder (overnight.py --char <name> --queue)"), i + 1, i + 1);
 		}
 	}
 }

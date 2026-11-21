@@ -20,8 +20,7 @@ training/runs/
 training/checkpoints/
 training/logs/
 
-# URLab clone (local commits saved in Plugins/urlab_poslap.patch)
-Plugins/UnrealRoboticsLab/
+# URLab is vendored in Plugins/UnrealRoboticsLab (tracked; its Binaries/Intermediate are ignored above)
 training/replays/
 scripts/__pycache__/
 Logs/

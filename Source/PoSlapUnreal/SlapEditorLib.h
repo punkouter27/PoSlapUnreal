@@ -8,7 +8,7 @@ class UAudioImpulseResponse;
 class USkeletalMesh;
 
 /**
- * Asset-pipeline helpers the editor's Python cannot do itself (Scripts/broadcast_fx.py calls them as
+ * Asset-pipeline helpers the editor's Python cannot do itself (scripts/broadcast_fx.py calls them as
  * unreal.SlapEditorLib.*): fill an impulse response from samples (its sample array is not an editable property), and
  * keep a CPU copy of an athlete mesh's LOD0 (the drawn-hand clamp reads its vertices: SlapAthleteVisual.cpp).
  */

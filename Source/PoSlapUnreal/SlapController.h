@@ -90,7 +90,7 @@ UENUM(BlueprintType)
 enum class ESlapControlMode : uint8
 {
 	Replay,	// play a recorded control stream, dump qpos per step (matching check, Blueprint 8)
-	Policy	// ONNX brain via NNE every 4th physics step (DOCS/BRAIN_IO.md)
+	Policy	// ONNX brain via NNE every 4th physics step (docs/BRAIN_IO.md)
 };
 
 /**
@@ -355,6 +355,11 @@ private:
 
 	std::atomic<int64> StepCount = 0;	// physics thread writes; the HUD's step counter reads it (GetHud)
 	std::atomic<int32> NanInfCount = 0;
+public:
+	/** Inference time summed over RunNet calls since the HUD last read it (physics thread -> game thread, diagnostics overlay). */
+	static std::atomic<uint64> InferenceCycles;
+	static std::atomic<int32> InferenceCalls;
+private:
 	double Timestep = 0.002;	// the model's (fingerprint) timestep: the HUD's sim clock
 	TArray<FAthlete> Athletes;
 	int32 Physics = 1;			// the fingerprint's physics version: 2 takes the strike impulse from the part that touched (match.py)

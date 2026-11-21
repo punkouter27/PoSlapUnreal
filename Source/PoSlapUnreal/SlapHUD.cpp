@@ -38,6 +38,8 @@
 #include "SlapAthleteVisual.h"
 #include "SlapHUDInternal.h"
 #include "SlapNames.h"
+#include "SlapRewardConfig.h"
+#include "SlapShowcase.h"
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
@@ -81,6 +83,12 @@ void ASlapGameMode::StartPlay()
 void ASlapHUD::BeginPlay()
 {
 	Super::BeginPlay();
+	if (USlapShowcaseSubsystem* Showcase = USlapShowcaseSubsystem::Get(this))
+	{
+		Showcase->OnDemoModeChanged.AddUObject(this, &ASlapHUD::HandleDemoMode);
+		Showcase->OnDemoCamera.AddUObject(this, &ASlapHUD::HandleDemoCamera);
+		Showcase->SetRewardNote(TEXT("proxy: striker brain's critic value"));
+	}
 	const TCHAR* Cmd = FCommandLine::Get();
 	FParse::Value(Cmd, TEXT("SlapShot="), ShotAt);
 	bShotOnResult = FParse::Param(Cmd, TEXT("SlapShotResult"));
@@ -139,7 +147,7 @@ void ASlapHUD::BeginPlay()
 
 void ASlapHUD::LoadAssets()
 {
-	// the broadcast's assets (Scripts/broadcast_fx.py, broadcast_audio.py); a missing one is skipped
+	// the broadcast's assets (scripts/broadcast_fx.py, broadcast_audio.py); a missing one is skipped
 	Spray = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_SlapSpray.NS_SlapSpray"));
 	DustPuff = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_DustPuff.NS_DustPuff"));
 	for (const TCHAR* N : { TEXT("S_Slap"), TEXT("S_Slap1"), TEXT("S_Slap2"), TEXT("S_Slap3") })
@@ -156,7 +164,7 @@ void ASlapHUD::LoadAssets()
 	Bell = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Bell"));
 	StepDeck = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_StepDeck"));
 	PAChime = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_PAChime"));
-	// the impact synthesis (Scripts/broadcast_metasound.py: a MetaSound built headlessly) layered on the recorded takes, desktop only
+	// the impact synthesis (scripts/broadcast_metasound.py: a MetaSound built headlessly) layered on the recorded takes, desktop only
 	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ImpactSynth = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("MS_ImpactSynth"));
 	// the arena's impulse response (broadcast_audio.py ArenaIR.wav -> broadcast_fx.py RV_ArenaIR, a convolution reverb
 	// submix): every spatialised one-shot sends to it on desktop; a phone keeps the two algorithmic reverbs (CPU)
@@ -178,7 +186,7 @@ void ASlapHUD::LoadAssets()
 	if (HallVerb) UGameplayStatics::ActivateReverbEffect(this, HallVerb, TEXT("Arena"), 0.f, 1.f, 0.f);
 	if (CloseVerb) UGameplayStatics::ActivateReverbEffect(this, CloseVerb, TEXT("Ringside"), 0.f, 0.f, 0.f);
 	if (CrowdLoop) CrowdAudio = UGameplayStatics::SpawnSound2D(this, CrowdLoop, 0.35f);
-	for (TActorIterator<AStaticMeshActor> It(GetWorld()); It; ++It)	// the crowd (Scripts/arena_env.py "Env_Crowd"): Rise and Cheer
+	for (TActorIterator<AStaticMeshActor> It(GetWorld()); It; ++It)	// the crowd (scripts/arena_env.py "Env_Crowd"): Rise and Cheer
 	{
 		UStaticMeshComponent* M = It->GetStaticMeshComponent();
 		if (!M || !It->GetActorNameOrLabel().Contains(TEXT("Crowd"))) continue;
@@ -208,7 +216,7 @@ void ASlapHUD::LoadAssets()
 		Send.MaxSendLevel = 1.f;
 	}
 	for (int32 a = 0; a < 2 && BreathLoop; ++a) Breath[a] = UGameplayStatics::SpawnSoundAtLocation(this, BreathLoop, FVector::ZeroVector, FRotator::ZeroRotator, 0.01f, 1.f, 0.f, Ringside, nullptr, false);
-	for (TActorIterator<ALight> It(GetWorld()); It; ++It)	// Scripts/arena_env.py's rig, by label
+	for (TActorIterator<ALight> It(GetWorld()); It; ++It)	// scripts/arena_env.py's rig, by label
 	{
 		// ponytail: actor labels are editor-only data (every -game run here uses the editor binary); a packaged build needs actor tags
 		const FString L = It->GetActorNameOrLabel();
@@ -301,14 +309,13 @@ void ASlapHUD::Keys()
 {
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC) return;
-	const bool bTab = PC->IsInputKeyDown(EKeys::Tab);	// TAB / F3: the detailed stats panel (the default HUD stays clean)
+	// F3: the detailed stats panel (the default HUD stays clean). Tab is the diagnostics overlay's key (SlapShowcase).
 	const bool bF3 = PC->IsInputKeyDown(EKeys::F3);
-	if ((bTab && !bTabDown) || (bF3 && !bF3Down))
+	if (bF3 && !bF3Down)
 	{
 		bShowTelemetry = !bShowTelemetry;
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: telemetry %s"), bShowTelemetry ? TEXT("on") : TEXT("off"));
 	}
-	bTabDown = bTab;
 	bF3Down = bF3;
 	const bool bCam = PC->IsInputKeyDown(EKeys::C);	// C / F2: camera mode (AUTO -> WIDE -> SIDE -> CLOSE -> FOLLOW -> ORBIT -> FREE)
 	const bool bF2 = PC->IsInputKeyDown(EKeys::F2);
@@ -444,7 +451,8 @@ void ASlapHUD::DrawHUD()
 	Titles(H, Now);
 	Jiggle(H);
 	ReelWatch(H, Now);
-	if (H.Match > 0 && !bMenu)	// the menu is its own screen: nothing of the match is drawn under it
+	ReportShowcase(H);
+	if (H.Match > 0 && !bMenu && !bDemo)	// the menu is its own screen: nothing of the match is drawn under it; demo mode draws none
 	{
 		Boxes.Reset();
 		TextOverflows = TextShrunk = 0;
@@ -594,4 +602,66 @@ void ASlapHUD::CacheAthletes()
 		bDentMorphs[a] = Mesh && Mesh->FindMorphTarget(DentMorph[0]) && Mesh->FindMorphTarget(DentMorph[1]);
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: %s athlete %s, cheek dent morphs %s"), a ? TEXT("blue") : TEXT("red"), Mesh ? *Mesh->GetName() : TEXT("-"), bDentMorphs[a] ? TEXT("yes") : TEXT("none (no-op)"));
 	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Diagnostics overlay + idle demo mode (SlapShowcase.h, Po Game Standard C12 / C13)
+
+void ASlapHUD::ReportShowcase(const FSlapHud& H)
+{
+	USlapShowcaseSubsystem* Showcase = USlapShowcaseSubsystem::Get(this);
+	if (!Showcase) return;
+	const int32 Calls = USlapController::InferenceCalls.exchange(0, std::memory_order_relaxed);
+	const uint64 Cycles = USlapController::InferenceCycles.exchange(0, std::memory_order_relaxed);
+	if (Calls > 0) Showcase->ReportInferenceMs(static_cast<float>(FPlatformTime::ToMilliseconds64(Cycles) / Calls));
+	if (H.Match == 0) return;
+	const int32 S = FMath::Clamp(Team(H.Striker), 0, 1);
+	Showcase->ReportEpisodeReward(static_cast<float>(H.Value[S]));
+	// curriculum stage: the striker's brain, named by the level its training passed (training/configs/reward_config.json)
+	const FString& Brain = H.Brain[S];
+	FString Stage = Brain.IsEmpty() ? FString(TEXT("n/a")) : Brain;
+	if (const USlapRewardConfig* Rewards = USlapShowcaseSettings::GetRewardConfig())
+	{
+		for (int32 i = Rewards->CurriculumStages.Num() - 1; i >= 0; --i)
+		{
+			if (!Brain.IsEmpty() && Brain.Contains(Rewards->CurriculumStages[i].Stage, ESearchCase::CaseSensitive))
+			{
+				Stage = FString::Printf(TEXT("%s (%s)"), *Rewards->CurriculumStages[i].Stage, *Brain);
+				break;
+			}
+		}
+	}
+	Showcase->SetCurriculumStage(Stage);
+}
+
+void ASlapHUD::HandleDemoMode(bool bActive)
+{
+	bDemo = bActive;
+	if (bActive)
+	{
+		PreDemoAppMode = AppModeIndex;
+		PreDemoCam = CamMode;
+		AppModeIndex = 0;	// Watch: both corners on their trained brains
+		bMenu = false;		// the menu sheet closes: the match is the show
+		if (bUserPaused)
+		{
+			bUserPaused = false;
+			if (APlayerController* PC = GetOwningPlayerController()) PC->SetPause(false);
+		}
+		if (Last.Match == 0) Start();
+		if (Ui.IsValid()) { PreDemoUiVisibility = Ui->GetVisibility(); Ui->SetVisibility(EVisibility::Collapsed); }
+	}
+	else
+	{
+		AppModeIndex = PreDemoAppMode;
+		SetCam(PreDemoCam);
+		if (Ui.IsValid()) Ui->SetVisibility(PreDemoUiVisibility);
+	}
+}
+
+void ASlapHUD::HandleDemoCamera(FName CameraName, int32 Index)
+{
+	const ECam Cam = CameraName == TEXT("Wide") ? ECam::Wide : CameraName == TEXT("Side") ? ECam::Side : CameraName == TEXT("Close") ? ECam::Close
+		: CameraName == TEXT("Follow") ? ECam::Follow : CameraName == TEXT("Orbit") ? ECam::Orbit : ECam::Auto;
+	SetCam(Cam);
 }

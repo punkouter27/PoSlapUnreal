@@ -119,7 +119,7 @@ void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
 	{
 		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Audio/Voice/") + Card), *Name);
 		EmoteSounds.Add(Name, Snd);
-		if (!Snd) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voice %s (Scripts/voice_pack.py, then voice_import.py)"), *Name);
+		if (!Snd) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voice %s (scripts/voice_pack.py, then voice_import.py)"), *Name);
 	}
 	if (!Snd) return;
 	EmoteAt[a] = Now;

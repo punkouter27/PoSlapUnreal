@@ -147,7 +147,7 @@ void ASlapHUD::FindBrainsAndLevels()
 	}
 	Find(TEXT("/Game/Levels"), UWorld::StaticClass(), false, Pairings);
 	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("L_Arena")); });
-	// The phone arena (Scripts/arena_mobile_level.py: Arena_Mobile.glb, one palette atlas, a lighter crowd) is the same
+	// The phone arena (scripts/arena_mobile_level.py: Arena_Mobile.glb, one palette atlas, a lighter crowd) is the same
 	// level under "<level>_Mobile": a phone lists only those, a desktop only the full ones. A phone build without them
 	// keeps the full arena.
 	// 2026-11-04 phone test: the Arena_Mobile twins drew wrong on the Pixel (dark props at the camera, card crowd), so a

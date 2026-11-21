@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetData.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
+#include "Layout/Visibility.h"
 #include "Math/IntRect.h"
 #include "SlapController.h"
 #include "SlapSwingRead.h"
@@ -195,7 +196,7 @@ private:
 	// ---- sidecars (SlapHUDLive.cpp)
 	void Live(const FSlapHud& H);			// second screen: poses and events over a WebSocket (Web/live.py or Azure Web PubSub)
 	void LiveSend(const FString& Msg);
-	void PollSidecars(double Now);			// Scripts/commentator.py's line, Scripts/chat.py's hype
+	void PollSidecars(double Now);			// scripts/commentator.py's line, scripts/chat.py's hype
 	void LoadLeague();						// training/models/league.json (training/scouting.py): one scouting line per brain
 
 	// ---- the Slate layer (SlapHUDMenu.cpp)
@@ -266,7 +267,7 @@ private:
 	FTimerHandle TourneyQuitTimer;
 
 	// ---- commentary (SlapHUDCommentary.cpp; user 2026-11-09: make it clear what is happening, who wins, when it is over):
-	// the ring announcer (Scripts/announcer.py -> /Game/Audio/Announcer/S_A_<key>, one line at a time), big centre captions
+	// the ring announcer (scripts/announcer.py -> /Game/Audio/Announcer/S_A_<key>, one line at a time), big centre captions
 	// (ROUND 1, KNOCKDOWN, KNOCKOUT, the winner), the turn banner, play-by-play lines, danger calls, the judges' running
 	// score after each round, the plain-language result and the result card's summary. Display only.
 	void Announce(const FString& LineKey);			// queue a line (a missing one is logged once and skipped)
@@ -484,6 +485,15 @@ private:
 	bool bTabDown = false, bCamDown = false;
 	bool bF1Down = false, bF2Down = false, bF3Down = false, bF4Down = false, bRDown = false;
 	int32 AppModeIndex = 0;	// 0 = Watch, 1 = Play, 2 = Testbed
+
+	// idle demo mode + diagnostics overlay (SlapShowcase, Po Game Standard C12 / C13)
+	bool bDemo = false;
+	int32 PreDemoAppMode = 0;
+	ECam PreDemoCam = ECam::Auto;
+	EVisibility PreDemoUiVisibility = EVisibility::Visible;
+	void HandleDemoMode(bool bActive);
+	void HandleDemoCamera(FName CameraName, int32 Index);
+	void ReportShowcase(const FSlapHud& H);
 	bool bUserPaused = false;
 	FVector FreeCamOffset = FVector::ZeroVector;
 
@@ -534,7 +544,7 @@ private:
 	float BaseVignette = 0.f;
 	bool bHaveBase = false;
 
-	// commentary (Scripts/commentator.py writes it)
+	// commentary (scripts/commentator.py writes it)
 	TArray<FString> Commentary;	// the latest line, wrapped at ~44 characters
 	double CommentaryAt = -100.0, CommentaryPoll = 0.0, TurnAt = 0.0;
 	int32 SeenTurnRound = -1;
@@ -551,7 +561,7 @@ private:
 	bool bGasped = false;
 	TWeakObjectPtr<UAudioComponent> CrowdAudio;
 
-	// sidecars: chat hype (Scripts/chat.py), the league (training/scouting.py)
+	// sidecars: chat hype (scripts/chat.py), the league (training/scouting.py)
 	float Hype = 0.f;
 	FString ChatLine;
 	double ChatAt = -100.0;
@@ -572,7 +582,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundBase> Step;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> BreathLoop;
 	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> ScuffMat;
-	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> DecalMat;	// M_DecalTex (Scripts/broadcast_fx.py add_decals)
+	UPROPERTY(Transient) TObjectPtr<UMaterialInterface> DecalMat;	// M_DecalTex (scripts/broadcast_fx.py add_decals)
 	UPROPERTY(Transient) TArray<TObjectPtr<UTexture>> DecalTex;		// sole skid 1, 2, palm smudge (the assets stream)
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdReact;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> CrowdNear;		// the "ooooh" of a near miss
@@ -581,17 +591,17 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundAttenuation> Ringside;
 	UPROPERTY(Transient) TObjectPtr<UReverbEffect> HallVerb;		// the arena (wide shots)
 	UPROPERTY(Transient) TObjectPtr<UReverbEffect> CloseVerb;	// ringside (tight shots)
-	// sound pass 2 (Scripts/broadcast_audio.py, as Web/audio.js): the hard stage deck outside the mat, the PA before the bout,
+	// sound pass 2 (scripts/broadcast_audio.py, as Web/audio.js): the hard stage deck outside the mat, the PA before the bout,
 	// each athlete's own grunt and breath (S_Grunt_<card>, S_Breath_<card>; Grandpa's breath is S_Breath), the arena's
 	// impulse response as a convolution reverb (/Game/Audio/RV_ArenaIR, desktop: a phone keeps the two reverbs)
 	UPROPERTY(Transient) TObjectPtr<USoundBase> StepDeck;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> PAChime;
-	UPROPERTY(Transient) TObjectPtr<USoundBase> ImpactSynth;	// MS_ImpactSynth (Scripts/broadcast_metasound.py): Energy, Pitch, Bright, SkinDecay, BodyDecay
+	UPROPERTY(Transient) TObjectPtr<USoundBase> ImpactSynth;	// MS_ImpactSynth (scripts/broadcast_metasound.py): Energy, Pitch, Bright, SkinDecay, BodyDecay
 	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> Voices;	// "Grunt_<card>" / "Breath_<card>" -> sound (null: none)
 	UPROPERTY(Transient) TObjectPtr<USoundSubmixBase> ArenaIR;
 	FString BreathCard[2];	// the card each breathing loop is voiced for
 	USoundBase* Voice(const FString& Kind, const FString& Card);
-	// each character's voice pack (Scripts/voice_pack.py -> /Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
+	// each character's voice pack (scripts/voice_pack.py -> /Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
 	// four emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
 	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless).
 	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult };

@@ -380,7 +380,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 			for (int32 i = 0; i < 3; ++i) K[i] = Vel[i] / m->opt.timestep * (S.StrikeMass / (KickSteps * m->opt.timestep));
 			mju_cross(K + 3, R, K);	// torque = R x force (same expression order as before: bit-identical)
 		}
-		if (!bRules2 && Physics >= 3 && KickReaction())	// the reaction on the striker's arm: momentum conserved (DOCS/20261104/physics3.md)
+		if (!bRules2 && Physics >= 3 && KickReaction())	// the reaction on the striker's arm: momentum conserved (docs/20261104/physics3.md)
 		{
 			int32 B = m->geom_bodyid[Other];
 			while (B > 0)
@@ -395,7 +395,7 @@ void USlapController::PostStep(const mjModel* m, const mjData* d)
 			for (const TPair<int32, double>& X : Turn.React) Sum += X.Value;	// numpy w.sum(): left to right for <= 3 terms
 			for (TPair<int32, double>& X : Turn.React) X.Value /= Sum;
 		}
-		// hand_speed (hand_r's speed this step), feint, feints: the additive fields (DOCS/20261103/events.md, match.ADDITIVE)
+		// hand_speed (hand_r's speed this step), feint, feints: the additive fields (docs/20261103/events.md, match.ADDITIVE)
 		Emit(FString::Printf(TEXT("{\"type\": \"strike\", \"t\": %s, \"striker\": %s, \"part\": %s, \"palm\": %s, \"speed\": %s, \"hand_speed\": %s, \"feint\": %s, \"feints\": %d}"),
 			*Num(T, 3), *Str(S.Name), *Str(Turn.Part), *Bool(Turn.bPalm), *Num(Turn.Speed, 2), *Num(RoundTo(Speed, 2), 2), *Bool(Turn.Feints > 0), Turn.Feints));
 		UE_LOG(LogSlap, Log, TEXT("t=%.3f %s strikes with the %s at %.2f m/s%s"), T, *S.Name, *Turn.Part, Turn.Speed, Turn.bPalm ? TEXT("") : TEXT(" (not the palm)"));

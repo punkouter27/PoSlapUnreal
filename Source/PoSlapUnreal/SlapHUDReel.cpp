@@ -5,7 +5,7 @@
 // palm speed). The newest 20 are kept.
 // Playback (-SlapReel=<file> [-SlapReelOut=<dir>] [-SlapReelFrom=<s before the touch>] [-SlapReelTo=<s after>]): the athletes
 // are drawn from the file, one recorded step per rendered frame at a fixed 5 ms frame time, a camera move is flown round
-// the contact, and with -SlapReelOut every frame is written as a PNG; then it quits. Scripts/highlight_reel.py runs it
+// the contact, and with -SlapReelOut every frame is written as a PNG; then it quits. scripts/highlight_reel.py runs it
 // off screen at 4K and encodes the frames at 60 fps: 3.3x slow motion in which every frame is a real physics step.
 
 #include "SlapHUD.h"

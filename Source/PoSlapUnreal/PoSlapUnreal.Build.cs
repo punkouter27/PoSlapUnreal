@@ -13,20 +13,21 @@ public class PoSlapUnreal : ModuleRules
 		// Hi, ...), which collide once UBT merges committed files into a unity blob (a clean checkout failed to build, 2026-11-12)
 		bUseUnity = false;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "URLab" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "URLab", "DeveloperSettings" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "NNE", "NNERuntimeBasicCpu", "Json", "Niagara", "Slate", "SlateCore", "InputCore", "AssetRegistry", "WebSockets", "Synthesis", "RHI",
 			"LevelSequence", "MovieScene", "CinematicCamera", "Text3D" });
 
-		// Build stamp YYMMDD (AGENTS.md): last git commit date, else today.
-		string Stamp = DateTime.Now.ToString("yyMMdd");
+		// One version stamp (Po Game Standard): UTC yyMMdd of the HEAD commit (the web build uses the same rule), else today (UTC).
+		string Stamp = DateTime.UtcNow.ToString("yyMMdd");
 		try
 		{
-			var Git = Process.Start(new ProcessStartInfo("git", "log -1 --format=%cd --date=format:%y%m%d")
+			var Git = Process.Start(new ProcessStartInfo("git", "log -1 --format=%ct")
 				{ WorkingDirectory = ModuleDirectory, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true });
 			string Out = Git.StandardOutput.ReadToEnd().Trim();
 			Git.WaitForExit();
-			if (Out.Length == 6) Stamp = Out;
+			long Secs;
+			if (Git.ExitCode == 0 && long.TryParse(Out, out Secs)) Stamp = DateTimeOffset.FromUnixTimeSeconds(Secs).UtcDateTime.ToString("yyMMdd");
 		}
 		catch (Exception) {}
 		PublicDefinitions.Add("POSLAP_BUILD_VERSION=\"" + Stamp + "\"");

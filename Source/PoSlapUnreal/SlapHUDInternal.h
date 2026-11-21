@@ -18,7 +18,7 @@ namespace SlapUi
 	bool DisplayPassOn();
 
 	inline const FName BoneHead("head"), BonePelvis("pelvis"), BoneFootL("foot_l"), BoneFootR("foot_r"), BoneHandL("hand_l"), BoneHandR("hand_r");
-	// the athletes' material parameters (Scripts/broadcast_fx.py add_wear / add_crowd)
+	// the athletes' material parameters (scripts/broadcast_fx.py add_wear / add_crowd)
 	inline const FName PRippleTime("RippleTime"), PRipplePoint("RipplePoint"), PRippleAmp("RippleAmp"), PRippleDir("RippleDir"),
 		PFlushPoint("FlushPoint"), PFlush("Flush"), PTired("Tired"), PRise("Rise"), PCheer("Cheer"), PPrint("Print"), PPrintU("PrintU"), PPrintV("PrintV"),
 		PCrowdCut("CrowdCut"), PCheekFlush("CheekFlush"), PDecal("Decal"), POpacity("Opacity"), PRoughness("Roughness");
@@ -33,7 +33,7 @@ namespace SlapUi
 	inline constexpr int32 MinSlateFont = 12;	// the smallest Slate text (readable on a 6" phone)
 	inline constexpr float MinTextScale = 0.8f;	// a canvas line shrinks to fit its box down to this share of its scale
 	inline constexpr double SnapSeconds = 2.0;	// the head-snap sparkline's window after each strike
-	/** The phone arena's levels: "<level>_Mobile" (Scripts/arena_mobile_level.py). */
+	/** The phone arena's levels: "<level>_Mobile" (scripts/arena_mobile_level.py). */
 	inline bool IsMobileLevel(const FString& Name) { return Name.EndsWith(TEXT("_Mobile")); }
 	inline FString DesktopLevel(const FString& Name) { return IsMobileLevel(Name) ? Name.LeftChop(7) : Name; }
 	inline constexpr float MatRadius = 270.f;	// cm: the padded safety mat around the centre; the hard stage deck outside (Web/audio.js MAT_RADIUS)

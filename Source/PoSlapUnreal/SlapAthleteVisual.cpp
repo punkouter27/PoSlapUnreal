@@ -203,7 +203,7 @@ namespace
 void ASlapAthleteVisual::BuildClip(const TArray<FTransform>& CS, const TArray<int32>& RefIdx)
 {
 	// The hands', the head's and the neck's (the lower jaw is skinned to it) vertices with weight >= 0.5, from LOD0's CPU
-	// copy (the athletes' meshes keep one: Scripts/broadcast_fx.py sets Allow CPU Access), in their bone's frame.
+	// copy (the athletes' meshes keep one: scripts/broadcast_fx.py sets Allow CPU Access), in their bone's frame.
 	bClip = false;
 	for (FClip& C : Clip) C = FClip();
 	USkinnedAsset* Asset = Mesh->GetSkinnedAsset();

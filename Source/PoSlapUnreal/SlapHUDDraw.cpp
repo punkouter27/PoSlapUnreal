@@ -465,7 +465,7 @@ void ASlapHUD::DrawOverlays(const FSlapHud& H)
 		TextBox(TEXT("KNOCKDOWN! DEFENDER MUST BEAT THE COUNT"), Cx, Yk + 38.f * S, Wk - 16.f * S, FColor::White, 1.0f * S, true);
 	}
 
-	// chat hype (Scripts/chat.py): right side, under the name plates
+	// chat hype (scripts/chat.py): right side, under the name plates
 	if (Now - ChatAt < 15.0)
 	{
 		const float W = 192.f * S, X = Canvas->ClipX - W - 8.f * S, Y = PanelBottom;

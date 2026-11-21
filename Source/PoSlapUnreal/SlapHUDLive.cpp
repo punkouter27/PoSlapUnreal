@@ -86,7 +86,7 @@ void ASlapHUD::LoadLeague()
 
 void ASlapHUD::PollSidecars(double Now)
 {
-	if (Now - CommentaryPoll <= 0.5) return;	// Scripts/commentator.py writes one line per call
+	if (Now - CommentaryPoll <= 0.5) return;	// scripts/commentator.py writes one line per call
 	CommentaryPoll = Now;
 	const FString Path = FPaths::ProjectSavedDir() / TEXT("Commentary/latest.txt");
 	const FDateTime Stamp = IFileManager::Get().GetTimeStamp(*Path);
@@ -106,7 +106,7 @@ void ASlapHUD::PollSidecars(double Now)
 		}
 		if (!Cur.IsEmpty()) Commentary.Add(Cur);
 	}
-	// chat hype (Scripts/chat.py): fresh for 15 s after it last wrote
+	// chat hype (scripts/chat.py): fresh for 15 s after it last wrote
 	const FString HypePath = FPaths::ProjectSavedDir() / TEXT("Commentary/hype.json");
 	const FDateTime HypeStamp = IFileManager::Get().GetTimeStamp(*HypePath);
 	Hype = 0.f;

@@ -3,7 +3,7 @@
 // The highlight reel (display only). USlapController keeps every body's pose for the last ReelSteps physics steps;
 // ASlapHUD saves that window after a knockout (Saved/PoSlap/reels/*.reel); a later launch with -SlapReel=<file> draws
 // the athletes from the file, one recorded physics step per rendered frame, so a slow-motion render shows real 5 ms
-// steps instead of interpolated ones (Scripts/highlight_reel.py renders and encodes it).
+// steps instead of interpolated ones (scripts/highlight_reel.py renders and encodes it).
 
 #include "CoreMinimal.h"
 

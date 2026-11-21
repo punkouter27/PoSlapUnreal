@@ -6,7 +6,7 @@
 //                   fallen from above after a KO, the winner. HIGH tier and up, desktop only (-SlapJumbo=0: off).
 //   3D titles       Text3D letters in the arena: each fighter's name over his corner on the walk-in and for the winner,
 //                   and the big caption (ROUND 1, KNOCKDOWN, KNOCKOUT) standing behind the podium (-SlapTitles=0: off).
-//   Sequencer       authored camera moves (Scripts/broadcast_pass.py -> /Game/Cinematics/LS_*): a crane down as the
+//   Sequencer       authored camera moves (scripts/broadcast_pass.py -> /Game/Cinematics/LS_*): a crane down as the
 //                   walk-in begins, a crane up from the fallen on a KO, a low hero push on the winner. AUTO camera only
 //                   (-SlapSeq=0: off). The spawned Cine Camera takes the level camera's grade and is focused here.
 //   soft tissue     the belly and the jowl lag the bones on a damped spring and are drawn as a world-position offset in
@@ -48,7 +48,7 @@ namespace
 	constexpr float JumboBack = 320.f, JumboZ = 212.f;	// cm behind the podium (away from the broadcast side), centre height
 	constexpr double JumboRate = 30.0;					// captures per second
 	const TCHAR* const SeqName[] = { TEXT("LS_Intro"), TEXT("LS_KO_Red"), TEXT("LS_KO_Blue"), TEXT("LS_Winner_Red"), TEXT("LS_Winner_Blue") };
-	constexpr float SeqFocal[] = { 16.f, 18.f, 18.f, 24.f, 24.f };	// mm, on the portrait gate below (Scripts/broadcast_pass.py add_shots)
+	constexpr float SeqFocal[] = { 16.f, 18.f, 18.f, 24.f, 24.f };	// mm, on the portrait gate below (scripts/broadcast_pass.py add_shots)
 	constexpr float GateW = 13.365f, GateH = 23.76f;				// mm: a Super 35 gate on its side, 9:16 as the level camera
 
 	bool Flag(const TCHAR* Key, bool bDefault = true)
@@ -147,7 +147,7 @@ void ASlapHUD::BuildStage()
 	}
 	bJiggle = Flag(TEXT("SlapJiggle="));
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: stage pass: jumbotron %s, 3D titles %s, sequences %d/%d, soft tissue %s"),
-		JumboCam ? TEXT("yes") : (Mat ? TEXT("off") : TEXT("off (no M_Jumbotron: run Scripts/broadcast_pass.py)")),
+		JumboCam ? TEXT("yes") : (Mat ? TEXT("off") : TEXT("off (no M_Jumbotron: run scripts/broadcast_pass.py)")),
 		BigTitle ? TEXT("yes") : TEXT("off"), SeqLoaded, (int32)NumSeq, bJiggle ? TEXT("on") : TEXT("off"));
 }
 
@@ -168,7 +168,7 @@ void ASlapHUD::Jumbo(const FSlapHud& H, double Now)
 		const FQuat Face = FRotationMatrix::MakeFromXY(FVector(1.f, 0.f, 0.f), FVector(0.f, 0.f, -1.f)).ToQuat();
 		JumboScreen->SetWorldTransform(FTransform(Face, StageCentre + FVector(0.f, -FlagF(TEXT("SlapJumboBack="), JumboBack), FlagF(TEXT("SlapJumboZ="), JumboZ)),
 			FVector(JumboW / 100.f, JumboH / 100.f, 1.f)));
-		if (Camera.IsValid())	// the level camera's grade (its exposure is metered on the lit stage: Scripts/arena_env.py)
+		if (Camera.IsValid())	// the level camera's grade (its exposure is metered on the lit stage: scripts/arena_env.py)
 		{
 			JumboCam->PostProcessSettings = Camera->GetCameraComponent()->PostProcessSettings;
 			JumboCam->PostProcessBlendWeight = 1.f;

@@ -1,4 +1,4 @@
-// Brain I/O (DOCS/BRAIN_IO.md): the observation, the brains (ORT on desktop, the basic CPU rebuild on Android), the
+// Brain I/O (docs/BRAIN_IO.md): the observation, the brains (ORT on desktop, the basic CPU rebuild on Android), the
 // 50 Hz decision and the brain X-ray.
 
 #include "SlapController.h"
@@ -6,6 +6,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
+#include "Misc/ScopeExit.h"
 #include "Misc/Paths.h"
 #include "NNE.h"
 #include "NNEModelData.h"
@@ -157,8 +158,17 @@ void USlapController::AppendZeroInitInputs(TArray<float>& Obs, int32 ExtraCount)
 	}
 }
 
+std::atomic<uint64> USlapController::InferenceCycles{ 0 };
+std::atomic<int32> USlapController::InferenceCalls{ 0 };
+
 bool USlapController::RunNet(UE::NNE::IModelInstanceCPU& Net, int32 NumIn, int32 NumOut, const float* InObs, float& Value, TArray<float>& Out)
 {
+	const uint64 T0 = FPlatformTime::Cycles64();
+	ON_SCOPE_EXIT
+	{
+		InferenceCycles.fetch_add(FPlatformTime::Cycles64() - T0, std::memory_order_relaxed);
+		InferenceCalls.fetch_add(1, std::memory_order_relaxed);
+	};
 	const UE::NNE::FTensorBindingCPU In{ (void*)InObs, (uint64)NumIn * sizeof(float) };
 	bool bOk = false;
 	if (NumOut == 0)	// the rebuilt brain: one output, the actions then the value
