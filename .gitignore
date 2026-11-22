@@ -8,7 +8,7 @@ Build/
 .vs/
 *.sln
 *.slnx
-# Plugins build output (URLab lives in Plugins/ later)
+# Plugins build output
 Plugins/*/Binaries/
 Plugins/*/Intermediate/
 # Tools / local
@@ -20,7 +20,7 @@ training/runs/
 training/checkpoints/
 training/logs/
 
-# URLab is vendored in Plugins/UnrealRoboticsLab (tracked; its Binaries/Intermediate are ignored above)
+# URLab is NOT tracked: Plugins/UnrealRoboticsLab is git-ignored below and recreated by scripts/setup_urlab.ps1
 training/replays/
 scripts/__pycache__/
 Logs/

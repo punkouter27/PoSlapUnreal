@@ -104,6 +104,20 @@ MuJoCo Warp / URLab.
 - **Gaze:** real eye contact through the neck joints (`neck_turn` goal servo: `match.py gaze_*`, Unreal `ApplyGaze`,
   `sim.js`), not a render-only look-at; `tests/test_physics_contract.py` checks it with the rest of the physics contract.
 
+### Deliberate deviations
+
+| Deviation | Why | Commit sha / date | How to undo |
+|---|---|---|---|
+| URLab (`Plugins/UnrealRoboticsLab`) is git-ignored and recreated by `scripts/setup_urlab.ps1` (upstream + `Plugins/urlab_poslap.patch`). Not a deviation from v3: vendoring is not required, a fresh clone builds after that one script | owner decision: a 2.3 GB clone with build output | `5ff2b5c` (owner) 2026-11-21 | track the plugin again |
+| `Content/Art/` (raw files, exports) and `Content/Data/` (staged brain binaries, cards) stay outside `/Game/Project` | files loaded by path, not assets | `cc7eb10` 2026-11-22 | — |
+| MSVC C4005/C4305 from URLab/MuJoCo headers silenced only around those includes (`SlapMuJoCo.h`); URLab's own sources still warn | third-party code, not tracked here | `cc7eb10` 2026-11-22 | — |
+| `training/parity_check.py` is `continue-on-error` in `deploy.yml`; it fails 5/6 today (rules 2, Grandpa vs Kim diverges at event 4) | owner design: blocking after the first green run | — | make it blocking once it passes |
+| Scripted HUD checks (`-SlapUiTest` etc.) suspend demo mode | their synthetic clicks bypass the idle clock; demo mode took the screen mid-check | `cc7eb10` 2026-11-22 | — |
+| The Unreal window keeps its own `POSLAP` title and build stamp; the web page shows them once, outside the canvas | a desktop game has no page (UU_AGENT build-stamp rule) | `cc7eb10` 2026-11-22 | — |
+
+**Hosting:** Azure Static Web App `poslap-arena`, Free tier. Never run test suites against the live site; live checks =
+at most 6 page loads + /diag + X-Commit.
+
 ### CI/CD and Azure
 
 - A push to `master` runs `.github/workflows/deploy.yml` (the only workflow): Python checks (`ruff check`,
@@ -194,12 +208,23 @@ every publish. Tests never write into tracked files.
   `Plugins/UnrealRoboticsLab/`, `training/runs/`, `Web/dist/`, screenshots outside `SCREENSHOTS/`). Pull/rebase before
   pushing; never force-push.
 - Asset moves touch many `.uasset` files at once: do them in their own commit while nobody else has the editor open.
-- Never run test suites against the live site (Azure Static Web Apps free tier): a few page loads of `/`, `/Web/` and
-  `/diag` only. Run the full checks locally against `Web/dist` (the artefact that deploys).
+- Live site: see **Hosting** in section 1 for the budget. Run the full checks locally against `Web/dist` (the
+  artefact that deploys).
 
 ## 3. Verify the repo
 
-From the repo root (Python 3.12 venv with `training/requirements.txt`, or the CI set:
+One command sequence verifies the repo (ruff, pytest, then `verify_all.ps1`: cards, constants, naming, physics audit,
+browser engine, live relay, spectator API, web build, CUDA realism, and with `-Unreal` the editor build, UI test and
+Showcase automation; run `scripts\setup_urlab.ps1` once per clone first):
+
+```
+ruff check . && ruff format --check . && python -m pytest -q && powershell -ExecutionPolicy Bypass -File scriptserify_all.ps1 -Unreal
+```
+
+Last full run (2026-11-22): pytest 19 passed; naming 815 assets, 0 errors; browser checks pass; `parity_check` 5/6
+(non-blocking); build 0 warnings in `Source/PoSlapUnreal`.
+
+The steps one by one, from the repo root (Python 3.12 venv with `training/requirements.txt`, or the CI set:
 `pip install "mujoco==3.10.0" numpy onnxruntime pytest ruff`):
 
 ```
