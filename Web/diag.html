@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0b0f17">
 <!-- served at /diag (a rewrite) and /Web/diag.html: every relative URL below resolves against the game's folder -->
 <base href="/Web/">
+<meta name="po-commit" content="dev">   <!-- Web/build.py writes the commit this build came from -->
 <title>System status</title>
 <script type="importmap">
 { "imports": {
@@ -127,6 +128,28 @@ const PROBES = {
     if (!gl) throw new Error("this browser has no WebGL2 context (the arena cannot render)");
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     return { status: "Healthy", detail: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.VERSION) };
+  },
+  external: async c => {
+    // a third-party service the game page loads (it falls back when it is down: Degraded, not Unhealthy)
+    try {
+      const r = await fetch(c.url, { cache: "no-store" });
+      if (!r.ok) return { status: "Degraded", detail: `HTTP ${r.status} (the page falls back to ${c.fallback})` };
+      const body = await r.text();
+      if (c.expect && !body.includes(c.expect)) return { status: "Degraded", detail: `unexpected response (no "${c.expect}")` };
+      return { status: "Healthy", detail: `${new URL(c.url).host}, ${body.length} bytes` };
+    } catch (e) {
+      return { status: "Degraded", detail: `${new URL(c.url).host} unreachable (the page falls back to ${c.fallback})` };
+    }
+  },
+  commit: async c => {
+    // the host stamps every response with X-Commit (Web/build.py -> staticwebapp.config.json): it must be the commit
+    // this page was built from
+    const r = await fetch(c.url, { method: "HEAD", cache: "no-store" });
+    if (!r.ok) throw new Error(`${c.url}: HTTP ${r.status}`);
+    const live = r.headers.get("x-commit"), built = document.querySelector('meta[name="po-commit"]').content;
+    if (!live) throw new Error("no X-Commit header (only the deployed site sends it)");
+    if (built && built !== "dev" && live !== built) return { status: "Degraded", detail: `X-Commit ${live.slice(0, 7)}, this page was built from ${built.slice(0, 7)}` };
+    return { status: "Healthy", detail: `commit ${live.slice(0, 7)}` };
   },
   version: async c => {
     const html = await get(c.url, "text");

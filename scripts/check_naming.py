@@ -36,8 +36,10 @@ FOLDER_PREFIX = {
 # The audio bank's own prefixes: sounds, reverb, ambiences.
 AUDIO_PREFIX = ("S_", "RV_", "AM_", "M_", "MS_")  # MS_ = MetaSound Source (MS_ImpactSynth, 2026-11-04)
 
-# Content top-level folders, and where each one belongs.
+# Content top-level folders, and where each one belongs. Every asset lives under Content/Project/ (the Po Game Standard
+# layout: Agents, Core, DataAssets, Environments, RL_Policies, UI); Art/ and Data/ hold the raw files and the staged data.
 FOLDER_OWNER = {
+    "Project": "Core",
     "Arena": "Shared",
     "Athletes": "Core",
     "Brains": "Core",
@@ -67,7 +69,7 @@ def classify(path):
     for part in parts[:-1]:
         if part in FOLDER_PREFIX:
             return FOLDER_PREFIX[part]
-    if parts and parts[0] == "Audio":
+    if "Audio" in parts[:-1]:  # Project/Core/Audio/...
         return AUDIO_PREFIX
     return None
 

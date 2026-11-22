@@ -3,11 +3,11 @@
     training/.venv/Scripts/python.exe scripts/broadcast_audio.py        (the WAVs, first)
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/broadcast_fx.py" -unattended
 
-/Game/Audio/S_* (broadcast_audio.py's WAVs; CrowdLoop and Breath loop), RV_Arena (the hall's reverb); /Game/FX/NS_SlapSpray (the engine's DirectionalBurst
+/Game/Project/Core/Audio/S_* (broadcast_audio.py's WAVs; CrowdLoop and Breath loop), RV_Arena (the hall's reverb); /Game/Project/Core/FX/NS_SlapSpray (the engine's DirectionalBurst
 template); the cheek ripple on M_Grandpa: world-position offset along the normal, a damped ring around RipplePoint driven
 by RippleTime / RippleAmp (ASlapHUD sets them per athlete on a strike); wear on M_Grandpa's colour: a red flush around
 FlushPoint (Flush, from neck damage), a palm print there (Print, along PrintU / PrintV: fingers, across the palm) and a
-greyer skin (Tired, from stamina); M_Scuff, the deferred decal for sole and palm marks; LODs on every athlete; the crowd (/Game/FX/M_CrowdLive, the parent
+greyer skin (Tired, from stamina); M_Scuff, the deferred decal for sole and palm marks; LODs on every athlete; the crowd (/Game/Project/Core/FX/M_CrowdLive, the parent
 of the arena's M_Crowd and M_PhoneLight): Rise bounces the seats, Cheer flickers the phone lights (ASlapHUD::Crowd).
 Pass 3 (2026-11-04, the browser's gfx/sound pass 2): the new sounds (stage deck, PA chime, per-athlete grunts and
 breaths), RV_ArenaIR (ArenaIR.wav as a convolution reverb submix), T_SkinDetail as a detail normal and a wet layer by
@@ -168,11 +168,11 @@ SCUFF = (
 
 
 def add_scuff():
-    """/Game/FX/M_Scuff: a dark rubber streak, deferred decal (ASlapHUD lays it where a sole skids or a palm braces)."""
-    if ASSETS.does_asset_exist("/Game/FX/M_Scuff"):
+    """/Game/Project/Core/FX/M_Scuff: a dark rubber streak, deferred decal (ASlapHUD lays it where a sole skids or a palm braces)."""
+    if ASSETS.does_asset_exist("/Game/Project/Core/FX/M_Scuff"):
         return
     m = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-        "M_Scuff", "/Game/FX", unreal.Material, unreal.MaterialFactoryNew()
+        "M_Scuff", "/Game/Project/Core/FX", unreal.Material, unreal.MaterialFactoryNew()
     )
     m.set_editor_property("material_domain", unreal.MaterialDomain.MD_DEFERRED_DECAL)
     m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
@@ -199,27 +199,29 @@ DECALS = (
 
 
 def add_decals():
-    """/Game/FX/Decals: the assets stream's decal textures (Content/Art/Exports/Decals, straight alpha) and M_DecalTex, a
+    """/Game/Project/Core/FX/Decals: the assets stream's decal textures (Content/Art/Exports/Decals, straight alpha) and M_DecalTex, a
     deferred decal (Decal texture, Opacity and Roughness parameters). ASlapHUD lays them with a dynamic instance per mark on
     desktop; a phone (no DBuffer) skips decals."""
     tools = unreal.AssetToolsHelpers.get_asset_tools()
     for name in DECALS:
         src = os.path.join(PROJ, "Content/Art/Exports/Decals", f"{name}.png")
-        if not os.path.isfile(src) or ASSETS.does_asset_exist(f"/Game/FX/Decals/{name}"):
+        if not os.path.isfile(src) or ASSETS.does_asset_exist(f"/Game/Project/Core/FX/Decals/{name}"):
             continue
         t = unreal.AssetImportTask()
-        t.filename, t.destination_path, t.destination_name = src, "/Game/FX/Decals", name
+        t.filename, t.destination_path, t.destination_name = src, "/Game/Project/Core/FX/Decals", name
         t.automated, t.replace_existing, t.save = True, True, True
         tools.import_asset_tasks([t])
         log(f"{name} imported")
-    if ASSETS.does_asset_exist("/Game/FX/M_DecalTex") or not ASSETS.does_asset_exist(f"/Game/FX/Decals/{DECALS[0]}"):
+    if ASSETS.does_asset_exist("/Game/Project/Core/FX/M_DecalTex") or not ASSETS.does_asset_exist(
+        f"/Game/Project/Core/FX/Decals/{DECALS[0]}"
+    ):
         return
-    m = tools.create_asset("M_DecalTex", "/Game/FX", unreal.Material, unreal.MaterialFactoryNew())
+    m = tools.create_asset("M_DecalTex", "/Game/Project/Core/FX", unreal.Material, unreal.MaterialFactoryNew())
     m.set_editor_property("material_domain", unreal.MaterialDomain.MD_DEFERRED_DECAL)
     m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
     tex = MEL.create_material_expression(m, unreal.MaterialExpressionTextureSampleParameter2D, -600, 0)
     tex.set_editor_property("parameter_name", "Decal")
-    tex.set_editor_property("texture", ASSETS.load_asset(f"/Game/FX/Decals/{DECALS[0]}"))
+    tex.set_editor_property("texture", ASSETS.load_asset(f"/Game/Project/Core/FX/Decals/{DECALS[0]}"))
     op = MEL.create_material_expression(m, unreal.MaterialExpressionScalarParameter, -600, 250)
     op.set_editor_property("parameter_name", "Opacity")
     op.set_editor_property("default_value", 1.0)
@@ -238,7 +240,7 @@ def add_decals():
 
 
 def add_reverb():
-    """/Game/Audio/RV_Arena: the big hall (wide shots) and /Game/Audio/RV_Ringside: a tight, dry room (close-ups).
+    """/Game/Project/Core/Audio/RV_Arena: the big hall (wide shots) and /Game/Project/Core/Audio/RV_Ringside: a tight, dry room (close-ups).
     ASlapHUD activates both and blends them by the camera's distance to the contact."""
     for name, settings in (
         (
@@ -272,12 +274,12 @@ def add_reverb():
             ),
         ),
     ):
-        path = f"/Game/Audio/{name}"
+        path = f"/Game/Project/Core/Audio/{name}"
         rv = (
             ASSETS.load_asset(path)
             if ASSETS.does_asset_exist(path)
             else unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-                name, "/Game/Audio", unreal.ReverbEffect, unreal.ReverbEffectFactory()
+                name, "/Game/Project/Core/Audio", unreal.ReverbEffect, unreal.ReverbEffectFactory()
             )
         )
         for k, v in settings:
@@ -287,16 +289,16 @@ def add_reverb():
 
 
 def add_dust():
-    """/Game/FX/NS_DustPuff: the puff where a body part (not a sole, not a palm) hit the ground. A copy of the
+    """/Game/Project/Core/FX/NS_DustPuff: the puff where a body part (not a sole, not a palm) hit the ground. A copy of the
     engine's radial burst template; ASlapHUD spawns it at the contact point the controller publishes."""
-    if ASSETS.does_asset_exist("/Game/FX/NS_DustPuff"):
+    if ASSETS.does_asset_exist("/Game/Project/Core/FX/NS_DustPuff"):
         return
     src = unreal.load_asset("/Niagara/DefaultAssets/Templates/Systems/RadialBurst.RadialBurst")
     if not src:
         log("NS_DustPuff: the radial burst template is missing")
         return
-    unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset("NS_DustPuff", "/Game/FX", src)
-    ASSETS.save_asset("/Game/FX/NS_DustPuff")
+    unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset("NS_DustPuff", "/Game/Project/Core/FX", src)
+    ASSETS.save_asset("/Game/Project/Core/FX/NS_DustPuff")
     log("NS_DustPuff (the dust puff)")
 
 
@@ -362,15 +364,24 @@ def add_crowd():
     """The crowd reacts (ASlapHUD::Crowd): Rise lifts ~60 % of the seats in a bouncing jump, Cheer flickers phone lights
     (CheerGlow per material: M_PhoneLight's lights, not the people), and CrowdCut drops a share of the seats (the low
     quality tier). The glTF import made M_Crowd / M_PhoneLight instances
-    of the engine's glTF master, so the nodes go on a copy of that master (/Game/FX/M_CrowdLive) and both are re-parented
+    of the engine's glTF master, so the nodes go on a copy of that master (/Game/Project/Core/FX/M_CrowdLive) and both are re-parented
     onto it; their own parameter values carry over by name."""
-    insts = [ASSETS.load_asset(f"/Game/Arena/Env/Arena/Materials/{n}") for n in ("MI_Crowd", "MI_PhoneLight")]
-    live = ASSETS.load_asset("/Game/FX/M_CrowdLive") if ASSETS.does_asset_exist("/Game/FX/M_CrowdLive") else None
+    insts = [
+        ASSETS.load_asset(f"/Game/Project/Environments/Arena/Env/Arena/Materials/{n}")
+        for n in ("MI_Crowd", "MI_PhoneLight")
+    ]
+    live = (
+        ASSETS.load_asset("/Game/Project/Core/FX/M_CrowdLive")
+        if ASSETS.does_asset_exist("/Game/Project/Core/FX/M_CrowdLive")
+        else None
+    )
     if live is None:
         master = insts[0].get_editor_property("parent")
         while isinstance(master, unreal.MaterialInstance):
             master = master.get_editor_property("parent")
-        live = unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset("M_CrowdLive", "/Game/FX", master)
+        live = unreal.AssetToolsHelpers.get_asset_tools().duplicate_asset(
+            "M_CrowdLive", "/Game/Project/Core/FX", master
+        )
         log(f"M_CrowdLive copied from {master.get_path_name()}")
     wpo = MEL.get_material_property_input_node(live, unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
     if wpo is None:
@@ -437,7 +448,7 @@ SOUNDS = (
 
 
 def add_arena_ir():
-    """/Game/Audio/RV_ArenaIR: a submix whose one effect is a convolution reverb on broadcast_audio.py's ArenaIR.wav (the
+    """/Game/Project/Core/Audio/RV_ArenaIR: a submix whose one effect is a convolution reverb on broadcast_audio.py's ArenaIR.wav (the
     floor, the stands, the roof; stereo). ASlapHUD's Ringside attenuation sends every spatialised one-shot to it on
     desktop (Web/audio.js's ConvolverNode); a phone keeps RV_Arena / RV_Ringside. The impulse response's sample array is
     not an editable property, so unreal.SlapEditorLib (SlapEditorLib.cpp) fills it."""
@@ -458,11 +469,11 @@ def add_arena_ir():
     tools = unreal.AssetToolsHelpers.get_asset_tools()
 
     def make(name, cls, factory):
-        path = f"/Game/Audio/{name}"
+        path = f"/Game/Project/Core/Audio/{name}"
         return (
             ASSETS.load_asset(path)
             if ASSETS.does_asset_exist(path)
-            else tools.create_asset(name, "/Game/Audio", cls, factory)
+            else tools.create_asset(name, "/Game/Project/Core/Audio", cls, factory)
         )
 
     ir = make("RV_ArenaIR_Response", unreal.AudioImpulseResponse, unreal.AudioImpulseResponseFactory())
@@ -487,7 +498,7 @@ def add_arena_ir():
     log(f"RV_ArenaIR: convolution reverb, {ch} ch, {rate} Hz, {n / rate:.2f} s")
 
 
-SKIN_DETAIL_TEX = "/Game/Athletes/T_SkinDetail"
+SKIN_DETAIL_TEX = "/Game/Project/Agents/Athletes/T_SkinDetail"
 
 
 def skin_detail_texture():
@@ -497,7 +508,7 @@ def skin_detail_texture():
         if not os.path.isfile(src):
             return None
         t = unreal.AssetImportTask()
-        t.filename, t.destination_path, t.destination_name = src, "/Game/Athletes", "T_SkinDetail"
+        t.filename, t.destination_path, t.destination_name = src, "/Game/Project/Agents/Athletes", "T_SkinDetail"
         t.automated, t.replace_existing, t.save = True, True, True
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([t])
     tex = ASSETS.load_asset(SKIN_DETAIL_TEX)
@@ -608,14 +619,14 @@ def add_skin_detail(skin, tex):
 
 
 def add_subsurface(skin):
-    """Skin subsurface (Web/fx.js sss, ultra/cinema): a Subsurface Profile on the athlete material, /Game/Athletes/SSP_Skin.
+    """Skin subsurface (Web/fx.js sss, ultra/cinema): a Subsurface Profile on the athlete material, /Game/Project/Agents/Athletes/SSP_Skin.
     Desktop draws it (scalability turns it down with the post quality); a phone's mobile renderer falls back to default lit."""
-    path = "/Game/Athletes/SSP_Skin"
+    path = "/Game/Project/Agents/Athletes/SSP_Skin"
     if ASSETS.does_asset_exist(path):
         prof = ASSETS.load_asset(path)
     else:
         prof = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-            "SSP_Skin", "/Game/Athletes", unreal.SubsurfaceProfile, unreal.SubsurfaceProfileFactory()
+            "SSP_Skin", "/Game/Project/Agents/Athletes", unreal.SubsurfaceProfile, unreal.SubsurfaceProfileFactory()
         )
         ASSETS.save_loaded_asset(prof)
     if (
@@ -637,27 +648,32 @@ def main():
         loop = name in ("CrowdLoop", "Breath") or name.startswith("Breath_")
         t = unreal.AssetImportTask()
         t.filename = os.path.join(PROJ, "Content/Art/Exports/Audio", f"{name}.wav")
-        t.destination_path, t.destination_name = "/Game/Audio", f"S_{name}"
+        t.destination_path, t.destination_name = "/Game/Project/Core/Audio", f"S_{name}"
         t.automated, t.replace_existing, t.save = True, True, True
         tools.import_asset_tasks([t])
-        w = ASSETS.load_asset(f"/Game/Audio/S_{name}")
+        w = ASSETS.load_asset(f"/Game/Project/Core/Audio/S_{name}")
         w.set_editor_property("looping", loop)
         ASSETS.save_loaded_asset(w)
         log(f"S_{name} (looping {loop})")
 
-    if not ASSETS.does_asset_exist("/Game/FX/NS_SlapSpray"):  # loaded by path: commandlets don't scan plugin content
+    if not ASSETS.does_asset_exist(
+        "/Game/Project/Core/FX/NS_SlapSpray"
+    ):  # loaded by path: commandlets don't scan plugin content
         src = unreal.load_asset("/Niagara/DefaultAssets/Templates/Systems/DirectionalBurst.DirectionalBurst")
-        tools.duplicate_asset("NS_SlapSpray", "/Game/FX", src)
-        ASSETS.save_asset("/Game/FX/NS_SlapSpray")
-    log(f"NS_SlapSpray: {ASSETS.does_asset_exist('/Game/FX/NS_SlapSpray')}")
+        tools.duplicate_asset("NS_SlapSpray", "/Game/Project/Core/FX", src)
+        ASSETS.save_asset("/Game/Project/Core/FX/NS_SlapSpray")
+    log(f"NS_SlapSpray: {ASSETS.does_asset_exist('/Game/Project/Core/FX/NS_SlapSpray')}")
     add_dust()
-    log(f"NS_DustPuff: {ASSETS.does_asset_exist('/Game/FX/NS_DustPuff')}")
+    log(f"NS_DustPuff: {ASSETS.does_asset_exist('/Game/Project/Core/FX/NS_DustPuff')}")
 
     detail = skin_detail_texture()
     for name in sorted(athlete_names()):
-        skin, mesh = f"/Game/Athletes/M_{name}", f"/Game/Athletes/SK_{name}"
+        skin, mesh = f"/Game/Project/Agents/Athletes/M_{name}", f"/Game/Project/Agents/Athletes/SK_{name}"
         if not ASSETS.does_asset_exist(skin):  # the per-athlete folder layout
-            skin, mesh = f"/Game/Athletes/{name}/M_{name}", f"/Game/Athletes/{name}/SK_{name}"
+            skin, mesh = (
+                f"/Game/Project/Agents/Athletes/{name}/M_{name}",
+                f"/Game/Project/Agents/Athletes/{name}/SK_{name}",
+            )
         if not ASSETS.does_asset_exist(mesh):  # an overlay material (M_TeamOverlay), not an athlete
             continue
         if ASSETS.does_asset_exist(skin):
@@ -691,7 +707,7 @@ def main():
 def athlete_names():
     """Every athlete in /Game/Athletes, from the M_<name> / SK_<name> pairs (the folder layout and the flat one)."""
     names = set()
-    for asset in ASSETS.list_assets("/Game/Athletes", recursive=True):
+    for asset in ASSETS.list_assets("/Game/Project/Agents/Athletes", recursive=True):
         base = asset.split(".")[0].rsplit("/", 1)[-1]
         if base.startswith("M_"):
             names.add(base[2:])

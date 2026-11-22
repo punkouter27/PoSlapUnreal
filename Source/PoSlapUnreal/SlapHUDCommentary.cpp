@@ -30,7 +30,7 @@ void ASlapHUD::Announce(const FString& LineKey)
 	const FString Name = TEXT("S_A_") + LineKey;
 	if (!AnnounceSounds.Contains(Name))
 	{
-		USoundBase* Line = LoadNamed<USoundBase>(TEXT("/Game/Audio/Announcer"), *Name);
+		USoundBase* Line = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio/Announcer"), *Name);
 		AnnounceSounds.Add(Name, Line);
 		if (!Line) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no announcer line %s (scripts/announcer.py, then voice_import.py)"), *Name);
 	}

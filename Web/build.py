@@ -85,6 +85,19 @@ def build_stamp():
     return time.strftime("%y%m%d", time.gmtime())
 
 
+def build_commit():
+    """The commit being deployed: GITHUB_SHA in CI, else git HEAD; empty outside a git checkout."""
+    sha = os.environ.get("GITHUB_SHA", "").strip()
+    if sha:
+        return sha
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
 def matchup_files(loader):
     """Every matchup's arena and fingerprints, in its own models folder (a `dir: "v4/"` matchup reads models/v4/)."""
     files = set()
@@ -104,7 +117,14 @@ def check_diag_list():
     """/diag probes Web/diag_checks.json: every file it names is bundled, every bundled game file is probed."""
     checks = json.loads((WEB / "diag_checks.json").read_text(encoding="utf-8"))["checks"]
     named = set()
+    page = (WEB / "index.html").read_text(encoding="utf-8")
     for c in checks:
+        if c.get("probe") == "external":  # a third-party URL: it must be the one the game page really loads
+            if c["url"].replace("&", "&amp;") not in page and c["url"] not in page:
+                raise SystemExit(
+                    f"Web/diag_checks.json: {c['id']} probes {c['url']}, which Web/index.html does not load"
+                )
+            continue
         for u in ([c["url"]] if "url" in c else []) + c.get("urls", []) + [c[k] for k in ("arena", "brain") if k in c]:
             if u != "./":
                 named.add(os.path.normpath(os.path.join("Web", u)).replace(os.sep, "/"))
@@ -130,6 +150,7 @@ def fail_lfs_pointers():
 
 
 STAMP = build_stamp()
+COMMIT = build_commit()
 loader = (WEB / "loader.js").read_text(encoding="utf-8")
 chars = sorted(set(re.findall(r'char: "(\w+)"', loader)))
 brains = sorted(set(re.findall(r'brain: "(\w+)"', loader)))
@@ -155,6 +176,10 @@ for html_name in ("index.html", "diag.html"):
     text, n = re.subn(r'(id="stamp">)[^<]*(<)', rf"\g<1>{STAMP}\g<2>", page.read_text(encoding="utf-8"))
     if n != 1:
         raise SystemExit(f'build.py: {html_name} must carry exactly one id="stamp" element (found {n})')
+    if html_name == "diag.html":  # /diag compares the live X-Commit header with this
+        text, n = re.subn(r'(<meta name="po-commit" content=")[^"]*(")', rf"\g<1>{COMMIT}\g<2>", text)
+        if n != 1:
+            raise SystemExit('build.py: diag.html must carry exactly one <meta name="po-commit">')
     page.write_text(text, encoding="utf-8")
 (DIST / "index.html").write_text(
     '<!doctype html><meta charset="utf-8"><title>PoSlap Arena</title>'
@@ -163,9 +188,24 @@ for html_name in ("index.html", "diag.html"):
 )
 # No Content-Security-Policy (user 2026-11-03): the old one sat under "headers", which Azure Static Web Apps does not
 # read (it reads "globalHeaders"), so it was never served; served as written it blocks MuJoCo's WASM bindings (new Function).
+# X-Commit on every response: the workflow and /diag check that the live site serves exactly this commit.
 (DIST / "staticwebapp.config.json").write_text(
-    '{ "mimeTypes": { ".wasm": "application/wasm", ".mjs": "text/javascript", ".onnx": "application/octet-stream", ".xml": "text/xml", ".glb": "model/gltf-binary" }, '
-    '"routes": [ { "route": "/diag", "rewrite": "/Web/diag.html" } ] }\n'
+    json.dumps(
+        {
+            "mimeTypes": {
+                ".wasm": "application/wasm",
+                ".mjs": "text/javascript",
+                ".onnx": "application/octet-stream",
+                ".xml": "text/xml",
+                ".glb": "model/gltf-binary",
+            },
+            "routes": [{"route": "/diag", "rewrite": "/Web/diag.html"}],
+            "globalHeaders": {"X-Commit": COMMIT},
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
 )
 
 fail_lfs_pointers()
@@ -173,6 +213,6 @@ check_diag_list()
 
 size = sum(p.stat().st_size for p in DIST.rglob("*") if p.is_file())
 print(
-    f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB, v{STAMP} "
+    f"Web/dist: {sum(1 for p in DIST.rglob('*') if p.is_file())} files, {size / 1e6:.1f} MB, v{STAMP}, commit {COMMIT[:7]} "
     f"(brains: {', '.join(brains)})"
 )

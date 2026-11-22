@@ -3,7 +3,7 @@
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/set_defender_role.py" -unattended
 
 SLAP_DEFENDER_ROLE: -1 (default; brains from L3 on observe the striker's head and hand) or 0 (guard brains before L3).
-SLAP_ARENAS: optional ';' list of arena Blueprints (default: every /Game/Arena/BP_*_arena).
+SLAP_ARENAS: optional ';' list of arena Blueprints (default: every /Game/Project/Environments/Arena/BP_*_arena).
 """
 
 import os
@@ -15,7 +15,9 @@ arenas = os.environ.get("SLAP_ARENAS")
 assets = (
     arenas.split(";")
     if arenas
-    else unreal.EditorAssetLibrary.list_assets("/Game/Arena", recursive=False, include_folder=False)
+    else unreal.EditorAssetLibrary.list_assets(
+        "/Game/Project/Environments/Arena", recursive=False, include_folder=False
+    )
 )
 sub = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
 seen = 0

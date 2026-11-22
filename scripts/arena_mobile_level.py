@@ -5,7 +5,7 @@ lights, the camera and the athletes are the desktop level's own (the twin is a c
 
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/arena_mobile_level.py" -unattended
 
-Who opens which: Config/Android/AndroidEngine.ini starts a phone on /Game/Levels/L_Arena_Mobile, and the menu lists only
+Who opens which: Config/Android/AndroidEngine.ini starts a phone on /Game/Project/Environments/Levels/L_Arena_Mobile, and the menu lists only
 the _Mobile pairings on a phone and only the full ones on a desktop (SlapHUDMenu.cpp, SlapHUDInternal.h IsMobileLevel).
 Re-run after a desktop level changes (build_scene.py) or a new Arena_Mobile.glb: the twins are rebuilt from scratch.
 Imported assets carry a "_Mobile" suffix (scripts/check_naming.py: no base name twice under /Game).
@@ -18,8 +18,8 @@ import unreal
 PROJ = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 ASSETS = unreal.EditorAssetLibrary
 MEL = unreal.MaterialEditingLibrary
-ENV = "/Game/Arena/EnvMobile"
-LEVELS = "/Game/Levels"
+ENV = "/Game/Project/Environments/Arena/EnvMobile"
+LEVELS = "/Game/Project/Environments/Levels"
 SUFFIX = "_Mobile"
 
 
@@ -67,8 +67,12 @@ def import_mobile():
             a.set_editor_property("nanite_settings", ns)
             ASSETS.save_loaded_asset(a)
             meshes[base] = a
-    # the crowd reacts on a phone too (broadcast_fx.py add_crowd): its instances go onto /Game/FX/M_CrowdLive
-    live = ASSETS.load_asset("/Game/FX/M_CrowdLive") if ASSETS.does_asset_exist("/Game/FX/M_CrowdLive") else None
+    # the crowd reacts on a phone too (broadcast_fx.py add_crowd): its instances go onto /Game/Project/Core/FX/M_CrowdLive
+    live = (
+        ASSETS.load_asset("/Game/Project/Core/FX/M_CrowdLive")
+        if ASSETS.does_asset_exist("/Game/Project/Core/FX/M_CrowdLive")
+        else None
+    )
     for p in ASSETS.list_assets(ENV, recursive=True):
         a = ASSETS.load_asset(p.split(".")[0])
         if (

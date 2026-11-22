@@ -3,7 +3,7 @@ touching any level. Idempotent.
 
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/reimport_athletes.py" -unattended
 
-SLAP_CARDS = comma-separated character cards (default: every athlete in /Game/Athletes). Per athlete:
+SLAP_CARDS = comma-separated character cards (default: every athlete in /Game/Project/Agents/Athletes). Per athlete:
   - SK_<Name> from Content/Art/Exports/<Name>_rigged.fbx with morph targets on (the assets stream's CheekDent_L / _R,
     the athlete's own side; ASlapHUD drives them 0..1 at a touch), its material slot kept on M_<Name>, LODs 1-2;
   - T_<Name>_CheekMask (linear, TC_Masks, the character texture group) into M_<Name>'s wear node (broadcast_fx.add_wear:
@@ -45,7 +45,7 @@ def task(src, dest, name, options=None):
 
 def athlete(name):
     Name = name.capitalize()
-    folder = f"/Game/Athletes/{Name}"
+    folder = f"/Game/Project/Agents/Athletes/{Name}"
     skin_path, mesh_path = f"{folder}/M_{Name}", f"{folder}/SK_{Name}"
     fbx_src = f"Content/Art/Exports/{Name}_rigged.fbx"
     if not ASSETS.does_asset_exist(skin_path) or not os.path.isfile(os.path.join(PROJ, fbx_src)):

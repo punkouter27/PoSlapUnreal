@@ -195,7 +195,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 		A.NumOut = N.NumOut;
 		UE_LOG(LogSlap, Log, TEXT("Policy: %s brain %s reads %d inputs"), *A.Name, *Labels[FMath::Min(a, 1)], A.NumIn);
 	}
-	// The walk-in on each character's walking brain (S2, the cooked /Game/Brains/<card>_S2, so Android has it too; user
+	// The walk-in on each character's walking brain (S2, the cooked /Game/Project/RL_Policies/Brains/<card>_S2, so Android has it too; user
 	// 2026-10-29: the walk-in is pure RL); a character without one gets the scripted stride. -SlapWalkBrain=0: scripted for all
 	FString WalkFlag;
 	const bool bWalkBrains = !(FParse::Value(FCommandLine::Get(), TEXT("SlapWalkBrain="), WalkFlag) && WalkFlag == TEXT("0"));
@@ -203,7 +203,7 @@ void USlapController::BindPolicy(mjModel* m, const FJsonObject* const (&Fps)[2])
 	for (int32 a = 0; a < Athletes.Num() && bWalkBrains; ++a)
 	{
 		const FString Name = CardName[FMath::Min(a, 1)] + TEXT("_S2");
-		UNNEModelData* Data = LoadObject<UNNEModelData>(nullptr, *FString::Printf(TEXT("/Game/Brains/%s.%s"), *Name, *Name), nullptr, LOAD_NoWarn);
+		UNNEModelData* Data = LoadObject<UNNEModelData>(nullptr, *FString::Printf(TEXT("/Game/Project/RL_Policies/Brains/%s.%s"), *Name, *Name), nullptr, LOAD_NoWarn);
 		FNet N;
 		if (!Data || !MakeNet(Data, N)) continue;
 		LoadedBrains.Add(Data);

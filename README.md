@@ -25,7 +25,7 @@ A high-fidelity competitive Power Slap sports biomechanics simulation and autono
 ## Required Plugins & Engine Version
 
 * **Unreal Engine:** Version `5.8` (Windows x64).
-* **UnrealRoboticsLab (`Plugins/UnrealRoboticsLab`):** vendored, pinned to MuJoCo `3.10.0` with this repo's UE 5.8 patches applied.
+* **UnrealRoboticsLab (`Plugins/UnrealRoboticsLab`):** not tracked (its own ~2.3 GB clone); `scripts/setup_urlab.ps1` clones upstream, applies `Plugins/urlab_poslap.patch` (MuJoCo `3.10.0` + the UE 5.8 fixes) and builds its third-party libraries.
 * **NNERuntimeORT:** Unreal Engine Neural Network Engine ONNX Runtime plugin (CPU execution on physics thread).
 * **ModelContextProtocol (`ModelContextProtocol` & `AllToolsets`):** Unreal MCP server enabled on `127.0.0.1:8000/mcp`.
 * **PythonScriptPlugin:** Automated editor scene generation, lighting setup, and material compilation.
@@ -36,10 +36,11 @@ A high-fidelity competitive Power Slap sports biomechanics simulation and autono
 ## Quick-Start Instructions
 
 ### 1. Repository Setup & Dependencies
-`Plugins/UnrealRoboticsLab` is vendored in this repo (URLab source with this repo's patch applied and its prebuilt
-third-party libraries, MuJoCo 3.10.0; see the README inside the plugin), so a fresh clone builds the editor target
-directly. `scripts/setup_urlab.ps1` only installs the editor-Python packages URLab's MJCF importer needs.
+`Plugins/UnrealRoboticsLab` is not tracked: run `scripts/setup_urlab.ps1` once per clone (clone upstream URLab, apply
+`Plugins/urlab_poslap.patch`, build CoACD / MuJoCo 3.10.0 / libzmq, install the editor-Python packages URLab's MJCF
+importer needs); then the editor target builds. Exact verify commands: AGENTS.md, part 3.
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_urlab.ps1
 # Python: trainer + checks (Python 3.12; MuJoCo pinned in training/requirements.txt)
 uv venv training/.venv --python 3.12
 uv pip install -p training/.venv -r training/requirements.txt
@@ -59,10 +60,10 @@ UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="scripts/bu
 ### 3. Launching the Game & Running Matches
 ```powershell
 # Launch standalone portrait match (Grandpa Red vs. Kim Blue)
-UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
+UnrealEditor.exe PoSlapUnreal.uproject /Game/Project/Environments/Levels/L_Arena_grandpa_vs_kim -game -ResX=540 -ResY=960
 
 # Run automated UI synthetic interaction test
-UnrealEditor.exe PoSlapUnreal.uproject /Game/Levels/L_Arena -game -SlapUiTest
+UnrealEditor.exe PoSlapUnreal.uproject /Game/Project/Environments/Levels/L_Arena -game -SlapUiTest
 ```
 
 ### 4. Deterministic Replay & Parity Verification

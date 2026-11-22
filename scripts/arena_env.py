@@ -14,7 +14,7 @@ import unreal
 
 PROJ = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 ASSETS = unreal.EditorAssetLibrary
-ENV = "/Game/Arena/Env"
+ENV = "/Game/Project/Environments/Arena/Env"
 LABELS = ("Env_", "KeyLight", "TrussSpot", "HouseLight", "RimRed", "RimBlue", "ArenaHaze", "ArenaEnvironment")
 # The broadcast side (user 2026-10-30): the camera looks from MuJoCo -Y (UE +Y), so red (-X) is on the screen's left under
 # the HUD's red-first rows. Arena_v2.blend was dressed for a camera at MuJoCo +Y (press row on the camera side, judges'
@@ -26,7 +26,7 @@ FIXED = ("FootBox_",)  # env meshes that keep the physics frame
 # under Content/Art/Exports/Props/, placed in UE cm directly (no SET_YAW). The planter (50 x 40 x 12 cm, 500 k faces,
 # Nanite; its origin 3.5 cm above the base) sits on the judges' table across from the camera (Env_JudgesTable in UE:
 # x +-106, y -378..-280, top z = 107), at the red end so it shows beside the red athlete, not behind the podium.
-PROPS = "/Game/Arena/Props"
+PROPS = "/Game/Project/Environments/Arena/Props"
 PROP_LIST = {"Flowers": dict(src="Content/Art/Exports/Props/Flowers.glb", loc=(-72, -305, 110.5), yaw=200.0)}
 
 
@@ -249,8 +249,8 @@ if __name__ == "__main__":
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     les.load_level(
-        __import__("os").environ.get("SLAP_LEVEL", "/Game/Levels/L_Arena")
-    )  # e.g. /Game/Levels/L_Arena_grandpa_vs_kim
+        __import__("os").environ.get("SLAP_LEVEL", "/Game/Project/Environments/Levels/L_Arena")
+    )  # e.g. /Game/Project/Environments/Levels/L_Arena_grandpa_vs_kim
     for a in eas.get_all_level_actors():
         if a.get_actor_label().startswith(LABELS):
             eas.destroy_actor(a)

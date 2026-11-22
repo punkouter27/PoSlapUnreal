@@ -1,7 +1,7 @@
 name: Build & Deploy
 
 # The one workflow for this repo: Python checks -> the browser-engine checks -> bundle Web/dist -> (master only) deploy
-# it to the Azure Static Web App -> check the live page and /diag. Pull requests get the checks and the bundle, never
+# it to the Azure Static Web App -> check the live commit (X-Commit), the page and /diag. Pull requests get the checks and the bundle, never
 # a deploy. Nothing here needs a GPU (verify_realism.py, the CUDA env checks, stays a local gate) and the Unreal
 # project is built locally (UE 5.8 is not on GitHub's runners).
 
@@ -111,20 +111,23 @@ jobs:
           skip_app_build: true
           skip_api_build: true
 
-      - name: Check the live page and /diag
+      # Web/build.py stamps X-Commit on every response (staticwebapp.config.json): the live site must serve this commit
+      - name: Check the live commit (X-Commit), page and /diag
         if: steps.deploy.outcome == 'success'
         env:
           URL: ${{ steps.deploy.outputs.static_web_app_url }}
+          SHA: ${{ github.sha }}
         run: |
           stamp=$(grep -o 'id="stamp">[0-9]*' Web/dist/Web/index.html | grep -o '[0-9]*$')
           for i in $(seq 1 20); do
             page=$(curl -fsS --max-time 30 "$URL/Web/" || true)
             diag=$(curl -fsS --max-time 30 "$URL/diag" || true)
             root=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/")
-            if [ "$root" = "200" ] && echo "$page" | grep -q "id=\"stamp\">$stamp<" \
+            commit=$(curl -fsSI --max-time 30 "$URL/Web/" | tr -d '\r' | awk 'tolower($1) == "x-commit:" {print $2}' || true)
+            if [ "$root" = "200" ] && [ "$commit" = "$SHA" ] && echo "$page" | grep -q "id=\"stamp\">$stamp<" \
                && echo "$diag" | grep -q "<title>System status</title>" && echo "$diag" | grep -q "id=\"stamp\">$stamp<"; then
-              echo "Live: $URL (/ $root, /Web/ and /diag carry v$stamp)"; exit 0
+              echo "Live: $URL at X-Commit $commit (/ $root, /Web/ and /diag carry v$stamp)"; exit 0
             fi
             sleep 15
           done
-          echo "$URL did not serve v$stamp at / and /diag"; exit 1
+          echo "$URL did not serve X-Commit $SHA and v$stamp at / and /diag (last X-Commit: ${commit:-none})"; exit 1

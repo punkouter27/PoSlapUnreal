@@ -1,6 +1,8 @@
 #include "SlapShowcase.h"
 
 #include "SlapRewardConfig.h"
+#include "Async/Async.h"
+#include "SlapMuJoCo.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -17,6 +19,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -32,6 +35,25 @@ namespace SlapShowcaseUi
 	static FLinearColor Text() { return Hex(TEXT("e6e9f2")); }
 	static FLinearColor Muted() { return Hex(TEXT("9aa3b5")); }
 	static FLinearColor Accent() { return Hex(TEXT("6366f1")); }
+	// Button fill: white text on #4f46e5 is ~6.3:1 (white on the #6366f1 accent is only ~4.5:1).
+	static FLinearColor ButtonFill() { return Hex(TEXT("4f46e5")); }
+
+	/** Flat, opaque button: a tinted white brush under the label. */
+	static TSharedRef<SWidget> Button(const FText& Label, const FSlateFontInfo& Font, FOnClicked OnClicked, const FText& Tip)
+	{
+		return SNew(SButton)
+			.ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("NoBorder"))
+			.ContentPadding(FMargin(0.f))
+			.ToolTipText(Tip)
+			.OnClicked(OnClicked)
+			[
+				SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(ButtonFill())
+				.HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(FMargin(10.f, 6.f))
+				[
+					SNew(STextBlock).Font(Font).ColorAndOpacity(FLinearColor::White).Text(Label)
+				]
+			];
+	}
 }
 
 // ------------------------------------------------------------------------------------------------------------
@@ -40,7 +62,8 @@ namespace SlapShowcaseUi
 class FSlapShowcaseInput : public IInputProcessor
 {
 public:
-	FSlapShowcaseInput(USlapShowcaseSubsystem* InOwner, const FKey& InToggleKey) : Owner(InOwner), ToggleKey(InToggleKey) {}
+	FSlapShowcaseInput(USlapShowcaseSubsystem* InOwner, const FKey& InToggleKey, const FKey& InBenchmarkKey)
+		: Owner(InOwner), ToggleKey(InToggleKey), BenchmarkKey(InBenchmarkKey) {}
 
 	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override {}
 
@@ -53,6 +76,11 @@ public:
 		{
 			if (!InKeyEvent.IsRepeat()) O->ToggleOverlay();
 			return true;   // the overlay owns its key
+		}
+		if (InKeyEvent.GetKey() == BenchmarkKey && O->IsOverlayVisible())
+		{
+			if (!InKeyEvent.IsRepeat()) O->StartBenchmark();
+			return true;
 		}
 		return false;
 	}
@@ -88,6 +116,7 @@ private:
 
 	TWeakObjectPtr<USlapShowcaseSubsystem> Owner;
 	FKey ToggleKey;
+	FKey BenchmarkKey;
 };
 
 // ------------------------------------------------------------------------------------------------------------
@@ -95,6 +124,7 @@ private:
 USlapShowcaseConfig::USlapShowcaseConfig()
 {
 	OverlayKey = EKeys::Tab;
+	BenchmarkKey = EKeys::B;
 	DemoCameras = { FName(TEXT("Wide")), FName(TEXT("Side")), FName(TEXT("Close")), FName(TEXT("Orbit")) };
 }
 
@@ -149,6 +179,7 @@ void USlapShowcaseSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		&& (PLATFORM_ANDROID || PLATFORM_IOS || FPlatformMisc::GetUseVirtualJoysticks() || FParse::Param(FCommandLine::Get(), TEXT("ShowcaseTouch")));
 	FString Dir;
 	if (FParse::Value(FCommandLine::Get(), TEXT("ShowcaseCapture="), Dir)) CaptureDir = FPaths::ConvertRelativePathToFull(Dir);
+	bCaptureBenchmark = !CaptureDir.IsEmpty() && FParse::Param(FCommandLine::Get(), TEXT("ShowcaseBenchmark"));
 }
 
 void USlapShowcaseSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -156,7 +187,7 @@ void USlapShowcaseSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	Super::OnWorldBeginPlay(InWorld);
 	if (!FSlateApplication::IsInitialized()) return;
 	const USlapShowcaseConfig* Cfg = USlapShowcaseSettings::GetShowcaseConfig();
-	Input = MakeShared<FSlapShowcaseInput>(this, Cfg->OverlayKey);
+	Input = MakeShared<FSlapShowcaseInput>(this, Cfg->OverlayKey, Cfg->BenchmarkKey);
 	FSlateApplication::Get().RegisterInputPreProcessor(Input);
 	AddWidgets();
 	UE_LOG(LogSlapShowcase, Log, TEXT("Showcase: overlay key %s, demo after %.0f s idle, %d demo cameras, touch button %s%s"),
@@ -166,6 +197,7 @@ void USlapShowcaseSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void USlapShowcaseSubsystem::Deinitialize()
 {
+	PollBenchmark(/*bWait*/ true);   // never leave a worker stepping while the world goes away
 	if (Input.IsValid() && FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterInputPreProcessor(Input);
 	Input.Reset();
 	RemoveWidgets();
@@ -187,14 +219,29 @@ void USlapShowcaseSubsystem::AddWidgets()
 	const FSlateFontInfo Body = FCoreStyle::GetDefaultFontStyle("Regular", 13);
 	const FSlateBrush* White = FCoreStyle::Get().GetBrush("WhiteBrush");
 
+	// Only the benchmark button takes clicks; the rest of the panel lets them through to the game.
 	OverlayWidget = SNew(SBox)
 		.HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(16.f, 64.f, 16.f, 16.f))
-		.Visibility_Lambda([Weak] { return Weak.IsValid() && Weak->IsOverlayVisible() && !Weak->IsDemoActive() ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+		.Visibility_Lambda([Weak] { return Weak.IsValid() && Weak->IsOverlayVisible() && !Weak->IsDemoActive() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
 		[
 			SNew(SBorder).BorderImage(White).BorderBackgroundColor(SlapShowcaseUi::Surface()).Padding(FMargin(14.f, 10.f))
+			.Visibility(EVisibility::SelfHitTestInvisible)
 			[
-				SNew(STextBlock).Font(Mono).ColorAndOpacity(SlapShowcaseUi::Text())
-				.Text_Lambda([Weak] { return Weak.IsValid() ? FText::FromString(Weak->BuildOverlayText()) : FText::GetEmpty(); })
+				SNew(SVerticalBox).Visibility(EVisibility::SelfHitTestInvisible)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock).Font(Mono).ColorAndOpacity(SlapShowcaseUi::Text()).Visibility(EVisibility::HitTestInvisible)
+					.Text_Lambda([Weak] { return Weak.IsValid() ? FText::FromString(Weak->BuildOverlayText()) : FText::GetEmpty(); })
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(FMargin(0.f, 8.f, 0.f, 0.f))
+				[
+					SlapShowcaseUi::Button(
+						FText::Format(NSLOCTEXT("SlapShowcase", "BenchButton", "Benchmark sim speed [{0}]"),
+							USlapShowcaseSettings::GetShowcaseConfig()->BenchmarkKey.GetDisplayName()),
+						Body,
+						FOnClicked::CreateLambda([Weak] { if (Weak.IsValid()) Weak->StartBenchmark(); return FReply::Handled(); }),
+						NSLOCTEXT("SlapShowcase", "BenchTip", "Steps a copy of the arena's MuJoCo model on the CPU for a moment and reports physics steps/s"))
+				]
 			]
 		];
 	VC->AddViewportWidgetContent(OverlayWidget.ToSharedRef(), 1000);
@@ -219,15 +266,10 @@ void USlapShowcaseSubsystem::AddWidgets()
 			[
 				SNew(SBox).WidthOverride(44.f).HeightOverride(44.f)
 				[
-					SNew(SButton)
-					.ButtonColorAndOpacity(SlapShowcaseUi::Accent())
-					.HAlign(HAlign_Center).VAlign(VAlign_Center)
-					.ToolTipText(NSLOCTEXT("SlapShowcase", "ButtonTip", "Diagnostics"))
-					.OnClicked_Lambda([Weak] { if (Weak.IsValid()) Weak->ToggleOverlay(); return FReply::Handled(); })
-					[
-						SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Bold", 15)).ColorAndOpacity(FLinearColor::White)
-						.Text(NSLOCTEXT("SlapShowcase", "ButtonLabel", "i"))
-					]
+					SlapShowcaseUi::Button(
+						NSLOCTEXT("SlapShowcase", "ButtonLabel", "i"), FCoreStyle::GetDefaultFontStyle("Bold", 15),
+						FOnClicked::CreateLambda([Weak] { if (Weak.IsValid()) Weak->ToggleOverlay(); return FReply::Handled(); }),
+						NSLOCTEXT("SlapShowcase", "ButtonTip", "Diagnostics"))
 				]
 			];
 		VC->AddViewportWidgetContent(ButtonWidget.ToSharedRef(), 1001);
@@ -290,7 +332,11 @@ FString USlapShowcaseSubsystem::BuildOverlayText() const
 	Out += Lat >= 0.f ? FString::Printf(TEXT("Inference latency        %.2f ms (mean of %d)\n"), Lat, LatencySamples.Num())
 	                  : FString(TEXT("Inference latency        n/a (no policy step yet)\n"));
 	Out += FString::Printf(TEXT("Curriculum stage         %s\n"), CurriculumStage.IsEmpty() ? TEXT("n/a") : *CurriculumStage);
-	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)"), IdleThreshold, IdleTime);
+	Out += FString::Printf(TEXT("Demo mode                after %.0f s idle (idle %.0f s)\n"), IdleThreshold, IdleTime);
+	const FString Bench = IsBenchmarkRunning() ? FString(TEXT("running..."))
+		: BenchmarkResult.IsEmpty() ? FString::Printf(TEXT("press %s or the button below"), *Cfg->BenchmarkKey.GetDisplayName().ToString())
+		: BenchmarkResult;
+	Out += FString::Printf(TEXT("Sim benchmark            %s"), *Bench);
 	return Out;
 }
 
@@ -321,17 +367,26 @@ void USlapShowcaseSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	const float Dt = static_cast<float>(FApp::GetDeltaTime());   // real time: pause and slow motion don't stop the idle clock
+	AdvanceClocks(Dt);
+	PollBenchmark(/*bWait*/ false);
+	if (!CaptureDir.IsEmpty()) TickCapture(Dt);
+}
+
+void USlapShowcaseSubsystem::AdvanceClocks(float Dt)
+{
+	const USlapShowcaseConfig* Cfg = USlapShowcaseSettings::GetShowcaseConfig();
 	if (Dt > 0.f)
 	{
 		const float Inst = 1.f / Dt;
 		Fps = Fps <= 0.f ? Inst : FMath::Lerp(Fps, Inst, 0.05f);
 	}
-	IdleTime += Dt;
-	if (!bDemoActive && IdleTime >= IdleThreshold) SetDemoActive(true);
+	// A hitch (shader warm-up, level load, a dragged window) is not the player being idle: long frames don't count.
+	const float IdleDt = (Dt > 0.f && Dt <= Cfg->MaxIdleFrameSeconds) ? Dt : 0.f;
+	IdleTime += IdleDt;
+	if (!bDemoActive && !bDemoSuspended && IdleTime >= IdleThreshold) SetDemoActive(true);
 	if (bDemoActive)
 	{
-		const USlapShowcaseConfig* Cfg = USlapShowcaseSettings::GetShowcaseConfig();
-		CameraTime += Dt;
+		CameraTime += IdleDt;
 		if (Cfg->DemoCameras.Num() > 0 && CameraTime >= Cfg->CameraDwellSeconds)
 		{
 			CameraTime = 0.f;
@@ -339,7 +394,82 @@ void USlapShowcaseSubsystem::Tick(float DeltaTime)
 			OnDemoCamera.Broadcast(Cfg->DemoCameras[CameraIndex], CameraIndex);
 		}
 	}
-	if (!CaptureDir.IsEmpty()) TickCapture(Dt);
+}
+
+// ------------------------------------------------------------------------------------------------------------
+// Sim benchmark: a copy of the running arena's MuJoCo model, stepped on the CPU off the game thread for a bounded time.
+
+FSlapSimBenchmark USlapShowcaseSubsystem::StepForBudget(const mjModel_* M, double BudgetSeconds, int32 MaxSteps)
+{
+	FSlapSimBenchmark B;
+	if (!M) return B;
+	mjData* D = mj_makeData(M);
+	if (!D) return B;
+	const double Dt = M->opt.timestep;
+	const int32 EpisodeSteps = Dt > 0.0 ? FMath::Max(1, FMath::RoundToInt(5.0 / Dt)) : 1000;   // 5 s "episodes"
+	constexpr int32 Batch = 100;
+	int32 SinceReset = 0;
+	mj_forward(M, D);
+	const double T0 = FPlatformTime::Seconds();
+	while (B.Steps < MaxSteps)
+	{
+		for (int32 i = 0; i < Batch; ++i) mj_step(M, D);
+		B.Steps += Batch;
+		SinceReset += Batch;
+		if (SinceReset >= EpisodeSteps)
+		{
+			mj_resetData(M, D);
+			mj_forward(M, D);
+			SinceReset = 0;
+		}
+		B.WallSeconds = FPlatformTime::Seconds() - T0;
+		if (B.WallSeconds >= BudgetSeconds) break;
+	}
+	B.SimSeconds = B.Steps * Dt;
+	mj_deleteData(D);
+	return B;
+}
+
+FString USlapShowcaseSubsystem::FormatBenchmark(const FSlapSimBenchmark& B)
+{
+	if (B.Steps <= 0) return TEXT("failed (no MuJoCo model loaded)");
+	return FString::Printf(TEXT("%.0f physics steps/s = %.0fx real time\n")
+		TEXT("                         CPU MuJoCo, 1 env, arena model, zero controls,\n")
+		TEXT("                         %d steps in %.2f s (training runs MuJoCo Warp on the GPU)"),
+		B.StepsPerSecond(), B.RealTimeFactor(), B.Steps, B.WallSeconds);
+}
+
+void USlapShowcaseSubsystem::StartBenchmark()
+{
+	if (IsBenchmarkRunning()) return;
+	AAMjManager* Manager = AAMjManager::GetManager();
+	const mjModel* Live = Manager && Manager->PhysicsEngine ? Manager->PhysicsEngine->GetModel() : nullptr;
+	mjModel* Copy = Live ? mj_copyModel(nullptr, Live) : nullptr;   // the worker owns its own copy
+	if (!Copy)
+	{
+		BenchmarkResult = FormatBenchmark(FSlapSimBenchmark());
+		return;
+	}
+	const double Budget = USlapShowcaseSettings::GetShowcaseConfig()->BenchmarkSeconds;
+	UE_LOG(LogSlapShowcase, Log, TEXT("Showcase: sim benchmark started (%.1f s budget, %d bodies)"), Budget, Copy->nbody);
+	BenchFuture = Async(EAsyncExecution::ThreadPool, [Copy, Budget]
+	{
+		const FSlapSimBenchmark B = StepForBudget(Copy, Budget);
+		mj_deleteModel(Copy);
+		return B;
+	});
+}
+
+bool USlapShowcaseSubsystem::PollBenchmark(bool bWait)
+{
+	if (!BenchFuture.IsValid()) return false;
+	if (!bWait && !BenchFuture.IsReady()) return false;
+	const FSlapSimBenchmark B = BenchFuture.Get();
+	BenchFuture.Reset();
+	BenchmarkResult = FormatBenchmark(B);
+	UE_LOG(LogSlapShowcase, Log, TEXT("Showcase: sim benchmark %d steps in %.2f s = %.0f steps/s (%.0fx real time)"),
+		B.Steps, B.WallSeconds, B.StepsPerSecond(), B.RealTimeFactor());
+	return true;
 }
 
 void USlapShowcaseSubsystem::Shot(const TCHAR* Name)
@@ -358,8 +488,8 @@ void USlapShowcaseSubsystem::TickCapture(float Dt)
 	const float DemoAt = IdleThreshold + 5.f;
 	switch (CaptureStep)
 	{
-	case 0: if (CaptureClock >= 8.f) { SetOverlayVisible(true); ++CaptureStep; } break;
-	case 1: if (CaptureClock >= 9.f) { Shot(TEXT("overlay_on")); ++CaptureStep; } break;
+	case 0: if (CaptureClock >= 8.f) { SetOverlayVisible(true); if (bCaptureBenchmark) StartBenchmark(); ++CaptureStep; } break;
+	case 1: if (CaptureClock >= 9.f && !IsBenchmarkRunning()) { Shot(TEXT("overlay_on")); ++CaptureStep; } break;
 	case 2: if (CaptureClock >= 11.f) { SetOverlayVisible(false); ++CaptureStep; } break;
 	case 3: if (CaptureClock >= 12.f) { Shot(TEXT("overlay_off")); ++CaptureStep; } break;
 	case 4: if (CaptureClock >= DemoAt && bDemoActive) { Shot(TEXT("demo_a")); ++CaptureStep; } break;

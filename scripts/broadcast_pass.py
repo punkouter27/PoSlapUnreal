@@ -2,12 +2,12 @@
 
   UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/broadcast_pass.py" -unattended
 
-/Game/FX/M_Jumbotron        the arena screen (ASlapHUD::Jumbo): an unlit panel showing the texture parameter "Screen"
+/Game/Project/Core/FX/M_Jumbotron        the arena screen (ASlapHUD::Jumbo): an unlit panel showing the texture parameter "Screen"
                             (a scene capture's render target) x Glow, with LED rows and a dark bezel
 M_<athlete>                 soft tissue (ASlapHUD::Jiggle): the cheek ripple's world-position offset gains two sprung
                             offsets - JiggleA / JiggleAV / JiggleAR (the belly: centre, offset in cm, radius) and
                             JiggleB / JiggleBV / JiggleBR (the jowl). The bones are untouched: only the skin moves.
-/Game/Cinematics/LS_*       Sequencer camera moves the director plays (ASlapHUD::SeqTick), each one a spawnable Cine
+/Game/Project/Core/Cinematics/LS_*       Sequencer camera moves the director plays (ASlapHUD::SeqTick), each one a spawnable Cine
                             Camera (ASlapHUD gives it the portrait filmback and its lens), keyed in the space of a transform origin the HUD supplies:
                             LS_Intro (a crane down across both aisles as the walk-in begins), LS_KO_Red / LS_KO_Blue (from
                             the fallen athlete up to a top shot), LS_Winner_Red / LS_Winner_Blue (a low hero push on
@@ -54,11 +54,11 @@ def custom(mat, code, inputs, x, y):
 
 
 def add_jumbotron():
-    path = "/Game/FX/M_Jumbotron"
+    path = "/Game/Project/Core/FX/M_Jumbotron"
     if ASSETS.does_asset_exist(path):
         log("M_Jumbotron: already there")
         return
-    mat = TOOLS.create_asset("M_Jumbotron", "/Game/FX", unreal.Material, unreal.MaterialFactoryNew())
+    mat = TOOLS.create_asset("M_Jumbotron", "/Game/Project/Core/FX", unreal.Material, unreal.MaterialFactoryNew())
     mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     tex = MEL.create_material_expression(mat, unreal.MaterialExpressionTextureSampleParameter2D, -700, 0)
     tex.set_editor_property("parameter_name", "Screen")
@@ -134,7 +134,7 @@ def add_jiggle(skin):
 
 def athlete_skins():
     out = []
-    for asset in ASSETS.list_assets("/Game/Athletes", recursive=True):
+    for asset in ASSETS.list_assets("/Game/Project/Agents/Athletes", recursive=True):
         path = asset.split(".")[0]
         base = path.rsplit("/", 1)[-1]
         if base.startswith("M_") and ASSETS.does_asset_exist(path.rsplit("/", 1)[0] + "/SK_" + base[2:]):
@@ -153,13 +153,15 @@ def look(frm, to):
 
 def add_shot(name, seconds, focal, keys):  # focal: for the log; SlapHUDStage.cpp SeqFocal holds the lens
     """keys: [(t seconds, camera position, look-at point)], cm in the transform origin's space."""
-    path = f"/Game/Cinematics/{name}"
+    path = f"/Game/Project/Core/Cinematics/{name}"
     if ASSETS.does_asset_exist(path):
         if os.environ.get("SLAP_SEQ_REBUILD", "0") != "1":
             log(f"{name}: already there")
             return
         ASSETS.delete_asset(path)
-    seq = TOOLS.create_asset(name, "/Game/Cinematics", unreal.LevelSequence, unreal.LevelSequenceFactoryNew())
+    seq = TOOLS.create_asset(
+        name, "/Game/Project/Core/Cinematics", unreal.LevelSequence, unreal.LevelSequenceFactoryNew()
+    )
     end = int(round(seconds * FPS))
     seq.set_display_rate(unreal.FrameRate(FPS, 1))
     seq.set_playback_start(0)

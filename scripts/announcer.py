@@ -1,7 +1,7 @@
 """The ring announcer: every line the game calls out, as placeholder WAVs until real recordings exist.
 
     training/.venv/Scripts/python.exe scripts/announcer.py        (Windows: uses the built-in speech engine)
-    (then scripts/voice_import.py imports them to /Game/Audio/Announcer/S_A_<key>)
+    (then scripts/voice_import.py imports them to /Game/Project/Core/Audio/Announcer/S_A_<key>)
 
 Writes Content/Art/Exports/Audio/Announcer/<key>.wav (32 kHz mono). Each line is spoken by Windows' own speech engine
 (System.Speech, the "Microsoft David" voice, SSML for the announcer's slow, lifted delivery), then put through an arena

@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include <atomic>
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "SlapMuJoCo.h"
 #include "SlapReferee.h"
 #include "SlapShared.gen.h"
 #include "SlapController.generated.h"

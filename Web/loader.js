@@ -19,6 +19,9 @@ export const MATCHUPS = {
 // the key of a pairing: each corner's character initial, red first ("gk" = Grandpa red, Kim blue); null = not on this page
 export const matchupKey = (red, blue) => Object.keys(MATCHUPS).find(k => !MATCHUPS[k].dir && MATCHUPS[k].corners[0].char === red && MATCHUPS[k].corners[1].char === blue) ?? null;
 
+// inference latency of the last 60 decisions, both corners (the overlay shows the mean)
+export const TELEMETRY = { inferMs: [] };
+
 export async function loadMatch(mj, ort, get, emit, key = "gg") {
   const mu = MATCHUPS[key];
   const m = mj.MjModel.from_xml_string(await get(`training/models/${mu.dir ?? ""}${mu.xml}`, "text"));
@@ -32,8 +35,19 @@ export async function loadMatch(mj, ort, get, emit, key = "gg") {
     const n = s.inputNames[0], out = s.outputNames[0];
     // each brain reads its own width (a shipped 136 brain: no foot contacts, no low-pass; docs/BRAIN_IO.md)
     const nIn = Number(s.inputMetadata?.[0]?.shape?.[1]) || 136;
-    const policy = async obs => (await s.run({ [n]: new ort.Tensor("float32", obs.subarray(0, nIn), [1, nIn]) }))[out].data;
+    // the diagnostics overlay (TAB): each decision's inference time and the critic's value (the brains export it as
+    // "value", the reward-to-go estimate Unreal's overlay shows too); display only, the actions are untouched
+    const policy = async obs => {
+      const t0 = performance.now();
+      const r = await s.run({ [n]: new ort.Tensor("float32", obs.subarray(0, nIn), [1, nIn]) });
+      policy.lastMs = performance.now() - t0;
+      if (r.value) policy.lastValue = r.value.data[0];
+      TELEMETRY.inferMs.push(policy.lastMs);
+      if (TELEMETRY.inferMs.length > 60) TELEMETRY.inferMs.shift();
+      return r[out].data;
+    };
     policy.nIn = Math.min(nIn, OBS);
+    policy.brain = c.brain;
     return { ...c, fp: fps[i], card: await get(`training/characters/${c.char}.json`, "json"), policy };
   }));
   return { m, d, matchup: mu, match: new Match(mj, m, d, corners, emit, mu.defenderRole) };

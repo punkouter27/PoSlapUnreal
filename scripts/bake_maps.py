@@ -6,7 +6,7 @@ materials. Idempotent.
 Athletes (UV0, the scan's own layout): Content/Art/Exports/<Name>_tex/T_<Name>_AO.png on M_<Name>'s Ambient Occlusion
 input; T_<Name>_Cavity.png (0.5 = flat, below it a crease) darkens the base colour by up to 12 % and roughens it by up
 to 0.1 in the creases. Arena props (BakeUV = UV1): Content/Art/Exports/Textures/Bake/T_<Prop>_AO / _Cavity on a copy of
-the glTF master, /Game/Arena/M_ArenaBaked (BakeAO, BakeCavity texture parameters sampled on UV1), one material instance
+the glTF master, /Game/Project/Environments/Arena/M_ArenaBaked (BakeAO, BakeCavity texture parameters sampled on UV1), one material instance
 per prop and slot (MI_<material>_<Prop>, the original's parameters kept) on the prop's mesh. The crowd keeps
 M_CrowdLive (its own copy of the master). Cavity is desktop only (a Feature Level Switch passes ES3.1 through); a phone
 keeps the AO. The phone arena (Arena_Mobile.glb) is untouched: palette atlas, no BakeUV.
@@ -21,7 +21,7 @@ PROJ = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 ASSETS = unreal.EditorAssetLibrary
 MEL = unreal.MaterialEditingLibrary
 TOOLS = unreal.AssetToolsHelpers.get_asset_tools()
-ENV = "/Game/Arena/Env/Arena"
+ENV = "/Game/Project/Environments/Arena/Env/Arena"
 TAG = "bake_maps"  # the description on every node this script adds: a material that has one is done
 
 
@@ -86,7 +86,7 @@ def done(mat):
 
 
 def athlete(name):
-    folder = f"/Game/Athletes/{name}"
+    folder = f"/Game/Project/Agents/Athletes/{name}"
     skin = ASSETS.load_asset(f"{folder}/M_{name}") if ASSETS.does_asset_exist(f"{folder}/M_{name}") else None
     if skin is None:
         return
@@ -152,11 +152,11 @@ def master_of(mi):
 
 
 def baked_master(template):
-    """/Game/Arena/M_ArenaBaked: the glTF master with BakeAO x its occlusion, BakeCavity on its base colour (UV1)."""
-    path = "/Game/Arena/M_ArenaBaked"
+    """/Game/Project/Environments/Arena/M_ArenaBaked: the glTF master with BakeAO x its occlusion, BakeCavity on its base colour (UV1)."""
+    path = "/Game/Project/Environments/Arena/M_ArenaBaked"
     if ASSETS.does_asset_exist(path):
         return ASSETS.load_asset(path)
-    mat = TOOLS.duplicate_asset("M_ArenaBaked", "/Game/Arena", template)
+    mat = TOOLS.duplicate_asset("M_ArenaBaked", "/Game/Project/Environments/Arena", template)
     uv = node(mat, unreal.MaterialExpressionTextureCoordinate, -1600, 2400)
     uv.set_editor_property("coordinate_index", 1)
     white = unreal.load_asset("/Engine/EngineResources/WhiteSquareTexture")

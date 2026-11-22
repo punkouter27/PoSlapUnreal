@@ -133,7 +133,7 @@ void ASlapHUD::FindBrainsAndLevels()
 		F.ClassPaths.Add(Class->GetClassPathName());
 		AR.GetAssets(F, Out);
 	};
-	Find(TEXT("/Game/Brains"), UNNEModelData::StaticClass(), true, Brains);
+	Find(TEXT("/Game/Project/RL_Policies/Brains"), UNNEModelData::StaticClass(), true, Brains);
 	Brains.RemoveAll([](const FAssetData& B) { return B.AssetName.ToString().EndsWith(TEXT("_S2")); });	// walking brains: the walk-in's, not a match brain
 	Brains.Sort([](const FAssetData& A, const FAssetData& B) { return A.AssetName.LexicalLess(B.AssetName); });
 	// only the roster's brains are offered (training/roster.json); a build without training/ (Android) keeps every brain
@@ -145,7 +145,7 @@ void ASlapHUD::FindBrainsAndLevels()
 		for (const TSharedPtr<FJsonValue>& R : Roster) Keep.Add(FPaths::GetBaseFilename(R->AsObject()->GetStringField(TEXT("brain"))));
 		Brains.RemoveAll([&Keep](const FAssetData& B) { return !Keep.Contains(B.AssetName.ToString()); });
 	}
-	Find(TEXT("/Game/Levels"), UWorld::StaticClass(), false, Pairings);
+	Find(TEXT("/Game/Project/Environments/Levels"), UWorld::StaticClass(), false, Pairings);
 	Pairings.RemoveAll([](const FAssetData& A) { return !A.AssetName.ToString().StartsWith(TEXT("L_Arena")); });
 	// The phone arena (scripts/arena_mobile_level.py: Arena_Mobile.glb, one palette atlas, a lighter crowd) is the same
 	// level under "<level>_Mobile": a phone lists only those, a desktop only the full ones. A phone build without them

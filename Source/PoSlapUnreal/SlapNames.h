@@ -5,7 +5,7 @@
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "MuJoCo/Utils/MjUtils.h"
+#include "SlapMuJoCo.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 

@@ -361,7 +361,7 @@ void ASlapHUD::RoundTripTest(const FSlapHud& H)
 
 void ASlapHUD::PairTest(const FSlapHud& H)
 {
-	// -SlapPairTest: from /Game/Levels/L_Arena open the next pairing at 3 s, then log what loaded there and quit
+	// -SlapPairTest: from /Game/Project/Environments/Levels/L_Arena open the next pairing at 3 s, then log what loaded there and quit
 	if (H.Match <= 0 || GetWorld()->GetTimeSeconds() < 3.0 || !Pairings.IsValidIndex(HerePairing)) return;
 	bPairTest = false;
 	if (Pairings[HerePairing].AssetName == TEXT("L_Arena")) Travel((HerePairing + 1) % Pairings.Num());

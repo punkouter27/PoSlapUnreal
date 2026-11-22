@@ -63,10 +63,18 @@ if ($Unreal) {
     $Editor = "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat"
     $Proj = Join-Path $Root "PoSlapUnreal.uproject"
     Step "Editor build" { & $Editor PoSlapUnrealEditor Win64 Development -Project="$Proj" -WaitMutex -NoHotReloadFromIDE }
+    # The HUD's checks run from DrawHUD: they need a real renderer (under -nullrhi nothing draws and the test never starts).
     Step "The UI test" {
-        & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" `
-            -game -SlapUiTest -nullrhi -unattended -nosplash 2>&1 |
-            Select-String -Pattern "LogSlap" | Select-Object -Last 40
+        $log = & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" `
+            -game -windowed -ResX=1600 -ResY=900 -SlapUiTest -unattended -nosplash -stdout 2>&1 | Out-String
+        $log -split "`n" | Select-String -Pattern "LogSlap" | Select-Object -Last 40
+        $global:LASTEXITCODE = if ($log -match "UI test PASS") { 0 } else { 1 }
+    }
+    Step "Showcase automation tests" {
+        $log = & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" `
+            "-ExecCmds=Automation RunTests PoSlap.Showcase;Quit" -unattended -nullrhi -nosplash -stdout 2>&1 | Out-String
+        $log -split "`n" | Select-String -Pattern "Test Completed" | Select-Object -Last 10
+        $global:LASTEXITCODE = if ($log -match "Result=\{Fail\}" -or $log -notmatch "Result=\{Success\}") { 1 } else { 0 }
     }
 }
 

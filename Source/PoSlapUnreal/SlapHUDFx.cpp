@@ -16,8 +16,7 @@
 #include "HAL/PlatformMisc.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "SlapMuJoCo.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Scalability.h"
@@ -90,8 +89,9 @@ void ASlapHUD::Cues(const FSlapHud& H)
 		if (H.bStruck) bNearMiss = !H.bStagger;
 		// the per-strike instant replay, in the referee's hold (a KO has its own, longer one; a replay already running stays)
 		const bool bDue = bPass && bStrikeReplays && H.bStruck && StrikeAt > 0.0 && KOAt < StrikeAt && H.KOd < 0 && Now - StrikeAt < 7.5;
-		ReplayDue += bDue;
-		if (bDue && ReplayAt < 0.0 && Now >= ReplayEnd) StrikeReplay(Now);
+		const bool bFree = ReplayAt < 0.0 && Now >= ReplayEnd;	// a replay already running (a tap's, a KO's) keeps the screen
+		ReplayDue += bDue && bFree;	// what the UI test expects a strike replay for
+		if (bDue && bFree) StrikeReplay(Now);
 	}
 	if (SweatAt >= 0.0 && Now >= SweatAt && Body[Struck].IsValid())	// sweat off the far side, as hard as the head snapped
 	{

@@ -1,5 +1,5 @@
 """Brain weights for Android: UE 5.8 has no ONNX runtime there, so USlapController rebuilds each brain for NNE's basic
-CPU runtime from these files (normalise, clip, actor and critic ELU MLPs). One file per /Game/Brains asset:
+CPU runtime from these files (normalise, clip, actor and critic ELU MLPs). One file per /Game/Project/RL_Policies/Brains asset:
 
     .venv/Scripts/python.exe export_cpu_brains.py   -> Content/Data/Brains/<asset>.bin
 
@@ -82,7 +82,7 @@ def main():
 
     OUT.mkdir(parents=True, exist_ok=True)
     names = sorted(
-        p.stem for p in (ROOT / "Content/Brains").glob("*.uasset") if p.stem != "random_brain"
+        p.stem for p in (ROOT / "Content/Project/RL_Policies/Brains").glob("*.uasset") if p.stem != "random_brain"
     )  # B6's load test
     for name in names:
         src = next(

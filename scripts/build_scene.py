@@ -2,8 +2,8 @@
 
     UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs path>/Scripts/build_scene.py" -unattended
 
-Pairing (roster): SLAP_RED / SLAP_BLUE = character card names (default grandpa / grandpa -> /Game/Levels/L_Arena; any other
-pairing -> /Game/Levels/L_Arena_<red>_vs_<blue>, arena model training/models/<red>_vs_<blue>_arena.xml from build_body.py
+Pairing (roster): SLAP_RED / SLAP_BLUE = character card names (default grandpa / grandpa -> /Game/Project/Environments/Levels/L_Arena; any other
+pairing -> /Game/Project/Environments/Levels/L_Arena_<red>_vs_<blue>, arena model training/models/<red>_vs_<blue>_arena.xml from build_body.py
 --blue). Brains: SLAP_BRAIN (red) / SLAP_BLUE_BRAIN (blue), an .onnx path to import or a /Game/... asset; blue defaults to red's.
 An athlete's mesh, textures and skin are imported once (Content/Art/Exports/<Name>_rigged.fbx, <Name>_tex/); SLAP_REIMPORT=1 redoes them.
 
@@ -46,11 +46,11 @@ def import_file(src, dest, options=None, name=None):
 RED, BLUE = os.environ.get("SLAP_RED", "grandpa"), os.environ.get("SLAP_BLUE", "grandpa")
 PAIR = f"{RED}_vs_{BLUE}"
 # SLAP_PHYSICS=<n> (n > 1): the arena and fingerprints from training/models/v<n>/, into their own level, Blueprint and
-# folder (/Game/Levels/L_Arena_<pair>_v<n>, /Game/Arena/v<n>/), so the shipped physics-1 levels stay as they are
+# folder (/Game/Project/Environments/Levels/L_Arena_<pair>_v<n>, /Game/Project/Environments/Arena/v<n>/), so the shipped physics-1 levels stay as they are
 PHYS = int(os.environ.get("SLAP_PHYSICS", "1"))
 MODELS = "training/models/" if PHYS == 1 else f"training/models/v{PHYS}/"
 SUFFIX = "" if PHYS == 1 else f"_v{PHYS}"
-ARENA_DIR = "/Game/Arena" if PHYS == 1 else f"/Game/Arena/v{PHYS}"
+ARENA_DIR = "/Game/Project/Environments/Arena" if PHYS == 1 else f"/Game/Project/Environments/Arena/v{PHYS}"
 REIMPORT = os.environ.get("SLAP_REIMPORT") == "1"
 fbx = unreal.FbxImportUI()
 for k, v in (
@@ -76,9 +76,9 @@ def athlete(card):
     """The skinned mesh and its skin material (scan PBR textures + cheek ripple + wear), imported once per character."""
     Name = card.capitalize()
     folder, mesh_path, skin_path = (
-        f"/Game/Athletes/{Name}",
-        f"/Game/Athletes/{Name}/SK_{Name}",
-        f"/Game/Athletes/{Name}/M_{Name}",
+        f"/Game/Project/Agents/Athletes/{Name}",
+        f"/Game/Project/Agents/Athletes/{Name}/SK_{Name}",
+        f"/Game/Project/Agents/Athletes/{Name}/M_{Name}",
     )
     if not REIMPORT and ASSETS.does_asset_exist(mesh_path) and ASSETS.does_asset_exist(skin_path):
         return ASSETS.load_asset(mesh_path), ASSETS.load_asset(skin_path)
@@ -195,7 +195,11 @@ def athlete(card):
 
 
 def brain_asset(spec):
-    return ASSETS.load_asset(spec) if spec.startswith("/Game/") else import_file(spec, "/Game/Brains")[0]
+    return (
+        ASSETS.load_asset(spec)
+        if spec.startswith("/Game/")
+        else import_file(spec, "/Game/Project/RL_Policies/Brains")[0]
+    )
 
 
 brain = brain_asset(
@@ -205,7 +209,11 @@ blue_brain = brain_asset(os.environ["SLAP_BLUE_BRAIN"]) if os.environ.get("SLAP_
 
 # ---- level FIRST: wipe and save it so the old arena Blueprint has no references left (URLab refuses to import
 # over a Blueprint the open level still instantiates, and delete_asset fails on a referenced asset)
-LEVEL = "/Game/Levels/L_Arena" if PAIR == "grandpa_vs_grandpa" and PHYS == 1 else f"/Game/Levels/L_Arena_{PAIR}{SUFFIX}"
+LEVEL = (
+    "/Game/Project/Environments/Levels/L_Arena"
+    if PAIR == "grandpa_vs_grandpa" and PHYS == 1
+    else f"/Game/Project/Environments/Levels/L_Arena_{PAIR}{SUFFIX}"
+)
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 if ASSETS.does_asset_exist(LEVEL):
@@ -261,10 +269,10 @@ body = {RED: athlete(RED)}
 body[BLUE] = body.get(BLUE) or athlete(BLUE)
 
 # team overlay: translucent fresnel rim in the team colour (one mesh, two tints)
-mat_path = "/Game/Athletes/M_TeamOverlay"
+mat_path = "/Game/Project/Agents/Athletes/M_TeamOverlay"
 if ASSETS.does_asset_exist(mat_path):  # rebuilt each run so its flags stay current
     ASSETS.delete_asset(mat_path)
-m = tools.create_asset("M_TeamOverlay", "/Game/Athletes", unreal.Material, unreal.MaterialFactoryNew())
+m = tools.create_asset("M_TeamOverlay", "/Game/Project/Agents/Athletes", unreal.Material, unreal.MaterialFactoryNew())
 m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
 m.set_editor_property("used_with_skeletal_mesh", True)
 m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
@@ -280,13 +288,13 @@ MEL.recompile_material(m)
 ASSETS.save_loaded_asset(m)
 overlay = {}
 for team, rgb in (("Red", (0.9, 0.08, 0.05)), ("Blue", (0.05, 0.2, 0.9))):
-    path = f"/Game/Athletes/MI_Team{team}"
+    path = f"/Game/Project/Agents/Athletes/MI_Team{team}"
     mi = (
         ASSETS.load_asset(path)
         if ASSETS.does_asset_exist(path)
         else tools.create_asset(
             f"MI_Team{team}",
-            "/Game/Athletes",
+            "/Game/Project/Agents/Athletes",
             unreal.MaterialInstanceConstant,
             unreal.MaterialInstanceConstantFactoryNew(),
         )

@@ -6,7 +6,7 @@
 
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
-#include "MuJoCo/Core/AMjManager.h"
+#include "SlapMuJoCo.h"
 #include "SlapControllerInternal.h"
 
 DEFINE_LOG_CATEGORY(LogSlap);

@@ -267,7 +267,7 @@ private:
 	FTimerHandle TourneyQuitTimer;
 
 	// ---- commentary (SlapHUDCommentary.cpp; user 2026-11-09: make it clear what is happening, who wins, when it is over):
-	// the ring announcer (scripts/announcer.py -> /Game/Audio/Announcer/S_A_<key>, one line at a time), big centre captions
+	// the ring announcer (scripts/announcer.py -> /Game/Project/Core/Audio/Announcer/S_A_<key>, one line at a time), big centre captions
 	// (ROUND 1, KNOCKDOWN, KNOCKOUT, the winner), the turn banner, play-by-play lines, danger calls, the judges' running
 	// score after each round, the plain-language result and the result card's summary. Display only.
 	void Announce(const FString& LineKey);			// queue a line (a missing one is logged once and skipped)
@@ -411,9 +411,9 @@ private:
 	int32 RosterSel = 0;
 	bool bMenu = false, bShowTelemetry = false, bShowCommentary = true, bShowDebug = false;	// COM: the play-by-play, on by default (2026-11-09)
 	bool bShowScience = false, bShowXRay = false, bSlowMo = true, bLive = false;
-	TArray<FAssetData> Brains;	// /Game/Brains in training/roster.json; a corner may pick those made for its character
+	TArray<FAssetData> Brains;	// /Game/Project/RL_Policies/Brains in training/roster.json; a corner may pick those made for its character
 	int32 BrainPick[2] = { INDEX_NONE, INDEX_NONE };	// index into Brains; none = keep the corner's current brain
-	TArray<FAssetData> Pairings;	// /Game/Levels/L_Arena*: one level per pairing
+	TArray<FAssetData> Pairings;	// /Game/Project/Environments/Levels/L_Arena*: one level per pairing
 	int32 Pairing = INDEX_NONE, HerePairing = INDEX_NONE;
 	bool bPairTest = false;
 	enum EHit { HitMenu, HitTabMatch, HitTabBrains, HitTabView, HitTelemetry, HitReplay, HitScrim, HitClose, HitRedNext, HitStart, HitGrip, HitPad,
@@ -593,7 +593,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UReverbEffect> CloseVerb;	// ringside (tight shots)
 	// sound pass 2 (scripts/broadcast_audio.py, as Web/audio.js): the hard stage deck outside the mat, the PA before the bout,
 	// each athlete's own grunt and breath (S_Grunt_<card>, S_Breath_<card>; Grandpa's breath is S_Breath), the arena's
-	// impulse response as a convolution reverb (/Game/Audio/RV_ArenaIR, desktop: a phone keeps the two reverbs)
+	// impulse response as a convolution reverb (/Game/Project/Core/Audio/RV_ArenaIR, desktop: a phone keeps the two reverbs)
 	UPROPERTY(Transient) TObjectPtr<USoundBase> StepDeck;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> PAChime;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> ImpactSynth;	// MS_ImpactSynth (scripts/broadcast_metasound.py): Energy, Pitch, Bright, SkinDecay, BodyDecay
@@ -601,7 +601,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundSubmixBase> ArenaIR;
 	FString BreathCard[2];	// the card each breathing loop is voiced for
 	USoundBase* Voice(const FString& Kind, const FString& Card);
-	// each character's voice pack (scripts/voice_pack.py -> /Game/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
+	// each character's voice pack (scripts/voice_pack.py -> /Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
 	// four emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
 	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless).
 	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult };

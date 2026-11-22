@@ -95,7 +95,7 @@ USoundBase* ASlapHUD::Voice(const FString& Kind, const FString& Card)
 	// S_Grunt_<card>, S_Breath_<card> (Grandpa's breath is the original S_Breath); looked up once per card, a miss is kept
 	const FString VoiceKey = Kind + TEXT("_") + Card;
 	if (const TObjectPtr<USoundBase>* Found = Voices.Find(VoiceKey)) return Found->Get();
-	USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Audio"), *(TEXT("S_") + VoiceKey));
+	USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), *(TEXT("S_") + VoiceKey));
 	if (!Snd && Kind == TEXT("Breath")) Snd = BreathLoop;
 	Voices.Add(VoiceKey, Snd);
 	SLAP_HUD_LOG(1, TEXT("SlapHUD: voice %s -> %s"), *VoiceKey, Snd ? *Snd->GetName() : TEXT("none"));
@@ -117,7 +117,7 @@ void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
 	if (const TObjectPtr<USoundBase>* Found = EmoteSounds.Find(Name)) Snd = Found->Get();
 	else
 	{
-		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Audio/Voice/") + Card), *Name);
+		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Project/Core/Audio/Voice/") + Card), *Name);
 		EmoteSounds.Add(Name, Snd);
 		if (!Snd) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voice %s (scripts/voice_pack.py, then voice_import.py)"), *Name);
 	}

@@ -89,7 +89,7 @@ void ASlapHUD::ReelWatch(const FSlapHud& H, double Now)
 	const FString Base = ReelDir() / FString::Printf(TEXT("%s_%s_vs_%s_%s"), *FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")), *H.Card[0], *H.Card[1], *ReelWhy);
 	if (!R.Save(Base + TEXT(".reel"))) return;
 	const FString Level = UGameplayStatics::GetCurrentLevelName(this, true);
-	FFileHelper::SaveStringToFile(FString::Printf(TEXT("{\"level\": \"/Game/Levels/%s\", \"red\": \"%s\", \"blue\": \"%s\", \"why\": \"%s\", \"striker\": \"%s\", \"speed\": %.2f, \"steps\": %d, \"touch\": %d, \"timestep\": %.4f}\n"),
+	FFileHelper::SaveStringToFile(FString::Printf(TEXT("{\"level\": \"/Game/Project/Environments/Levels/%s\", \"red\": \"%s\", \"blue\": \"%s\", \"why\": \"%s\", \"striker\": \"%s\", \"speed\": %.2f, \"steps\": %d, \"touch\": %d, \"timestep\": %.4f}\n"),
 		*Level, *H.Card[0], *H.Card[1], *ReelWhy, R.Striker ? TEXT("blue") : TEXT("red"), ReelSpeed, R.NumSteps, R.Touch, R.Timestep), *(Base + TEXT(".json")));
 	++ReelsSaved;
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: reel saved: %s.reel (%s, %.1f m/s, %d steps, touch at %d)"), *Base, *ReelWhy, ReelSpeed, R.NumSteps, R.Touch);

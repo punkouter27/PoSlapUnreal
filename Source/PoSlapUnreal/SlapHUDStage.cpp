@@ -6,7 +6,7 @@
 //                   fallen from above after a KO, the winner. HIGH tier and up, desktop only (-SlapJumbo=0: off).
 //   3D titles       Text3D letters in the arena: each fighter's name over his corner on the walk-in and for the winner,
 //                   and the big caption (ROUND 1, KNOCKDOWN, KNOCKOUT) standing behind the podium (-SlapTitles=0: off).
-//   Sequencer       authored camera moves (scripts/broadcast_pass.py -> /Game/Cinematics/LS_*): a crane down as the
+//   Sequencer       authored camera moves (scripts/broadcast_pass.py -> /Game/Project/Core/Cinematics/LS_*): a crane down as the
 //                   walk-in begins, a crane up from the fallen on a KO, a low hero push on the winner. AUTO camera only
 //                   (-SlapSeq=0: off). The spawned Cine Camera takes the level camera's grade and is focused here.
 //   soft tissue     the belly and the jowl lag the bones on a damped spring and are drawn as a world-position offset in
@@ -74,7 +74,7 @@ void ASlapHUD::BuildStage()
 	AActor* Host = StageActor;
 
 	// ---- the jumbotron: the panel, its render target and the second camera
-	UMaterialInterface* Mat = Load<UMaterialInterface>(TEXT("/Game/FX/M_Jumbotron.M_Jumbotron"));
+	UMaterialInterface* Mat = Load<UMaterialInterface>(TEXT("/Game/Project/Core/FX/M_Jumbotron.M_Jumbotron"));
 	UStaticMesh* Plane = Load<UStaticMesh>(TEXT("/Engine/BasicShapes/Plane.Plane"));
 	if (bDesktop && Flag(TEXT("SlapJumbo=")) && Mat && Plane)
 	{
@@ -135,7 +135,7 @@ void ASlapHUD::BuildStage()
 	{
 		for (int32 k = 0; k < NumSeq; ++k)
 		{
-			ULevelSequence* Seq = LoadNamed<ULevelSequence>(TEXT("/Game/Cinematics"), SeqName[k]);
+			ULevelSequence* Seq = LoadNamed<ULevelSequence>(TEXT("/Game/Project/Core/Cinematics"), SeqName[k]);
 			if (!Seq) continue;
 			ALevelSequenceActor* Actor = nullptr;
 			ULevelSequencePlayer* Player = ULevelSequencePlayer::CreateLevelSequencePlayer(this, Seq, FMovieSceneSequencePlaybackSettings(), Actor);

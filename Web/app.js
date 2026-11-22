@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
-import { loadMatch, MATCHUPS, matchupKey } from "./loader.js";
+import { loadMatch, MATCHUPS, matchupKey, TELEMETRY } from "./loader.js";
 import { OBS } from "./sim.js";
 import { loadArena, loadAthlete, clipPush } from "./art.js";
 import { Look, TIERS } from "./fx.js";
@@ -790,6 +790,89 @@ addEventListener("keydown", e => {
   else if (e.key === "Escape") { if (replay.on) stopReplay(); else if (sheetOpen) toggleSheet(false); else if (S.phase !== "menu") showMenu(); }
 });
 
+// ---- diagnostics (TAB / ≡): fps, inference latency, the critic's reward estimate, the curriculum stage --------------
+const STAGE_TAG = /_(L\d|S\d|G\d)(?:_|$)/;   // the ladder stage in a brain's name (grandpa_L4 -> L4); "final" brains have none
+function renderDiagnostics() {
+  if (!game || LIVE) { $("diagLine").textContent = LIVE ? "diagnostics: the live feed runs in Unreal" : ""; return; }
+  const ms = TELEMETRY.inferMs, lat = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : null;
+  const val = game.match.sides.map(x => x.policy.lastValue).map(v => Number.isFinite(v) ? v.toFixed(1) : "–");
+  $("diagLine").textContent = `${fpsNow} fps · infer ${lat === null ? "–" : lat.toFixed(2)} ms (mean of ${ms.length}) · reward est. R ${val[0]} B ${val[1]}`;
+  $("stageLine").textContent = "stage " + game.match.sides.map(x => {
+    const b = x.policy.brain || "?", st = (b.match(STAGE_TAG) || [])[1];
+    return `${x.name === "red" ? "R" : "B"} ${st ?? "–"} (${b})`;
+  }).join(" · ");
+}
+// the training-speed benchmark: this arena's MuJoCo model stepped in the browser (WASM, one env, zero controls, no
+// brain) for BENCH_S of stepping time, reset every 5 simulated seconds like an episode. Training itself runs MuJoCo
+// Warp on the GPU with thousands of envs, so the number is labelled as this browser's physics speed, not the trainer's.
+const BENCH_S = 1.5;
+let benchRunning = false;
+async function runBenchmark() {
+  if (benchRunning || !game) return;
+  benchRunning = true; $("benchBtn").disabled = true; $("benchLine").textContent = "benchmark: running…";
+  const { mj, m } = game.match, d = new mj.MjData(m), episode = Math.round(5 / m.opt.timestep);
+  let steps = 0, busyS = 0;
+  try {
+    mj.mj_forward(m, d);
+    while (busyS < BENCH_S) {
+      const t0 = performance.now();
+      for (let i = 0; i < 100; i++) mj.mj_step(m, d);
+      busyS += (performance.now() - t0) / 1000; steps += 100;
+      if (steps % episode === 0) { mj.mj_resetData(m, d); mj.mj_forward(m, d); }
+      await new Promise(r => setTimeout(r, 0));   // the page keeps drawing between batches
+    }
+    const sps = steps / busyS;
+    $("benchLine").textContent = `benchmark: ${Math.round(sps)} physics steps/s = ${(sps * m.opt.timestep).toFixed(1)}x real time (MuJoCo WASM, 1 env, this browser; training runs MuJoCo Warp on the GPU)`;
+    $("benchLine").title = `${steps} steps in ${busyS.toFixed(2)} s of stepping`;
+  } catch (err) {
+    $("benchLine").textContent = `benchmark failed: ${err.message}`;
+  } finally {
+    d.delete(); benchRunning = false; $("benchBtn").disabled = false;
+  }
+}
+$("benchBtn").onclick = runBenchmark;
+
+// ---- demo mode (attract): after IDLE_S without input the HUD steps aside, the brains play a match on their own and
+// the showcase cameras cycle every DEMO_DWELL_S; any input brings the HUD back (and the menu, if the demo started the
+// match). Frames longer than MAX_IDLE_FRAME_S (shader warm-up, a background tab) do not count as idle time.
+const IDLE_S = +QS.get("idle") || 30, DEMO_DWELL_S = 7, MAX_IDLE_FRAME_S = 0.25;
+const DEMO_CAMS = ["wide", "side", "close", "auto"];
+const demo = { idle: 0, on: false, cam: 0, camT: 0, ownMatch: false, prevCam: "auto" };
+window.__poslapDemo = demo;   // the browser check reads it
+function demoMatch() {   // the pairing this page loaded, from the top
+  game.matchup.corners.forEach((c, i) => { const s = ROSTER_SLOTS.findIndex(x => x.id === c.char); if (s >= 0) selFighters[i] = s; });
+  startPractice();
+}
+function startDemo() {
+  demo.on = true; demo.cam = 0; demo.camT = 0; demo.prevCam = director.mode;
+  demo.ownMatch = S.phase !== "gameplay";
+  document.body.classList.add("demo");
+  if (sheetOpen) toggleSheet(false);
+  director.mode = DEMO_CAMS[0];
+  dbg("demo on");
+}
+function stopDemo() {
+  demo.on = false;
+  document.body.classList.remove("demo");
+  director.mode = demo.prevCam;
+  if (demo.ownMatch && S.phase !== "menu") showMenu();
+  dbg("demo off");
+}
+function demoInput() { demo.idle = 0; if (demo.on) stopDemo(); }
+function demoTick(frameS) {
+  if (LIVE || !game) return;
+  if (navigator.getGamepads) for (const g of navigator.getGamepads()) if (g && g.buttons.some(b => b.pressed)) demoInput();
+  const idleDt = frameS > 0 && frameS <= MAX_IDLE_FRAME_S ? frameS : 0;
+  demo.idle += idleDt;
+  if (!demo.on && demo.idle >= IDLE_S) startDemo();
+  if (!demo.on) return;
+  if (S.phase === "menu") demoMatch();   // the first match, and the next one after each result
+  demo.camT += idleDt;
+  if (demo.camT >= DEMO_DWELL_S) { demo.camT = 0; demo.cam = (demo.cam + 1) % DEMO_CAMS.length; director.mode = DEMO_CAMS[demo.cam]; }
+}
+for (const ev of ["keydown", "pointerdown", "wheel", "touchstart"]) addEventListener(ev, demoInput, { capture: true, passive: true });
+addEventListener("pointermove", e => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) demoInput(); }, { capture: true, passive: true });
+
 // ---- the menu: menu -> gameplay -> result -> reset ---------------------------------------------------------------
 const ROSTER_SLOTS = [
   { id: "grandpa", display: "GRANDPA" },
@@ -889,7 +972,7 @@ function initMenu() {
     if (s >= 0) selFighters[i] = s;
   });
   renderMenu();
-  $("menuFoot").textContent = `build ${BUILD} · ${MATCHUPS[MATCHUP].name}`;
+  $("menuFoot").textContent = MATCHUPS[MATCHUP].name;   // the build stamp is the page footer's, shown once
 }
 
 // ---- the layout: the dock's height is a CSS variable, so the HUD never sits under it -------------------------
@@ -1258,7 +1341,9 @@ async function advance(n) {
   } finally { busy = false; }
 }
 function loop(now) {
-  const dt = Math.min(0.1, (now - prevT) / 1000); prevT = now;
+  const rawDt = (now - prevT) / 1000;
+  const dt = Math.min(0.1, rawDt); prevT = now;
+  demoTick(rawDt);
   if (!paused && !LIVE && started) debt += dt * speed;
   const M = game.match, h = M.dt;
   if (!busy && debt >= h) { const n = Math.min(Math.floor(debt / h), 60); debt -= n * h; if (debt > 0.25) debt = 0; advance(n); }
@@ -1297,6 +1382,7 @@ function loop(now) {
     $("swingLine").textContent = `feint ${S.feints} · real ${S.reals} · flinch ${S.flinches}`;
     $("readLine").textContent = `AI read ${Math.round(100 * read.value)}% · ${read.kind || "quiet"}`;   // (on the 0.12 s late trace the brain sees)
     $("camLine").textContent = `camera ${director.mode}${director.mode === "auto" ? ` · ${director.shot}` : ""}`;
+    renderDiagnostics();
     renderTabBadges();
   }
   renderPlates(); renderRings();

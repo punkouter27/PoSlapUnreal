@@ -48,7 +48,7 @@ def main():
         sys.exit("ffmpeg is not on the PATH")
     meta_file = reel.with_suffix(".json")
     meta = json.loads(meta_file.read_text()) if meta_file.is_file() else {}
-    level = meta.get("level", "/Game/Levels/L_Arena_grandpa_vs_kim")
+    level = meta.get("level", "/Game/Project/Environments/Levels/L_Arena_grandpa_vs_kim")
     w, h = (2160, 3840) if a.uhd else (1080, 1920)
     frames = CLIPS / f"{reel.stem}_frames"
     shutil.rmtree(frames, ignore_errors=True)

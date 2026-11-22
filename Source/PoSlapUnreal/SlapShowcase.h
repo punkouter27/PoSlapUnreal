@@ -5,21 +5,37 @@
 // trained policy and switch cameras. Every tunable (idle threshold, camera list, dwell time) is in
 // USlapShowcaseConfig, a DataAsset; the asset in use is picked in Project Settings > Game > Slap Showcase.
 //
+// The overlay also has a "Benchmark sim speed" button (and key, B): a short, bounded run of a copy of the arena's MuJoCo
+// model on the CPU, off the game thread, reported as physics steps/s. Training runs MuJoCo Warp on the GPU with many
+// envs (training/), so the number is this machine's single-env physics speed, not the trainer's; the overlay says so.
+//
 // Command line (used by the runtime screenshot check, docs/showcase.md):
 //   -DiagOverlay              start with the overlay visible
 //   -ShowcaseTouch            show the touch corner button on desktop
 //   -ShowcaseIdle=<seconds>   override the idle threshold
 //   -ShowcaseCapture=<dir>    self-capture: overlay_on, overlay_off, demo_a, demo_b screenshots into <dir>, then quit
+//   -ShowcaseBenchmark        with -ShowcaseCapture: run the sim benchmark before the overlay_on shot
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DeveloperSettings.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Async/Future.h"
 #include "SlapShowcase.generated.h"
 
 class SWidget;
 class FSlapShowcaseInput;
+
+/** Result of one bounded sim benchmark run. */
+struct POSLAPUNREAL_API FSlapSimBenchmark
+{
+	int32 Steps = 0;
+	double WallSeconds = 0.0;
+	double SimSeconds = 0.0;
+	double StepsPerSecond() const { return WallSeconds > 0.0 ? Steps / WallSeconds : 0.0; }
+	double RealTimeFactor() const { return WallSeconds > 0.0 ? SimSeconds / WallSeconds : 0.0; }
+};
 
 /** Idle demo + diagnostics overlay tunables. Create one in the editor (Miscellaneous > Data Asset) to override. */
 UCLASS(BlueprintType)
@@ -34,6 +50,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo", meta = (ClampMin = "5.0"))
 	float IdleSeconds = 30.f;
 
+	/** Frames longer than this (shader warm-up, level load, a dragged window) do not count as idle time. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo", meta = (ClampMin = "0.05", ClampMax = "2.0"))
+	float MaxIdleFrameSeconds = 0.25f;
+
 	/** Seconds each showcase camera is held while demo mode runs. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Demo", meta = (ClampMin = "2.0"))
 	float CameraDwellSeconds = 7.f;
@@ -45,6 +65,14 @@ public:
 	/** Key that toggles the diagnostics overlay. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay")
 	FKey OverlayKey;
+
+	/** Key that runs the sim benchmark while the overlay is open (the overlay also has a button). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay")
+	FKey BenchmarkKey;
+
+	/** Wall-clock budget of one sim benchmark run (it runs off the game thread). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay", meta = (ClampMin = "0.2", ClampMax = "10.0"))
+	float BenchmarkSeconds = 1.5f;
 
 	/** Inference latency is shown as the rolling mean of this many samples. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay", meta = (ClampMin = "1", ClampMax = "600"))
@@ -102,8 +130,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Showcase") float GetMeanInferenceMs() const;
 	/** Starts demo mode now (e.g. a level opened by demo mode keeps showing it). */
 	UFUNCTION(BlueprintCallable, Category = "Showcase") void StartDemo() { IdleTime = IdleThreshold; SetDemoActive(true); }
+	/** Scripted self-checks (-SlapUiTest, ...) drive the game with synthetic clicks the idle clock cannot see: they turn
+	 *  demo mode off for the run so it cannot take the screen mid-check. */
+	void SuspendDemo(const TCHAR* Why) { bDemoSuspended = true; if (bDemoActive) SetDemoActive(false); UE_LOG(LogTemp, Log, TEXT("Showcase: demo mode suspended (%s)"), Why); }
+
 	/** Any real input: leaves demo mode and restarts the idle timer. */
 	void NotifyUserInput();
+
+	/** Advances FPS, the idle clock and the demo cameras by one frame of real time (Tick calls it; tests too). */
+	void AdvanceClocks(float Dt);
+
+	// --- sim benchmark ------------------------------------------------------------------------------------------
+	/** Starts the benchmark on a worker thread on a copy of the running arena's model (no-op while one runs). */
+	UFUNCTION(BlueprintCallable, Category = "Showcase") void StartBenchmark();
+	UFUNCTION(BlueprintPure, Category = "Showcase") bool IsBenchmarkRunning() const { return BenchFuture.IsValid(); }
+	UFUNCTION(BlueprintPure, Category = "Showcase") FString GetBenchmarkResult() const { return BenchmarkResult; }
+	/** Collects a finished benchmark (Tick polls it); bWait blocks until it is done. Returns true when one was collected. */
+	bool PollBenchmark(bool bWait);
+	/** Steps model M (zero controls) for about BudgetSeconds of wall time on the calling thread, resetting every 5
+	 *  simulated seconds like a training episode. Only reads M. */
+	static FSlapSimBenchmark StepForBudget(const struct mjModel_* M, double BudgetSeconds, int32 MaxSteps = 5000000);
+	static FString FormatBenchmark(const FSlapSimBenchmark& B);
 
 	FSlapOnDemoModeChanged OnDemoModeChanged;
 	FSlapOnDemoCamera OnDemoCamera;
@@ -137,6 +184,7 @@ private:
 
 	bool bOverlayVisible = false;
 	bool bDemoActive = false;
+	bool bDemoSuspended = false;
 	bool bTouchButton = false;
 	float IdleTime = 0.f;
 	float IdleThreshold = 30.f;
@@ -150,7 +198,11 @@ private:
 	TArray<float> LatencySamples;
 	int32 LatencyNext = 0;
 
+	TFuture<FSlapSimBenchmark> BenchFuture;
+	FString BenchmarkResult;
+
 	FString CaptureDir;
+	bool bCaptureBenchmark = false;
 	float CaptureClock = 0.f;
 	int32 CaptureStep = 0;
 };

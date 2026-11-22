@@ -29,7 +29,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "SlapMuJoCo.h"
 #include "NiagaraSystem.h"
 #include "RHI.h"
 #include "Scalability.h"
@@ -103,6 +103,10 @@ void ASlapHUD::BeginPlay()
 	bTourneyAuto = FParse::Param(Cmd, TEXT("SlapTourney"));
 	bTour = FParse::Param(Cmd, TEXT("SlapTour"));
 	bLayoutTest = FParse::Param(Cmd, TEXT("SlapLayoutTest"));
+	if (bUiTest || bRoundTripTest || bPairTest || bLayoutTest || bTour)	// scripted clicks are not seen by the idle clock
+	{
+		if (USlapShowcaseSubsystem* Showcase = USlapShowcaseSubsystem::Get(this)) Showcase->SuspendDemo(TEXT("scripted HUD check"));
+	}
 	int32 Cv = 0;	// the display pass's switches: -SlapDisplayPass=0 (the parity proof), -SlapHudLog=0|1|2
 	if (FParse::Value(Cmd, TEXT("SlapDisplayPass="), Cv)) IConsoleManager::Get().FindConsoleVariable(TEXT("slap.DisplayPass"))->Set(Cv, ECVF_SetByCommandline);
 	if (FParse::Value(Cmd, TEXT("SlapHudLog="), Cv)) IConsoleManager::Get().FindConsoleVariable(TEXT("slap.HudLog"))->Set(Cv, ECVF_SetByCommandline);
@@ -148,34 +152,34 @@ void ASlapHUD::BeginPlay()
 void ASlapHUD::LoadAssets()
 {
 	// the broadcast's assets (scripts/broadcast_fx.py, broadcast_audio.py); a missing one is skipped
-	Spray = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_SlapSpray.NS_SlapSpray"));
-	DustPuff = Load<UNiagaraSystem>(TEXT("/Game/FX/NS_DustPuff.NS_DustPuff"));
+	Spray = Load<UNiagaraSystem>(TEXT("/Game/Project/Core/FX/NS_SlapSpray.NS_SlapSpray"));
+	DustPuff = Load<UNiagaraSystem>(TEXT("/Game/Project/Core/FX/NS_DustPuff.NS_DustPuff"));
 	for (const TCHAR* N : { TEXT("S_Slap"), TEXT("S_Slap1"), TEXT("S_Slap2"), TEXT("S_Slap3") })
-		if (USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Audio"), N)) SlapTakes.Add(Snd);
+		if (USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), N)) SlapTakes.Add(Snd);
 	for (const TCHAR* N : { TEXT("S_Squeak0"), TEXT("S_Squeak1") })
-		if (USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Audio"), N)) Squeaks.Add(Snd);
-	Thud = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Thud"));
-	Scrape = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Scrape"));
-	Step = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Step"));
-	BreathLoop = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Breath"));
-	CrowdReact = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_CrowdReact"));
-	CrowdNear = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_CrowdNear"));
-	CrowdLoop = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_CrowdLoop"));
-	Bell = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_Bell"));
-	StepDeck = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_StepDeck"));
-	PAChime = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("S_PAChime"));
+		if (USoundBase* Snd = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), N)) Squeaks.Add(Snd);
+	Thud = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_Thud"));
+	Scrape = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_Scrape"));
+	Step = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_Step"));
+	BreathLoop = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_Breath"));
+	CrowdReact = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_CrowdReact"));
+	CrowdNear = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_CrowdNear"));
+	CrowdLoop = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_CrowdLoop"));
+	Bell = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_Bell"));
+	StepDeck = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_StepDeck"));
+	PAChime = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("S_PAChime"));
 	// the impact synthesis (scripts/broadcast_metasound.py: a MetaSound built headlessly) layered on the recorded takes, desktop only
-	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ImpactSynth = LoadNamed<USoundBase>(TEXT("/Game/Audio"), TEXT("MS_ImpactSynth"));
+	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ImpactSynth = LoadNamed<USoundBase>(TEXT("/Game/Project/Core/Audio"), TEXT("MS_ImpactSynth"));
 	// the arena's impulse response (broadcast_audio.py ArenaIR.wav -> broadcast_fx.py RV_ArenaIR, a convolution reverb
 	// submix): every spatialised one-shot sends to it on desktop; a phone keeps the two algorithmic reverbs (CPU)
-	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ArenaIR = LoadNamed<USoundSubmixBase>(TEXT("/Game/Audio"), TEXT("RV_ArenaIR"));
-	ScuffMat = Load<UMaterialInterface>(TEXT("/Game/FX/M_Scuff.M_Scuff"));
-	DecalMat = Load<UMaterialInterface>(TEXT("/Game/FX/M_DecalTex.M_DecalTex"));
-	for (const TCHAR* N : { TEXT("T_Decal_SoleSkid_01"), TEXT("T_Decal_SoleSkid_02"), TEXT("T_Decal_PalmSmudge_01") }) DecalTex.Add(LoadNamed<UTexture>(TEXT("/Game/FX/Decals"), N));
+	if (!PLATFORM_ANDROID && !PLATFORM_IOS) ArenaIR = LoadNamed<USoundSubmixBase>(TEXT("/Game/Project/Core/Audio"), TEXT("RV_ArenaIR"));
+	ScuffMat = Load<UMaterialInterface>(TEXT("/Game/Project/Core/FX/M_Scuff.M_Scuff"));
+	DecalMat = Load<UMaterialInterface>(TEXT("/Game/Project/Core/FX/M_DecalTex.M_DecalTex"));
+	for (const TCHAR* N : { TEXT("T_Decal_SoleSkid_01"), TEXT("T_Decal_SoleSkid_02"), TEXT("T_Decal_PalmSmudge_01") }) DecalTex.Add(LoadNamed<UTexture>(TEXT("/Game/Project/Core/FX/Decals"), N));
 	// Two reverbs, blended by the camera's distance to the contact (ReverbMix): the hall rings out on a wide shot, a tight
 	// close-up is dry. Both come from broadcast_fx.py; if the build predates the ringside one, it is made here.
-	HallVerb = LoadNamed<UReverbEffect>(TEXT("/Game/Audio"), TEXT("RV_Arena"));
-	CloseVerb = LoadNamed<UReverbEffect>(TEXT("/Game/Audio"), TEXT("RV_Ringside"));
+	HallVerb = LoadNamed<UReverbEffect>(TEXT("/Game/Project/Core/Audio"), TEXT("RV_Arena"));
+	CloseVerb = LoadNamed<UReverbEffect>(TEXT("/Game/Project/Core/Audio"), TEXT("RV_Ringside"));
 	if (!CloseVerb)
 	{
 		CloseVerb = NewObject<UReverbEffect>(this, TEXT("RV_Ringside"));
@@ -615,10 +619,10 @@ void ASlapHUD::ReportShowcase(const FSlapHud& H)
 	const uint64 Cycles = USlapController::InferenceCycles.exchange(0, std::memory_order_relaxed);
 	if (Calls > 0) Showcase->ReportInferenceMs(static_cast<float>(FPlatformTime::ToMilliseconds64(Cycles) / Calls));
 	if (H.Match == 0) return;
-	const int32 S = FMath::Clamp(Team(H.Striker), 0, 1);
-	Showcase->ReportEpisodeReward(static_cast<float>(H.Value[S]));
+	const int32 Side = FMath::Clamp(Team(H.Striker), 0, 1);
+	Showcase->ReportEpisodeReward(static_cast<float>(H.Value[Side]));
 	// curriculum stage: the striker's brain, named by the level its training passed (training/configs/reward_config.json)
-	const FString& Brain = H.Brain[S];
+	const FString& Brain = H.Brain[Side];
 	FString Stage = Brain.IsEmpty() ? FString(TEXT("n/a")) : Brain;
 	if (const USlapRewardConfig* Rewards = USlapShowcaseSettings::GetRewardConfig())
 	{

@@ -1,6 +1,6 @@
 """MetaSound impact synthesis, authored headlessly (open item L15; the 2026-11-04 display pass, item 26).
 
-Builds /Game/Audio/MS_ImpactSynth through the MetaSound Builder API (UMetaSoundBuilderSubsystem + the editor subsystem's
+Builds /Game/Project/Core/Audio/MS_ImpactSynth through the MetaSound Builder API (UMetaSoundBuilderSubsystem + the editor subsystem's
 BuildToAsset), the same nodes a person would place in the graph editor:
 
     On Play --> AD Envelope (Audio) "skin"  : attack 1 ms, decay SkinDecay      --+
@@ -19,7 +19,7 @@ Run (editor closed, PowerShell):
 
 import unreal
 
-ASSET_DIR = "/Game/Audio"
+ASSET_DIR = "/Game/Project/Core/Audio"
 ASSET_NAME = "MS_ImpactSynth"
 OK = unreal.MetaSoundBuilderResult.SUCCEEDED
 
