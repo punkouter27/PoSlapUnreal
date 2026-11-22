@@ -218,7 +218,7 @@ browser engine, live relay, spectator API, web build, CUDA realism, and with `-U
 Showcase automation; run `scripts\setup_urlab.ps1` once per clone first):
 
 ```
-ruff check . && ruff format --check . && python -m pytest -q && powershell -ExecutionPolicy Bypass -File scriptserify_all.ps1 -Unreal
+ruff check . && ruff format --check . && python -m pytest -q && powershell -ExecutionPolicy Bypass -File scripts\verify_all.ps1 -Unreal
 ```
 
 Last full run (2026-11-22): pytest 19 passed; naming 815 assets, 0 errors; browser checks pass; `parity_check` 5/6
