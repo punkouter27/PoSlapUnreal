@@ -21,6 +21,7 @@ export const matchupKey = (red, blue) => Object.keys(MATCHUPS).find(k => !MATCHU
 
 // inference latency of the last 60 decisions, both corners (the overlay shows the mean)
 export const TELEMETRY = { inferMs: [] };
+const IN_BROWSER = typeof window !== "undefined";
 
 export async function loadMatch(mj, ort, get, emit, key = "gg") {
   const mu = MATCHUPS[key];
@@ -44,6 +45,15 @@ export async function loadMatch(mj, ort, get, emit, key = "gg") {
       if (r.value) policy.lastValue = r.value.data[0];
       TELEMETRY.inferMs.push(policy.lastMs);
       if (TELEMETRY.inferMs.length > 60) TELEMETRY.inferMs.shift();
+      policy.decisions = (policy.decisions || 0) + 1;
+      // proof in the console that the trained policy itself drives this corner, here in the page (not a recording):
+      // the first decision of each corner, then one line per 3000 decisions (a minute of play)
+      if (IN_BROWSER && (policy.decisions === 1 || policy.decisions % 3000 === 0)) {
+        const a = r[out].data, finite = Array.from(a).every(Number.isFinite);
+        console.info(`[policy] ${c.brain}.onnx (${c.prefix.replace("_", "")} corner) inference in the browser ` +
+          `(onnxruntime-web, wasm): obs[1,${nIn}] -> action[1,${a.length}] in ${policy.lastMs.toFixed(2)} ms, ` +
+          `decision ${policy.decisions}, actions ${finite ? "finite" : "NOT finite"}`);
+      }
       return r[out].data;
     };
     policy.nIn = Math.min(nIn, OBS);

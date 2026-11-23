@@ -62,6 +62,7 @@ PAGE = (
     "audio.js",
     "broadcast.js",
     "contacts.js",
+    "idle.js",
     "assets/arena.glb",
     "assets/tex/skin_detail.png",
 )

@@ -49,3 +49,27 @@ def test_envs_have_no_literal_penalty_weights(env):
     assert 'PENALTIES["torque_sq"]' in src and 'PENALTIES["joint_ang_vel_sq"]' in src
     assert not re.search(r"-\s*0\.01\s*\*\s*smooth", src)
     assert not re.search(r"-\s*0\.30?\s*\*\s*leg_drag", src)
+
+
+def test_each_penalty_term_is_logged_on_its_own():
+    """TermLog keeps every term apart: the weighted batch mean per step, averaged over the steps when train.py reads it."""
+    log = rc.TermLog()
+    for k in (1.0, 3.0):  # two steps, two envs each
+        log.add({name: np.array([k, k]) for name in CFG["penalties"]})
+    out = log.pop()
+    assert set(out) == {f"pen_{name}" for name in CFG["penalties"]}
+    for name, w in CFG["penalties"].items():
+        assert out[f"pen_{name}"] == pytest.approx(w * 2.0)
+        assert out[f"pen_{name}"] < 0  # a penalty
+    assert log.pop() == {}  # read once per iteration, then empty
+
+
+@pytest.mark.parametrize("env", ["slap.py", "locomotion.py"])
+def test_envs_log_every_penalty_term(env):
+    """Both training envs feed all four terms to their TermLog every step, and train.py logs it each iteration."""
+    src = (ROOT / "training" / "envs" / env).read_text(encoding="utf-8")
+    assert "self.pen_log = TermLog()" in src and "self.pen_log.add(" in src
+    if env == "locomotion.py":
+        assert all(f'"{name}":' in src for name in CFG["penalties"])
+    train = (ROOT / "training" / "train.py").read_text(encoding="utf-8")
+    assert "m.update(pen_log.pop())" in train

@@ -101,7 +101,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 
 /* ---- detailed stats (TAB or the stats button): the default HUD stays clean ---- */
 .bl { grid-area: 4 / 1 / 5 / 3; justify-self: start; align-self: end; display: none; gap: 3px; padding: 7px 10px; max-width: 100%; }
-.detail .bl { display: grid; }
+.detail .bl { display: grid; background: #0e0e12; }   /* the TAB overlay: an opaque panel (text contrast does not depend on the arena) */
 .tel, .statline { font: 500 var(--fs)/1.35 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .statline b { color: var(--ink); font-weight: 700; }
 .statline .gold { color: var(--gold); }
@@ -115,7 +115,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-
 /* the diagnostics rows (TAB): fps, inference latency, the critic's reward estimate, the curriculum stage, the benchmark */
 .benchbtn { justify-self: start; pointer-events: auto; margin-top: 3px; padding: 6px 10px; font: 600 var(--fs)/1 var(--body); color: #fff; background: #4f46e5; border: 0; border-radius: 6px; cursor: pointer; }
 .benchbtn:disabled { cursor: progress; opacity: .85; }
-#diagLine, #stageLine, #benchLine { white-space: normal; overflow-wrap: anywhere; }   /* these rows wrap instead of cutting the label */
+#diagLine, #stageLine, #modeLine, #benchLine { white-space: normal; overflow-wrap: anywhere; }   /* these rows wrap instead of cutting the label */
 /* phones: the TAB panel takes the middle row, so the head-snap sparkline (which sits at its foot) steps aside instead of
    riding up over the plates */
 @media (max-width: 600px) { .detail .sparkbox { display: none; } }
@@ -303,7 +303,7 @@ canvas#view { height: 100%; }
     <button id="fullscreen" aria-label="Fullscreen" title="Fullscreen">⛶</button>
   </div>
 </header>
-<div id="stage">
+<main id="stage">
 <canvas id="view"></canvas>
 <div class="loading" id="loading"><div class="big">POSLAP</div><div id="loadmsg">Loading physics and brains…</div></div>
 
@@ -346,6 +346,7 @@ canvas#view { height: 100%; }
     <div class="statline" id="streak"></div>
     <div class="statline" id="diagLine"></div>
     <div class="statline" id="stageLine"></div>
+    <div class="statline" id="modeLine"></div>
     <button class="benchbtn" id="benchBtn" title="Steps this arena's MuJoCo model in the browser for 1.5 s and reports physics steps/s">Benchmark sim speed</button>
     <div class="statline" id="benchLine"></div>
   </div>
@@ -403,7 +404,7 @@ canvas#view { height: 100%; }
   <button class="thumb" id="practice">START MATCH</button>
   <button class="thumb" id="watchlive" hidden>WATCH LIVE</button>
 </div>
-</div>
+</main>
 <footer class="po-foot">
   <a href="/diag">System status</a>
   <span>v<span id="stamp">dev</span></span>   <!-- Web/build.py writes the build stamp (UTC yyMMdd of the commit) -->

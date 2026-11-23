@@ -16,6 +16,7 @@ import { Look, TIERS } from "./fx.js";
 import { Sound } from "./audio.js";
 import { ContactProbe } from "./contacts.js";
 import { SwingTagger, Read, Snap, Director, SNAP_S, Flinch, health, neckDamage, koDanger } from "./broadcast.js";
+import { IdleClock, IDLE_S as DEFAULT_IDLE_S } from "./idle.js";
 
 ort.env.wasm.wasmPaths = new URL("./node_modules/onnxruntime-web/dist/", location.href).href;   // relative paths resolve against ort's own file
 ort.env.wasm.numThreads = 1;   // no cross-origin isolation needed
@@ -796,11 +797,14 @@ function renderDiagnostics() {
   if (!game || LIVE) { $("diagLine").textContent = LIVE ? "diagnostics: the live feed runs in Unreal" : ""; return; }
   const ms = TELEMETRY.inferMs, lat = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : null;
   const val = game.match.sides.map(x => x.policy.lastValue).map(v => Number.isFinite(v) ? v.toFixed(1) : "–");
-  $("diagLine").textContent = `${fpsNow} fps · infer ${lat === null ? "–" : lat.toFixed(2)} ms (mean of ${ms.length}) · reward est. R ${val[0]} B ${val[1]}`;
+  $("diagLine").textContent = `${fpsNow} fps · infer ${lat === null ? "–" : lat.toFixed(2)} ms (mean of ${ms.length}) · reward (critic est.) R ${val[0]} B ${val[1]}`;
   $("stageLine").textContent = "stage " + game.match.sides.map(x => {
     const b = x.policy.brain || "?", st = (b.match(STAGE_TAG) || [])[1];
     return `${x.name === "red" ? "R" : "B"} ${st ?? "–"} (${b})`;
   }).join(" · ");
+  // what the numbers above measure: the policy and the physics both run in this page, on this device
+  $("modeLine").textContent = `mode ${demo.on ? "demo (attract)" : S.phase} · measured here: policy on onnxruntime-web ` +
+    `(wasm, this device's CPU), physics MuJoCo WASM 200 Hz (sim, not a robot)`;
 }
 // the training-speed benchmark: this arena's MuJoCo model stepped in the browser (WASM, one env, zero controls, no
 // brain) for BENCH_S of stepping time, reset every 5 simulated seconds like an episode. Training itself runs MuJoCo
@@ -834,9 +838,11 @@ $("benchBtn").onclick = runBenchmark;
 
 // ---- demo mode (attract): after IDLE_S without input the HUD steps aside, the brains play a match on their own and
 // the showcase cameras cycle every DEMO_DWELL_S; any input brings the HUD back (and the menu, if the demo started the
-// match). Frames longer than MAX_IDLE_FRAME_S (shader warm-up, a background tab) do not count as idle time.
-const IDLE_S = +QS.get("idle") || 30, DEMO_DWELL_S = 7, MAX_IDLE_FRAME_S = 0.25;
+// match). Frames longer than 0.25 s (shader warm-up, a background tab) do not count as idle time (Web/idle.js, tested
+// by Web/idle.test.mjs).
+const IDLE_S = +QS.get("idle") || DEFAULT_IDLE_S, DEMO_DWELL_S = 7;
 const DEMO_CAMS = ["wide", "side", "close", "auto"];
+const idleClock = new IdleClock(IDLE_S);
 const demo = { idle: 0, on: false, cam: 0, camT: 0, ownMatch: false, prevCam: "auto" };
 window.__poslapDemo = demo;   // the browser check reads it
 function demoMatch() {   // the pairing this page loaded, from the top
@@ -858,13 +864,13 @@ function stopDemo() {
   if (demo.ownMatch && S.phase !== "menu") showMenu();
   dbg("demo off");
 }
-function demoInput() { demo.idle = 0; if (demo.on) stopDemo(); }
+function demoInput() { idleClock.reset(); demo.idle = 0; if (demo.on) stopDemo(); }
 function demoTick(frameS) {
   if (LIVE || !game) return;
   if (navigator.getGamepads) for (const g of navigator.getGamepads()) if (g && g.buttons.some(b => b.pressed)) demoInput();
-  const idleDt = frameS > 0 && frameS <= MAX_IDLE_FRAME_S ? frameS : 0;
-  demo.idle += idleDt;
-  if (!demo.on && demo.idle >= IDLE_S) startDemo();
+  const idleDt = idleClock.tick(frameS);
+  demo.idle = idleClock.idle;
+  if (!demo.on && idleClock.due) startDemo();
   if (!demo.on) return;
   if (S.phase === "menu") demoMatch();   // the first match, and the next one after each result
   demo.camT += idleDt;

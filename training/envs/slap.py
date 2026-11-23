@@ -33,7 +33,7 @@ import torch
 import warp as wp
 from constants import DECIM, HILL_K, LAGS, MIN_NECK, MIN_STAMINA, OBS, REACT, lpf_on, models_dir, rules2
 from levels import LEVELS
-from reward_config import PENALTIES
+from reward_config import PENALTIES, TermLog
 from reward_config import terms as penalty_terms
 
 from envs import common
@@ -229,6 +229,7 @@ class SlapEnv:
         self.push_body = torch.full((N,), self.chest, dtype=torch.long, device=dev)
         self.ret, self.foot0, self.head0, self.left_box = z(N), z(N, 2, 2), z(N, 3), zb()
         self.foot_prev = z(N, 2, 2)  # the soles' planar position at the last decision (the foot-slip penalty)
+        self.pen_log = TermLog()  # each penalty term per step (train.py logs pen_<term>)
         self.push_scale = (
             1.0  # guard pushes at this share of 150-300 N (the trainer's curriculum; exams use the level's)
         )
@@ -688,6 +689,7 @@ class SlapEnv:
         fc = common.foot_contacts(self, self.N, self.foot_of, self.is_world).view(self.N, 4)
         on_floor = torch.stack([fc[:, 0:2].amax(-1), fc[:, 2:4].amax(-1)], -1)
         pen = penalty_terms(self.qfrc[:, self.jv], v, a, self.prev_action, foot_speed, on_floor)
+        self.pen_log.add(pen)
         r = (
             r
             + PENALTIES["torque_sq"] * pen["torque_sq"]

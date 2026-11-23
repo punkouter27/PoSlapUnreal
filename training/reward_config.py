@@ -5,6 +5,7 @@ mirrors the same numbers (tests/test_reward_config.py keeps them equal). Every w
 so a penalty weight is negative.
 
     penalty(joint_torque, joint_vel, action, prev_action, foot_speed, foot_contact)   -> the weighted penalty sum
+    TermLog: each env adds its step's terms; train.py logs the per-term means (pen_<term>) once per iteration
 
 The arrays may be numpy or torch (batched on the last axis). Changing a weight does not retrain the shipped brains.
 """
@@ -51,3 +52,25 @@ def penalty(joint_torque, joint_vel, action, prev_action, foot_speed, foot_conta
     """The weighted sum of the four penalty terms (negative): add it to the reward."""
     t = terms(joint_torque, joint_vel, action, prev_action, foot_speed, foot_contact)
     return sum(PENALTIES[k] * v for k, v in t.items())
+
+
+class TermLog:
+    """Each penalty term tracked on its own: the weighted mean over the batch, summed per step and averaged when read.
+
+    The envs call add() every step (no host sync: the sums stay tensors on the GPU); train.py calls pop() once per
+    iteration and logs pen_torque_sq, pen_joint_ang_vel_sq, pen_action_rate_sq and pen_foot_slip (reward per step,
+    negative) to TensorBoard and telemetry.jsonl."""
+
+    def __init__(self):
+        self.sums, self.n = {}, 0
+
+    def add(self, t):
+        for k, v in t.items():
+            x = PENALTIES[k] * v.mean()
+            self.sums[k] = self.sums[k] + x if k in self.sums else x
+        self.n += 1
+
+    def pop(self):
+        out = {f"pen_{k}": float(v) / self.n for k, v in self.sums.items()} if self.n else {}
+        self.sums, self.n = {}, 0
+        return out

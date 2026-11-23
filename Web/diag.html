@@ -8,6 +8,7 @@
 <base href="/Web/">
 <meta name="po-commit" content="dev">   <!-- Web/build.py writes the commit this build came from -->
 <title>System status</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M0 0h8v16H0z%22 fill=%22%23e5554c%22/%3E%3Cpath d=%22M8 0h8v16H8z%22 fill=%22%235d8cf0%22/%3E%3C/svg%3E">
 <script type="importmap">
 { "imports": {
   "@mujoco/mujoco": "./node_modules/@mujoco/mujoco/mujoco.js",
@@ -37,6 +38,7 @@
   .row .label { font-weight: 600; }
   .row .purpose, .row .detail { grid-column: 1 / -1; color: var(--po-muted); font-size: 13px; overflow-wrap: anywhere; }
   .row .detail { color: var(--po-text); opacity: .9; }
+  .banner a { color: #a5b4fc; }
   .row .ms { color: var(--po-muted); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 5ch; text-align: right; }
   .pill { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--po-rule); color: var(--po-text); }
   .pill.Healthy { background: var(--po-ok-soft); } .pill.Degraded { background: var(--po-warn-soft); } .pill.Unhealthy { background: var(--po-bad-soft); }
@@ -181,20 +183,46 @@ async function run(c, el) {
   return { ...c, ...res };
 }
 
+// Results are cached for CACHE_S in this tab (sessionStorage, keyed by the build), so a reload within a minute does not
+// download the 50 MB of runtimes, brains and assets again; "Re-check" (?fresh on this page's own path, since the base
+// is /Web/) probes again. Every probe is a GET or HEAD of a static file on the Free-tier host (plus Google Fonts' CSS):
+// nothing billable.
+const CACHE_S = 60, CACHE_KEY = `poslap-diag:${document.querySelector('meta[name="po-commit"]').content}:${STAMP}`;
+function show(c, res) {   // a cached result, drawn like a fresh one
+  const el = row(c);
+  el.querySelector(".ms").textContent = `${Math.round(res.ms)} ms`;
+  const pill = el.querySelector(".pill");
+  pill.textContent = res.status; pill.className = `pill ${res.status}`;
+  el.querySelector(".detail").textContent = res.problem || res.detail || "";
+  return { ...c, ...res };
+}
 const banner = document.getElementById("banner");
 const t0 = now();
 let checks;
 try { checks = (await get("diag_checks.json", "json")).checks; }
 catch (e) { banner.className = "banner bad"; banner.textContent = `Not working: the check list could not load (${e.message})`; throw e; }
-const results = await Promise.all(checks.map(c => run(c, row(c))));
+let cached = null;
+try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || "null"); } catch { cached = null; }
+const age = cached ? (Date.now() - cached.at) / 1000 : Infinity;
+const useCache = !new URLSearchParams(location.search).has("fresh") && age >= 0 && age < CACHE_S
+  && cached.results?.length === checks.length && cached.results.every((r, i) => r.id === checks[i].id);
+const results = useCache ? checks.map((c, i) => show(c, cached.results[i])) : await Promise.all(checks.map(c => run(c, row(c))));
+if (!useCache) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), results: results.map(r => ({ id: r.id, status: r.status, ms: r.ms, detail: r.detail, problem: r.problem })) })); }
+  catch { /* storage off (private mode): no cache */ }
+}
 const bad = results.filter(r => r.status === "Unhealthy"), warn = results.filter(r => r.status === "Degraded");
 banner.className = `banner ${bad.length ? "bad" : warn.length ? "warn" : "ok"}`;
 banner.textContent = bad.length ? `Not working: ${bad.map(r => r.label).join(", ")}`
   : warn.length ? `Working, with ${warn.length} thing${warn.length > 1 ? "s" : ""} degraded` : "Everything is working";
 const small = document.createElement("small");
-small.textContent = `${results.length} checks in ${Math.round(now() - t0)} ms · build v${STAMP}`;
+small.textContent = (useCache ? `${results.length} checks, cached ${Math.round(age)} s ago (kept ${CACHE_S} s)`
+  : `${results.length} checks in ${Math.round(now() - t0)} ms`) + ` · build v${STAMP} · `;
+const again = document.createElement("a");
+again.href = `${location.pathname}?fresh`; again.textContent = "Re-check";
+small.append(again);
 banner.append(small);
-document.getElementById("checked").textContent = `checked ${new Date().toLocaleTimeString()}`;
+document.getElementById("checked").textContent = `checked ${new Date(useCache ? cached.at : Date.now()).toLocaleTimeString()}`;
 document.body.dataset.status = bad.length ? "Unhealthy" : warn.length ? "Degraded" : "Healthy";
 </script>
 </body>

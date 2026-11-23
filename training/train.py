@@ -717,6 +717,11 @@ def main():
             m["blowups"] = int(seat.blowups) if hasattr(seat, "blowups") else 0
             if it % 50 == 0:
                 m.update({f"gpu_{k}": v for k, v in gpu_status().items()})
+        # each reward penalty term on its own (reward_config.TermLog): pen_torque_sq, pen_joint_ang_vel_sq, ...
+        pen_env = env.seats[0] if hasattr(env, "seats") else getattr(env, "env", env)
+        pen_log = getattr(pen_env, "pen_log", None) or getattr(getattr(pen_env, "env", None), "pen_log", None)
+        if pen_log is not None:
+            m.update(pen_log.pop())
         for k, v in {**stats, **m, **curr()}.items():
             tb.add_scalar(k, v, steps)
         tele.write(

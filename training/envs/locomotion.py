@@ -44,7 +44,7 @@ import torch
 import warp as wp
 from constants import LAGS, MIN_STAMINA, OBS, lpf_on, models_dir
 from levels import LEVELS
-from reward_config import FOOT_SLIP_DEADBAND, PENALTIES
+from reward_config import FOOT_SLIP_DEADBAND, PENALTIES, TermLog
 
 from envs import common
 from envs.common import blown_up, contact_slots
@@ -261,6 +261,7 @@ class LocomotionEnv:
         self.step_xy = z(N, 2)  # the step's centre (xy)
         self.pod_xy = z(N, 2)  # the podium's centre (xy)
         self.bump = z(N)  # the body parts that hit an obstacle this step (the penalty)
+        self.pen_log = TermLog()  # each penalty term per step (train.py logs pen_<term>)
         self.reaction = tuple(self.cfg.get("reaction", (0.0, 0.0)))  # the human reaction latency (s)
         self.slope = float(self.cfg.get("slope_deg", 0.0))  # the per-world gravity tilt (deg)
         self.slope_scale = 1.0  # item 45, S5: the tilt's share of slope_deg (train.py ramps it 0 -> 1 as no-falls hold)
@@ -640,6 +641,9 @@ class LocomotionEnv:
         leg_drag = (self.foot_contact.float() * (foot_slip_speed - FOOT_SLIP_DEADBAND).clamp(min=0.0)).sum(-1)
         torque_sq = (self.qfrc[:, self.jv] ** 2).sum(-1)  # added 2026-11-20 (configs/reward_config.json)
         joint_vel_sq = (v[:, self.jv] ** 2).sum(-1)
+        self.pen_log.add(
+            {"torque_sq": torque_sq, "joint_ang_vel_sq": joint_vel_sq, "action_rate_sq": smooth, "foot_slip": leg_drag}
+        )
 
         # Heading & velocity tracking
         yaw_err = torch.atan2(torch.sin(yaw - self.yaw_cmd), torch.cos(yaw - self.yaw_cmd))

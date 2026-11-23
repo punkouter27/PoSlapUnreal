@@ -14,7 +14,7 @@
     {"id": "commit", "group": "services", "label": "Deployed commit", "purpose": "The host's X-Commit header is the commit this build came from", "probe": "commit", "url": "./"},
     {"id": "version", "group": "services", "label": "Build version", "purpose": "The game page carries the same build stamp as this page (no stale cache)", "probe": "version", "url": "./"},
     {"id": "bundle", "group": "services", "label": "Game bundle", "purpose": "The page's scripts and libraries", "probe": "files", "urls": [
-      "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js",
+      "app.js", "sim.js", "shared.gen.js", "loader.js", "art.js", "fx.js", "audio.js", "broadcast.js", "contacts.js", "idle.js",
       "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs",
       "node_modules/three/build/three.module.js",
       "node_modules/three/examples/jsm/controls/OrbitControls.js",

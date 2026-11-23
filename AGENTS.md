@@ -91,7 +91,13 @@ MuJoCo Warp / URLab.
 - **Contracts:** `USlapController::AppendZeroInitInputs` appends zero-initialised tail inputs without reordering;
   `RunNet` counts and sanitises non-finite outputs (`docs/BRAIN_IO.md`).
 - **Reward config:** penalty weights and curriculum thresholds live in `training/configs/reward_config.json`; the trainer
-  reads them and the Unreal DataAsset mirrors them (see `docs/reward_config.md`).
+  reads them and the Unreal DataAsset mirrors them (see `docs/reward_config.md`). Each penalty term is logged on its
+  own (`reward_config.TermLog` -> `pen_torque_sq`, `pen_joint_ang_vel_sq`, `pen_action_rate_sq`, `pen_foot_slip` in
+  TensorBoard and `telemetry.jsonl`, once per iteration).
+- **Web port checks:** the console prints `[policy] <brain>.onnx ... inference in the browser` on each corner's first
+  decision (then once a minute); TAB shows fps, inference ms, the critics' reward estimate, stage and mode on an opaque
+  panel; demo mode's idle clock is `Web/idle.js` (frames > 0.25 s ignored), tested by `Web/idle.test.mjs` through
+  pytest (`tests/test_web_idle.py`); `/diag` caches its results 60 s per tab and build (`?fresh` re-probes).
 - **Folders:** `Content/Art/Raw/`, `Content/Art/Exports/`, `docs/`, `scripts/`, `SCREENSHOTS/`, `training/`, `Web/`.
 - **Content layout (Po Game Standard, Unreal):** every asset lives under `/Game/Project/`: `Agents/Athletes`,
   `Core/{Audio,FX,Cinematics}`, `DataAssets` (`DA_RewardConfig`, `DA_ShowcaseConfig`, selected in `Config/DefaultGame.ini`),
@@ -221,8 +227,8 @@ Showcase automation; run `scripts\setup_urlab.ps1` once per clone first):
 ruff check . && ruff format --check . && python -m pytest -q && powershell -ExecutionPolicy Bypass -File scripts\verify_all.ps1 -Unreal
 ```
 
-Last full run (2026-11-22): pytest 19 passed; naming 815 assets, 0 errors; browser checks pass; `parity_check` 5/6
-(non-blocking); build 0 warnings in `Source/PoSlapUnreal`.
+Last full run (2026-11-23): pytest 23 passed (incl. the Node demo-clock test); naming 815 assets, 0 errors; browser
+checks pass; `parity_check` 5/6 (non-blocking); build 0 warnings in `Source/PoSlapUnreal`; PoSlap.Showcase 3/3 on D3D12.
 
 The steps one by one, from the repo root (Python 3.12 venv with `training/requirements.txt`, or the CI set:
 `pip install "mujoco==3.10.0" numpy onnxruntime pytest ruff`):
@@ -246,7 +252,7 @@ Unreal (UE 5.8; once per clone: `powershell -ExecutionPolicy Bypass -File script
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" PoSlapUnrealEditor Win64 Development `
     "-Project=$PWD\PoSlapUnreal.uproject" -WaitMutex                          # 0 warnings in Source/PoSlapUnreal
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\PoSlapUnreal.uproject" `
-    "-ExecCmds=Automation RunTests PoSlap.Showcase;Quit" -unattended -nullrhi -nosplash   # 3 tests, "Test Completed. Result={Success}"
+    "-ExecCmds=Automation RunTests PoSlap.Showcase;Quit" -unattended -nosplash   # 3 tests, "Test Completed. Result={Success}" (rendered: never -nullrhi)
 # the HUD's own checks need a real renderer (they run from DrawHUD; -nullrhi never draws, so they never start):
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\PoSlapUnreal.uproject" `
     -game -windowed -ResX=1600 -ResY=900 -SlapUiTest -unattended -nosplash      # "UI test PASS"
