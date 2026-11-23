@@ -1,6 +1,8 @@
-"""Each character's voice pack: HAPPY, ANGRY, HURT, INSULT x 5 sounds x 5 levels (1 weakest .. 5 strongest).
+"""Each character's voice pack: ANGRY, HAPPY, HURT, INSULT, CELEBRATE x 5 sounds x 5 levels (1 weakest .. 5 strongest),
+and voices.json, the manifest of every clip the game expects.
 
     training/.venv/Scripts/python.exe scripts/voice_pack.py [--card <name>] [--report]
+    training/.venv/Scripts/python.exe scripts/voice_pack.py --manifest     (only rescan and rewrite voices.json)
     (then, in Unreal: UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/Scripts/voice_import.py" -unattended)
 
 Writes Content/Art/Exports/Audio/Voice/<card>/<EMOTION>_<sound>_<level>.wav (32 kHz mono 16-bit) for every character
@@ -16,7 +18,15 @@ ANGRY: a growl into a shout, a nasal "hmph", a roar, a barked "hey!", a strained
 HURT: "ow" (a to u), "oof", "ugh", a sharp "ah!", a moan; a sob in the voice at levels 4-5.
 INSULT: a taunt with no words yet (speech-shaped babble): the playground "na-na-na-NA-na", a jeering question, a
 statement with the last word punched, a mocking laugh-taunt, fast trash talk.
+CELEBRATE (a KO win, the tournament champion) gets no placeholder WAV: until one is recorded the game synthesises it
+at runtime (USlapVoiceWave, Source/PoSlapUnreal/SlapVoiceSynth.cpp).
 Loudness is baked in (level 1 peaks at 0.30, level 5 at 0.94), so the game plays every file at one gain.
+
+voices.json (Content/Art/Exports/Audio/Voice/voices.json, staged copy Content/Data/voices.json for packaged builds;
+schema po-voice-manifest/1): every card x 5 emotions x 5 levels x 5 takes with the real names (asset
+S_V_<card>_<EMOTION>_<take>_<level>, source WAV <card>/<EMOTION>_<take>_<level>.wav), whether the WAV exists, whether it
+is imported, and each card's procedural voice profile (kept as edited once it is in the file). The game plays an asset
+only where the manifest says it is imported; every other clip is synthesised in that card's voice.
 """
 
 import argparse
@@ -31,14 +41,16 @@ import numpy as np
 from scipy.signal import resample_poly
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import voice_manifest  # noqa: E402  (voices.json)
 import broadcast_audio as ba  # noqa: E402  (the synth: glottal pulses, formants, filters; its rng is reseeded per file)
 from broadcast_audio import SR, band, glottal, high, low, reson, smooth_noise, t, vocal  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CARDS = ROOT / "training" / "characters"
 OUT = ROOT / "Content" / "Art" / "Exports" / "Audio" / "Voice"
-MANIFEST = OUT / "manifest.json"
-EMOTIONS = ("HAPPY", "ANGRY", "HURT", "INSULT")
+MANIFEST = OUT / "manifest.json"  # the placeholders' hashes (a recording is a file whose hash no longer matches)
+EMOTIONS = voice_manifest.EMOTIONS  # what the game expects (voices.json, scripts/voice_manifest.py)
+PLACEHOLDER_EMOTIONS = ("HAPPY", "ANGRY", "HURT", "INSULT")  # placeholder WAVs; CELEBRATE is synthesised in-game
 SOUNDS, LEVELS, RATE = 5, 5, 32000
 
 # per card: f0 (Hz), formant scale, pressed (0..1); broadcast_audio's three plus Mom (a woman's voice, a little lower
@@ -372,13 +384,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--card", action="append", help="only these cards (default: every card in training/characters)")
     ap.add_argument("--report", action="store_true", help="a listening page in SCREENSHOTS/<YYMMDD>_voice_pack/")
+    ap.add_argument("--manifest", action="store_true", help="only rescan the voice folder and rewrite voices.json")
     a = ap.parse_args()
-    manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"files": {}}
+    if a.manifest:
+        voice_manifest.write(voice_of)
+        return
+    manifest =json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"files": {}}
     files = manifest.setdefault("files", {})
     summary = {}
     for card in a.card or cards():
         made = kept = 0
-        for emotion in EMOTIONS:
+        for emotion in PLACEHOLDER_EMOTIONS:
             for sound in range(1, SOUNDS + 1):
                 for level in range(1, LEVELS + 1):
                     rel = f"{card}/{emotion}_{sound}_{level}.wav"
@@ -394,9 +410,10 @@ def main():
         summary[card] = (made, kept)
         print(f"{card:10s} {made:3d} placeholders, {kept:3d} recordings  (f0 {voice_of(card)[0]:.0f} Hz)")
     manifest["layout"] = "<card>/<EMOTION>_<sound 1-5>_<level 1-5>.wav; level 1 weakest, 5 strongest"
-    manifest["emotions"] = list(EMOTIONS)
+    manifest["emotions"] = list(PLACEHOLDER_EMOTIONS)
     manifest["files"] = dict(sorted(files.items()))
     MANIFEST.write_text(json.dumps(manifest, indent=1) + "\n")
+    voice_manifest.write(voice_of)
     if a.report:
         report(summary)
 
@@ -415,7 +432,7 @@ def report(summary):
             + "".join(f"<th>L{lv}</th>" for lv in range(1, LEVELS + 1))
             + "</tr>"
         )
-        for emotion in EMOTIONS:
+        for emotion in PLACEHOLDER_EMOTIONS:
             for sound in range(1, SOUNDS + 1):
                 cells = []
                 for level in range(1, LEVELS + 1):
