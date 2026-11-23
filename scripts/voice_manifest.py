@@ -18,6 +18,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parents[1]
 CARDS = ROOT / "training" / "characters"
 OUT = ROOT / "Content" / "Art" / "Exports" / "Audio" / "Voice"
@@ -49,8 +50,18 @@ def guess_voice(card):
     return f0, min(max(1.0 + (f0 - 110.0) / 650.0, 0.92), 1.2), 0.6
 
 
+def cast_voice():
+    """voice_pack.voice_of (the cast voices: Grandpa, Kim, Matt, Mom, Tong) when numpy / scipy are there, else the guess."""
+    try:
+        from voice_pack import voice_of
+
+        return voice_of
+    except ImportError:
+        return guess_voice
+
+
 def voice_profile(card, voice_of=None):
-    f0, scale, press = (voice_of or guess_voice)(card)
+    f0, scale, press = (voice_of or cast_voice())(card)
     extra = PROFILES.get(card) or dict(
         breath=0.22,
         rasp=round(0.5 * press, 2),
@@ -88,7 +99,9 @@ def build(previous=None, voice_of=None):
                             imported=(ASSETS / card / f"{asset}.uasset").exists(),
                         )
                     )
-                levels.append(dict(level=level, file=takes[0]["file"], exists=any(x["exists"] for x in takes), takes=takes))
+                levels.append(
+                    dict(level=level, file=takes[0]["file"], exists=any(x["exists"] for x in takes), takes=takes)
+                )
             clips[emotion.lower()] = levels
         voice = kept.get(card) or voice_profile(card, voice_of)
         characters.append(dict(id=card, name=str(name).upper(), voice=voice, clips=clips))

@@ -41,8 +41,8 @@ import numpy as np
 from scipy.signal import resample_poly
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import voice_manifest  # noqa: E402  (voices.json)
 import broadcast_audio as ba  # noqa: E402  (the synth: glottal pulses, formants, filters; its rng is reseeded per file)
+import voice_manifest  # noqa: E402  (voices.json)
 from broadcast_audio import SR, band, glottal, high, low, reson, smooth_noise, t, vocal  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -389,7 +389,7 @@ def main():
     if a.manifest:
         voice_manifest.write(voice_of)
         return
-    manifest =json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"files": {}}
+    manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"files": {}}
     files = manifest.setdefault("files", {})
     summary = {}
     for card in a.card or cards():
