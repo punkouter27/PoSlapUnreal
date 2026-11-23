@@ -865,9 +865,12 @@ def supervise():
     return code
 
 
-if __name__ == "__main__":
+def _run_main():
     if "--supervise" in sys.argv and int(sys.argv[sys.argv.index("--supervise") + 1]) > 0:
-        sys.exit(supervise())
+        code = supervise()
+        if code:
+            raise SystemExit(code)
+        return
     try:
         main()
     except (Exception, KeyboardInterrupt):  # housekeeping's "failed run" marker (AGENTS.md)
@@ -877,3 +880,28 @@ if __name__ == "__main__":
         if run and (RUNS / run).is_dir():
             (RUNS / run / "crash.log").write_text(traceback.format_exc())
         raise
+
+
+if __name__ == "__main__":
+    import runs_grid
+
+    # the training runs grid (benchmark/runs.py): the outermost launcher records how the run ended, crash or not;
+    # a child (--supervise, overnight.py) leaves it to its launcher
+    own_grid = not os.environ.get(runs_grid.OWNER)
+    os.environ[runs_grid.OWNER] = "1"
+    t_launch, ended = time.time(), "finished"
+    try:
+        _run_main()
+    except KeyboardInterrupt:
+        ended = "interrupted (Ctrl+C)"
+        raise
+    except SystemExit as exc:
+        ended = f"crashed: exit code {exc.code}" if exc.code not in (0, None) else "finished"
+        raise
+    except BaseException as exc:
+        ended = f"crashed: {type(exc).__name__}: {exc}"[:200]
+        raise
+    finally:
+        if own_grid:
+            run = next((sys.argv[i + 1] for i, x in enumerate(sys.argv) if x == "--run"), None)
+            runs_grid.record(RUNS, run or runs_grid.newest_run(RUNS, t_launch), ended, "training/train.py")

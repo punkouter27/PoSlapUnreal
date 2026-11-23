@@ -35,6 +35,7 @@ import sys
 import time
 from pathlib import Path
 
+import runs_grid
 from gpuwatch import cooldown, gpu_status
 from levels import LEVELS
 from ppo import PPO, PPOConfig, export_onnx, obs_dim_of
@@ -79,8 +80,20 @@ def train(stage, run, minutes, resume, char):
     cmd += stage.get("args", [])
     if stage.get("keep_going"):
         cmd.append("--keep-going")
-    with open(RUNS / f"{run.name}.log", "a") as out:
-        code = subprocess.run(cmd, cwd=HERE, stdout=out, stderr=subprocess.STDOUT).returncode
+    os.environ[runs_grid.OWNER] = "1"  # the runs grid: this launcher records the stage, not the train.py child
+    ended = "launcher crashed"
+    try:
+        with open(RUNS / f"{run.name}.log", "a") as out:
+            code = subprocess.run(cmd, cwd=HERE, stdout=out, stderr=subprocess.STDOUT).returncode
+        ended = "finished" if code == 0 else f"crashed: exit code {code}"
+    except KeyboardInterrupt:
+        ended = "interrupted (Ctrl+C)"
+        raise
+    except BaseException as exc:
+        ended = f"launcher crashed: {type(exc).__name__}: {exc}"[:200]
+        raise
+    finally:  # a retry of the stage records again: the last attempt's ending is the run's
+        runs_grid.record(RUNS, run.name, ended, f"training/{Path(sys.argv[0]).name}")
     if code and run.is_dir():  # housekeeping's "failed run" marker (AGENTS.md); a native crash leaves no traceback
         with open(run / "crash.log", "a") as f:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} exit code {code}\n")
