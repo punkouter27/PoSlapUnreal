@@ -9,6 +9,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "SlapElo.h"
 #include "SlapHUDInternal.h"
 
 using namespace SlapUi;
@@ -32,6 +33,7 @@ void ASlapHUD::LoadRatings()
 		(*O)->TryGetNumberField(TEXT("elo"), R.Elo);
 		(*O)->TryGetNumberField(TEXT("w"), R.W);
 		(*O)->TryGetNumberField(TEXT("l"), R.L);
+		(*O)->TryGetNumberField(TEXT("d"), R.D);
 		Ratings.Add(FString(KV.Key), R);	// (5.8: the JSON keys are not FString)
 	}
 }
@@ -45,6 +47,7 @@ void ASlapHUD::SaveRatings() const
 		O->SetNumberField(TEXT("elo"), FMath::RoundToDouble(KV.Value.Elo * 10.0) / 10.0);
 		O->SetNumberField(TEXT("w"), KV.Value.W);
 		O->SetNumberField(TEXT("l"), KV.Value.L);
+		if (KV.Value.D) O->SetNumberField(TEXT("d"), KV.Value.D);
 		J->SetObjectField(KV.Key, O);
 	}
 	FString Text;
@@ -55,7 +58,8 @@ void ASlapHUD::SaveRatings() const
 FString ASlapHUD::EloOf(const FString& Card) const
 {
 	const FRating* R = Ratings.Find(Card);
-	return R ? FString::Printf(TEXT("Elo %.0f  %d-%d"), R->Elo, R->W, R->L) : FString(TEXT("Elo 1000"));
+	if (!R) return FString(TEXT("Elo 1000"));
+	return R->D ? FString::Printf(TEXT("Elo %.0f  %d-%d-%d"), R->Elo, R->W, R->L, R->D) : FString::Printf(TEXT("Elo %.0f  %d-%d"), R->Elo, R->W, R->L);
 }
 
 double ASlapHUD::EloNum(const FString& Card) const
@@ -76,27 +80,33 @@ void ASlapHUD::RoundTrip()
 		Tab = 0;
 		UE_LOG(LogSlap, Log, TEXT("SlapHUD: launch menu (waiting for START)"));
 	}
-	if (SeenWins[0] < 0) { SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1]; }
-	if (H.Result.IsEmpty()) { ResultAt = -1.0; return; }
-	if (H.MatchSeq != RatedSeq)	// a new result: rate it once
+	if (SeenWins[0] < 0) { SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1]; SeenDraws = H.Draws; }
+	if (H.Result.IsEmpty()) { ResultAt = -1.0; return; }	// running, or aborted / reset / left: nothing to rate
+	if (H.MatchSeq != RatedSeq)	// a new result: rate it once (every completed bout: menu, watch, demo, loop, tournament)
 	{
+		const SlapElo::EOutcome Out = SlapElo::Outcome(H.Result, H.Wins, H.Draws, SeenWins, SeenDraws);
+		if (Out == SlapElo::EOutcome::Pending) return;	// a KO's result line lands a frame before its win count: wait for it
 		RatedSeq = H.MatchSeq;
 		ResultAt = Now;
-		const int32 W = H.Wins[0] > SeenWins[0] ? 0 : H.Wins[1] > SeenWins[1] ? 1 : -1;	// no series point: no contest
-		SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1];
+		const bool bDraw = Out == SlapElo::EOutcome::Draw;
+		const int32 W = Out == SlapElo::EOutcome::RedWins ? 0 : Out == SlapElo::EOutcome::BlueWins ? 1 : -1;	// -1: a draw or no contest
+		SeenWins[0] = H.Wins[0]; SeenWins[1] = H.Wins[1]; SeenDraws = H.Draws;
 		EloLine.Reset();
-		if (W >= 0 && !HereCard[0].IsEmpty() && !HereCard[1].IsEmpty())
+		if ((W >= 0 || bDraw) && !HereCard[0].IsEmpty() && !HereCard[1].IsEmpty())
 		{
-			if (HereCard[0] == HereCard[1])	// a mirror match: the character beat itself, nothing to rate
+			if (!SlapElo::Rated(HereCard[0], HereCard[1]))	// a mirror match: the character played itself, nothing to rate
 				EloLine = FString::Printf(TEXT("%s vs %s: mirror match, Elo unchanged"), *HereCard[0].ToUpper(), *HereCard[1].ToUpper());
 			else
 			{
-				FRating& Wr = Ratings.FindOrAdd(HereCard[W]);
-				FRating& Lr = Ratings.FindOrAdd(HereCard[1 - W]);
-				const double Expect = 1.0 / (1.0 + FMath::Pow(10.0, (Lr.Elo - Wr.Elo) / 400.0));
-				const double Delta = 32.0 * (1.0 - Expect);
-				Wr.Elo += Delta; Lr.Elo -= Delta; ++Wr.W; ++Lr.L;
-				EloLine = FString::Printf(TEXT("ELO  %s %.0f (+%.0f)   %s %.0f (-%.0f)"), *HereCard[W].ToUpper(), Wr.Elo, Delta, *HereCard[1 - W].ToUpper(), Lr.Elo, Delta);
+				const int32 A = W >= 0 ? W : 0;	// the winner first (a draw: red first)
+				Ratings.FindOrAdd(HereCard[A]);
+				Ratings.FindOrAdd(HereCard[1 - A]);	// both added before taking references (an add can move the map)
+				FRating& Ra = Ratings[HereCard[A]];
+				FRating& Rb = Ratings[HereCard[1 - A]];
+				const double Delta = SlapElo::Apply(Ra.Elo, Rb.Elo, bDraw ? 0.5 : 1.0);
+				if (bDraw) { ++Ra.D; ++Rb.D; }
+				else { ++Ra.W; ++Rb.L; }
+				EloLine = FString::Printf(TEXT("ELO  %s %.0f (%+.0f)   %s %.0f (%+.0f)%s"), *HereCard[A].ToUpper(), Ra.Elo, Delta, *HereCard[1 - A].ToUpper(), Rb.Elo, -Delta, bDraw ? TEXT("   DRAW") : TEXT(""));
 				SaveRatings();
 			}
 			UE_LOG(LogSlap, Log, TEXT("SlapHUD: rated: %s"), *EloLine);

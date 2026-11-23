@@ -226,8 +226,10 @@ private:
 
 	// ---- the round trip and the ratings (SlapHUDRoundTrip.cpp; user 2026-10-30: "a full round trip for 1v1 and a clear
 	// winner", "elo is saved as games are played"): the menu at launch, the result for ResultHold s, then the menu again
-	// with the same two picked; each result moves the two characters' Elo (K 32, from 1000), saved to Saved/PoSlap/elo.json
-	struct FRating { double Elo = 1000.0; int32 W = 0, L = 0; };
+	// with the same two picked; each result moves the two characters' Elo (K 32, from 1000, a draw 0.5 each: SlapElo.h),
+	// saved to Saved/PoSlap/elo.json at once. Every completed bout counts: menu START, watch, demo / attract, -SlapLoop,
+	// the tournament; an aborted, reset or no-contest bout and a mirror match count for nothing.
+	struct FRating { double Elo = 1000.0; int32 W = 0, L = 0, D = 0; };
 	static FString RatingsPath();
 	void LoadRatings();
 	void SaveRatings() const;
@@ -428,7 +430,7 @@ private:
 
 	TMap<FString, FRating> Ratings;	// by character card
 	FString HereCard[2];			// the characters this level plays (red, blue)
-	int32 RatedSeq = 0, SeenWins[2] = { -1, -1 };
+	int32 RatedSeq = 0, SeenWins[2] = { -1, -1 }, SeenDraws = 0;
 	double ResultAt = -1.0;			// when the result showed (game time); -1 = none pending
 	double MenuAt = -100.0;			// when the menu last opened (game time): the checks wait for it to lay out
 	bool bLaunchMenu = false;

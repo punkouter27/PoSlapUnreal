@@ -78,7 +78,8 @@ training/.venv/Scripts/python.exe training/match.py compare training/models/brai
 
 * **Main menu:** a 4 x 4 grid of the 16 league places: each roster character's tile (place, name, Elo, record), every empty place a **BYE** tile.
 * **Bracket (1v1 only, no FFA):** 16-slot single elimination seeded by Elo, bracket order 1v16, 8v9, 4v13, 5v12, 2v15, 7v10, 3v14, 6v11. BYEs take the bottom seeds; a fighter facing a BYE advances unfought; BYE vs BYE sends a BYE on; a draw goes to the higher seed (no replay); a pairing with no arena level in this build is a walkover. PLAY runs every match automatically to a champion; the state is saved to `Saved/PoSlap/tournament.json` (`Source/PoSlapUnreal/SlapHUDTourney.cpp`).
-* **Elo:** every character starts at 1000, K = 32, saved to `Saved/PoSlap/elo.json` (`SlapHUDRoundTrip.cpp`).
+* **Elo:** every character starts at 1000, K = 32, saved to `Saved/PoSlap/elo.json` (`SlapHUDRoundTrip.cpp`, rule in `SlapElo.h`).
+  Every **completed** 1v1 bout updates it immediately, whatever started it: menu START, watch, the idle demo / attract mode, the `-SlapLoop` unattended loop and the tournament. A draw scores 0.5 each (no seed rule outside the bracket); an aborted, reset or no-contest bout and a mirror match (a character vs itself) record nothing; each bout is rated once.
 * **No free-for-all:** PoSlap is a 1v1 sport, so this project has the bracket only; the FFA mode of the tournament standard does not apply.
 
 ## Voice / SFX Matrix
