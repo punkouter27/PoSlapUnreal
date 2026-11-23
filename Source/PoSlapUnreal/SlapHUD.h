@@ -8,6 +8,7 @@
 #include "Math/IntRect.h"
 #include "SlapController.h"
 #include "SlapSwingRead.h"
+#include "SlapVoiceSynth.h"
 #include "SlapHUD.generated.h"
 
 class ACameraActor;
@@ -604,8 +605,9 @@ private:
 	USoundBase* Voice(const FString& Kind, const FString& Card);
 	// each character's voice pack (scripts/voice_pack.py -> /Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
 	// five emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
-	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless). A line with no
-	// imported asset is synthesised at runtime (USlapVoiceWave, SlapVoiceSynth.h) and kept in EmoteSounds like an asset.
+	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless). voices.json
+	// (scripts/voice_manifest.py) says which lines are imported assets; every other line is synthesised in the card's voice
+	// profile from the manifest (USlapVoiceWave, SlapVoiceSynth.h) and kept in EmoteSounds like an asset.
 	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult, Celebrate };	// the order USlapVoiceWave::Synthesize reads
 	void Emote(int32 Athlete, EEmote Kind, int32 Level);
 	void EmoteCues(const FSlapHud& H);	// HURT when struck, INSULT at the turn's start, HAPPY on a dodge, CELEBRATE on a KO win, ANGRY on a knockdown
@@ -613,6 +615,7 @@ private:
 	static constexpr double IntroEach = 3.5;	// s per fighter's introduction card at the walk-in (SlapHUDDraw.cpp)
 	int32 IntroSaid = -1;	// the introduction that has had its taunt (0 red, 1 blue)
 	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> EmoteSounds;	// by asset name: the asset, or its synthesised stand-in
+	FSlapVoiceManifest VoiceManifest;	// voices.json, read at the first line
 	double EmoteAt[2] = { -100.0, -100.0 };
 	int32 EmoteTake[2] = { -1, -1 };
 	int32 EmoteSeenStrike = 0, EmoteSeenTurn = 0, EmoteSeenKO = 0, EmoteDowns[2] = {}, EmoteTurnStrike = 0, EmoteTurnDef = 1;

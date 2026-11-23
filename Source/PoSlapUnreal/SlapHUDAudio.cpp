@@ -8,7 +8,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "SlapHUDInternal.h"
-#include "SlapVoiceSynth.h"
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundBase.h"
 
@@ -118,11 +117,14 @@ void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
 	if (const TObjectPtr<USoundBase>* Found = EmoteSounds.Find(Name)) Snd = Found->Get();
 	else
 	{
-		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Project/Core/Audio/Voice/") + Card), *Name);
-		if (!Snd)	// not recorded yet: a synthesised line in the card's own pitch, made once and kept
+		if (!VoiceManifest.bLoaded && !VoiceManifest.Load())	// no manifest: every line is synthesised (one warning)
+			UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voices.json (scripts/voice_manifest.py): every voice line is synthesised"));
+		// an asset only where the manifest says it is imported; never a request for one it lists as missing
+		if (VoiceManifest.Imported.Contains(Name)) Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Project/Core/Audio/Voice/") + Card), *Name);
+		if (!Snd)	// not recorded yet: the procedural imitation in the card's voice, made once and kept
 		{
-			UE_LOG(LogSlap, Verbose, TEXT("SlapHUD: no voice %s (scripts/voice_pack.py, then voice_import.py): synthesised"), *Name);
-			Snd = USlapVoiceWave::Synthesize(this, Card, (int32)Kind, Take + 1, Level);
+			UE_LOG(LogSlap, Verbose, TEXT("SlapHUD: voice %s not imported (scripts/voice_pack.py, voice_import.py): synthesised"), *Name);
+			Snd = USlapVoiceWave::Synthesize(this, VoiceManifest.ProfileFor(Card), Card, (int32)Kind, Take + 1, Level);
 		}
 		EmoteSounds.Add(Name, Snd);
 	}

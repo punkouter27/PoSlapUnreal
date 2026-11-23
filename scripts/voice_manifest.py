@@ -5,7 +5,10 @@
 Every card in training/characters x 5 emotions x 5 levels x 5 takes, with the real names: the source WAV
 Content/Art/Exports/Audio/Voice/<card>/<EMOTION>_<take>_<level>.wav and the asset it is imported as,
 /Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level> (scripts/voice_import.py). Per take: whether
-the WAV exists, whether it is a voice_pack.py placeholder, whether it is imported. Per card: the procedural voice profile
+whether a real recording exists (`exists`: a voice_pack.py placeholder - a file manifest.json lists as a placeholder
+whose SHA-1 still matches - does NOT count, so the game synthesises that line instead), whether a placeholder WAV is
+there (`placeholder`), whether an asset is imported (`imported`). The game plays an asset only where exists and imported
+are both true. Per card: the procedural voice profile
 the game synthesises missing clips with (USlapVoiceWave, Source/PoSlapUnreal/SlapVoiceSynth.cpp); a profile already in the
 file is kept, so it can be tuned by hand. The flags are written here, never by hand.
 
@@ -13,6 +16,7 @@ Written twice with the same bytes: Content/Art/Exports/Audio/Voice/voices.json (
 Content/Data/voices.json (staged as NonUFS, the copy a packaged build reads). No numpy needed.
 """
 
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -88,14 +92,20 @@ def build(previous=None, voice_of=None):
                 for take in range(1, TAKES + 1):
                     rel = f"{card}/{emotion}_{take}_{level}.wav"
                     asset = f"S_V_{card}_{emotion}_{take}_{level}"
-                    exists = (OUT / rel).exists()
+                    wav = OUT / rel
+                    known = placeholders.get(rel, {})
+                    generated = (
+                        wav.exists()
+                        and bool(known.get("placeholder"))
+                        and known.get("sha1") == hashlib.sha1(wav.read_bytes()).hexdigest()
+                    )
                     takes.append(
                         dict(
                             take=take,
                             asset=asset,
                             file=rel,
-                            exists=exists,
-                            placeholder=exists and bool(placeholders.get(rel, {}).get("placeholder")),
+                            exists=wav.exists() and not generated,
+                            placeholder=generated,
                             imported=(ASSETS / card / f"{asset}.uasset").exists(),
                         )
                     )
@@ -136,8 +146,8 @@ def write(voice_of=None):
 
 def summary(doc):
     takes = [x for c in doc["characters"] for lv in c["clips"].values() for clip in lv for x in clip["takes"]]
-    have = [x for x in takes if x["exists"]]
-    recorded = sum(not x["placeholder"] for x in have)
+    recorded = sum(x["exists"] for x in takes)
+    placeholders = sum(x["placeholder"] for x in takes)
     missing = []
     for c in doc["characters"]:
         for emotion, lv in c["clips"].items():
@@ -145,8 +155,8 @@ def summary(doc):
             if n:
                 missing.append(f"{c['id']}/{emotion} x{n}")
     return (
-        f"voices.json: {len(have)} of {len(takes)} clips have a WAV ({recorded} recordings, {len(have) - recorded}"
-        f" placeholders), {sum(x['imported'] for x in takes)} imported; missing (synthesised in-game):"
+        f"voices.json: {recorded} of {len(takes)} clips recorded ({placeholders} generated placeholders ignored,"
+        f" {sum(x['imported'] for x in takes)} assets imported); missing (synthesised in-game):"
         f" {', '.join(missing) or 'none'}"
     )
 

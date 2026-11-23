@@ -1,8 +1,8 @@
 """Each character's voice pack: ANGRY, HAPPY, HURT, INSULT, CELEBRATE x 5 sounds x 5 levels (1 weakest .. 5 strongest),
 and voices.json, the manifest of every clip the game expects.
 
-    training/.venv/Scripts/python.exe scripts/voice_pack.py [--card <name>] [--report]
-    training/.venv/Scripts/python.exe scripts/voice_pack.py --manifest     (only rescan and rewrite voices.json)
+    training/.venv/Scripts/python.exe scripts/voice_pack.py                  (rescan, rewrite voices.json)
+    training/.venv/Scripts/python.exe scripts/voice_pack.py --placeholders [--card <name>] [--report]
     (then, in Unreal: UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/Scripts/voice_import.py" -unattended)
 
 Writes Content/Art/Exports/Audio/Voice/<card>/<EMOTION>_<sound>_<level>.wav (32 kHz mono 16-bit) for every character
@@ -18,8 +18,10 @@ ANGRY: a growl into a shout, a nasal "hmph", a roar, a barked "hey!", a strained
 HURT: "ow" (a to u), "oof", "ugh", a sharp "ah!", a moan; a sob in the voice at levels 4-5.
 INSULT: a taunt with no words yet (speech-shaped babble): the playground "na-na-na-NA-na", a jeering question, a
 statement with the last word punched, a mocking laugh-taunt, fast trash talk.
-CELEBRATE (a KO win, the tournament champion) gets no placeholder WAV: until one is recorded the game synthesises it
-at runtime (USlapVoiceWave, Source/PoSlapUnreal/SlapVoiceSynth.cpp).
+Placeholders are written only with --placeholders (listening tests, a build that wants files): since 2026-11-22 the game
+does NOT play them. voices.json marks a placeholder (manifest.json hash still matching) as not recorded, so the game
+synthesises that line itself (USlapVoiceWave, Source/PoSlapUnreal/SlapVoiceSynth.cpp); only a real recording plays.
+CELEBRATE never gets placeholders.
 Loudness is baked in (level 1 peaks at 0.30, level 5 at 0.94), so the game plays every file at one gain.
 
 voices.json (Content/Art/Exports/Audio/Voice/voices.json, staged copy Content/Data/voices.json for packaged builds;
@@ -384,9 +386,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--card", action="append", help="only these cards (default: every card in training/characters)")
     ap.add_argument("--report", action="store_true", help="a listening page in SCREENSHOTS/<YYMMDD>_voice_pack/")
-    ap.add_argument("--manifest", action="store_true", help="only rescan the voice folder and rewrite voices.json")
+    ap.add_argument(
+        "--placeholders", action="store_true", help="also (re)write the placeholder WAVs (the game ignores them)"
+    )
+    ap.add_argument("--manifest", action="store_true", help="only rewrite voices.json (the default; kept for scripts)")
     a = ap.parse_args()
-    if a.manifest:
+    if a.manifest or not a.placeholders:
         voice_manifest.write(voice_of)
         return
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"files": {}}

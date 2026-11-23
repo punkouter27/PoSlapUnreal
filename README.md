@@ -93,10 +93,34 @@ Every card has 5 emotions x 5 intensity levels (1 weakest .. 5 strongest), each 
 | `INSULT` | the walk-in introduction; the striker at each new turn |
 | `CELEBRATE` | the winner of a bout by KO (level 4); the tournament champion (level 5) |
 
-**Asset naming:** `/Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take 1-5>_<level 1-5>`, e.g. `S_V_grandpa_CELEBRATE_2_5`
-(`scripts/voice_pack.py` writes the WAV placeholders for HAPPY / ANGRY / HURT / INSULT; `voice_import.py` imports them; CELEBRATE has no WAVs yet).
+**Asset naming:** `/Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take 1-5>_<level 1-5>`, e.g. `S_V_grandpa_CELEBRATE_2_5`,
+imported from the WAV `Content/Art/Exports/Audio/Voice/<card>/<EMOTION>_<take>_<level>.wav`.
 
-**Procedural fallback:** a line with no imported asset is synthesised at runtime (`USlapVoiceWave`, `Source/PoSlapUnreal/SlapVoiceSynth.cpp`):
-a glottal buzz through three vowel formants whose pitch, glide, length, loudness and roughness scale with the emotion and the level,
-with a per-card pitch offset and vocal-tract size (from the card name) so the cards sound different. Each generated line is made once and cached;
-the miss is logged at `Verbose` only. Drop in a WAV with the name above and it replaces the synthesised line on the next launch.
+**The manifest, `voices.json`:** `Content/Art/Exports/Audio/Voice/voices.json` (next to the WAVs; the identical
+`Content/Data/voices.json` is the copy a packaged build reads, staged as NonUFS). It lists every card x 5 emotions x
+5 levels x 5 takes with the asset and WAV names, `exists` (a real recording is there), `placeholder` (a WAV
+`voice_pack.py` generated: `manifest.json` lists it and its SHA-1 still matches; it counts as missing), `imported`
+(the asset is there), and each card's procedural `voice` profile (pitch,
+formant scale, strain, breath, rasp, vibrato, tempo). The flags are written by the generator, never by hand; a
+`voice` profile already in the file is kept, so it can be tuned there.
+
+**Adding a recording:** save the WAV under its name in `Content/Art/Exports/Audio/Voice/<card>/`, import it
+(`UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/scripts/voice_import.py" -unattended`),
+then run `python scripts/voice_manifest.py` (or `scripts/voice_pack.py`). It prints "N of M clips recorded ...;
+missing: ...". Saving a recording over a placeholder changes its hash, so it counts as recorded. The old placeholder
+WAVs and their imported assets stay in the repo but are ignored: the game synthesises those lines with the new engine
+(`scripts/voice_pack.py --placeholders` still writes them for listening tests).
+
+**What plays:** the game reads `voices.json` once. A clip marked both `exists` and `imported` plays its asset; every other clip (and
+every clip, with one warning, if the manifest is missing) is an **advanced procedural imitation** in that card's
+voice (`USlapVoiceWave`, `Source/PoSlapUnreal/SlapVoiceSynth.cpp`): a Rosenberg glottal pulse with jitter, shimmer,
+subharmonic rasp and aspiration, through a cascade of four vowel formants, built from 1-4 syllables with consonant
+onsets (h, s, sh, f, k, t, p, n, a gasp) and per-emotion prosody (angry: tense, falling, growled; happy: bright
+rise-fall and laughter; hurt: gasp then a breaking groan, a long cry at level 5; insult: nasal sing-song "nyah-nyah";
+celebrate: a rising "woo-hoo!" with wide vibrato, then laughter). The level scales loudness (peaks 0.30 .. 0.94, the
+placeholders' loudness), length, pitch range, rasp, breath, syllables and vibrato. Each line is deterministic per
+(card, emotion, take, level), made once and cached; the miss is logged at `Verbose` only.
+
+**Tests:** `pytest tests/test_voice_manifest.py` (every card x 5 x 5 x 5, the names, the flags against the folders,
+a distinct voice per card); `UnrealEditor-Cmd.exe PoSlapUnreal.uproject -ExecCmds="Automation RunTests PoSlap.Voice;Quit" -unattended -nullrhi`
+(each emotion is audible, level 5 louder and longer than level 1, deterministic, two cards differ).
