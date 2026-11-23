@@ -71,3 +71,32 @@ UnrealEditor.exe PoSlapUnreal.uproject /Game/Project/Environments/Levels/L_Arena
 # Verify bit-identical match event sequence against Python MuJoCo reference
 training/.venv/Scripts/python.exe training/match.py compare training/models/brains/grandpa_final.onnx Saved/URLab/live_ue.json --mjb Saved/URLab/scene_compiled.mjb
 ```
+
+---
+
+## Tournament Standard
+
+* **Main menu:** a 4 x 4 grid of the 16 league places: each roster character's tile (place, name, Elo, record), every empty place a **BYE** tile.
+* **Bracket (1v1 only, no FFA):** 16-slot single elimination seeded by Elo, bracket order 1v16, 8v9, 4v13, 5v12, 2v15, 7v10, 3v14, 6v11. BYEs take the bottom seeds; a fighter facing a BYE advances unfought; BYE vs BYE sends a BYE on; a draw goes to the higher seed (no replay); a pairing with no arena level in this build is a walkover. PLAY runs every match automatically to a champion; the state is saved to `Saved/PoSlap/tournament.json` (`Source/PoSlapUnreal/SlapHUDTourney.cpp`).
+* **Elo:** every character starts at 1000, K = 32, saved to `Saved/PoSlap/elo.json` (`SlapHUDRoundTrip.cpp`).
+* **No free-for-all:** PoSlap is a 1v1 sport, so this project has the bracket only; the FFA mode of the tournament standard does not apply.
+
+## Voice / SFX Matrix
+
+Every card has 5 emotions x 5 intensity levels (1 weakest .. 5 strongest), each with 5 takes (a random take, never the same one twice running):
+
+| Emotion | When |
+|---|---|
+| `ANGRY` | a knockdown (louder with each one); the loser of a decision |
+| `HAPPY` | the defender after a turn with no strike; the winner of a decision |
+| `HURT` | struck (level from the palm's speed) |
+| `INSULT` | the walk-in introduction; the striker at each new turn |
+| `CELEBRATE` | the winner of a bout by KO (level 4); the tournament champion (level 5) |
+
+**Asset naming:** `/Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take 1-5>_<level 1-5>`, e.g. `S_V_grandpa_CELEBRATE_2_5`
+(`scripts/voice_pack.py` writes the WAV placeholders for HAPPY / ANGRY / HURT / INSULT; `voice_import.py` imports them; CELEBRATE has no WAVs yet).
+
+**Procedural fallback:** a line with no imported asset is synthesised at runtime (`USlapVoiceWave`, `Source/PoSlapUnreal/SlapVoiceSynth.cpp`):
+a glottal buzz through three vowel formants whose pitch, glide, length, loudness and roughness scale with the emotion and the level,
+with a per-card pitch offset and vocal-tract size (from the card name) so the cards sound different. Each generated line is made once and cached;
+the miss is logged at `Verbose` only. Drop in a WAV with the name above and it replaces the synthesised line on the next launch.

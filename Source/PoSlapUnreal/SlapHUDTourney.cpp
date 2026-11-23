@@ -51,7 +51,6 @@ void ASlapHUD::LoadTourney()
 	TourneyChampions.Reset();
 	bTourney = false;
 	TourneyPend[0] = TourneyPend[1] = -1;
-	TourneyDraws = 0;
 	FString Text;
 	TSharedPtr<FJsonObject> J;
 	if (FFileHelper::LoadFileToString(Text, *TourneyPath()) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), J) && J)
@@ -68,7 +67,6 @@ void ASlapHUD::LoadTourney()
 		J->TryGetBoolField(TEXT("running"), bTourney);
 		J->TryGetNumberField(TEXT("pend_round"), TourneyPend[0]);
 		J->TryGetNumberField(TEXT("pend_index"), TourneyPend[1]);
-		J->TryGetNumberField(TEXT("draws"), TourneyDraws);
 	}
 	bool bShape = TourneySeeds.Num() == 16 && TourneyWon.Num() == TourneyRounds && TourneyHow.Num() == TourneyRounds;
 	bool bUntouched = TourneyPend[0] < 0;
@@ -118,7 +116,6 @@ void ASlapHUD::SaveTourney() const
 	J->SetBoolField(TEXT("running"), bTourney);
 	J->SetNumberField(TEXT("pend_round"), TourneyPend[0]);
 	J->SetNumberField(TEXT("pend_index"), TourneyPend[1]);
-	J->SetNumberField(TEXT("draws"), TourneyDraws);
 	J->SetArrayField(TEXT("champions"), Strings(TourneyChampions));
 	TSharedRef<FJsonObject> Elo = MakeShared<FJsonObject>();	// the seeds' Elo as it stands (the ratings file is the source)
 	for (const FString& Seed : TourneySeeds)
@@ -148,10 +145,15 @@ void ASlapHUD::NewTourney()
 	}
 	bTourney = false;
 	TourneyPend[0] = TourneyPend[1] = -1;
-	TourneyDraws = 0;
 	TourneyNextAt = -1.0;
 	SaveTourney();
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: new tournament: %d fighters, %d BYEs (%s)"), Field.Num(), 16 - Field.Num(), *FString::Join(Field, TEXT(", ")));
+}
+
+int32 ASlapHUD::TourneySeedOf(const FString& Card) const
+{
+	const int32 P = Card == Bye ? INDEX_NONE : TourneySeeds.Find(Card);
+	return P == INDEX_NONE ? 99 : SeedAt[P];
 }
 
 FString ASlapHUD::TourneyEntrant(int32 Round, int32 Index, int32 Side) const
@@ -163,7 +165,7 @@ FString ASlapHUD::TourneyEntrant(int32 Round, int32 Index, int32 Side) const
 bool ASlapHUD::NextTourneyMatch(int32& OutRound, int32& OutIndex)
 {
 	// round by round, match by match: a BYE goes through at once; a pairing with no level in this build is a walkover to
-	// the one who has an arena (both or neither: the higher Elo). The first match that can be played is returned.
+	// the one who has an arena (both or neither: the higher seed). The first match that can be played is returned.
 	for (int32 r = 0; r < TourneyWon.Num(); ++r)
 	{
 		for (int32 i = 0; i < TourneyWon[r].Num(); ++i)
@@ -185,7 +187,7 @@ bool ASlapHUD::NextTourneyMatch(int32& OutRound, int32& OutIndex)
 				return true;
 			}
 			const bool bA = Playable(SA), bB = Playable(SB);
-			TourneyWon[r][i] = bA != bB ? (bA ? A : B) : (EloNum(A) >= EloNum(B) ? A : B);
+			TourneyWon[r][i] = bA != bB ? (bA ? A : B) : (TourneySeedOf(A) <= TourneySeedOf(B) ? A : B);
 			TourneyHow[r][i] = TEXT("W/O");
 			UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament %s: %s vs %s has no arena in this build: %s goes through (walkover)"), RoundName[r], *A, *B, *TourneyWon[r][i]);
 		}
@@ -203,7 +205,7 @@ void ASlapHUD::StartTourneyMatch(int32 Round, int32 Index)
 	SelectedFighter[1] = SlotCards.Find(B);
 	BrainPick[0] = BrainPick[1] = INDEX_NONE;	// each pairing plays its own default brains
 	SaveTourney();
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament %s match %d: %s vs %s%s"), RoundName[Round], Index + 1, *A, *B, TourneyDraws ? *FString::Printf(TEXT(" (replay %d after a draw)"), TourneyDraws) : TEXT(""));
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament %s match %d: %s vs %s"), RoundName[Round], Index + 1, *A, *B);
 	Start();	// this level, or the pairing's (it opens with ?SlapGo: the match starts there at once)
 }
 
@@ -220,7 +222,7 @@ void ASlapHUD::PlayTourney(bool bPlay)
 void ASlapHUD::TourneyTick(double Now)
 {
 	if (!bTourney || bTravelling || !Controller.IsValid() || TourneyNextAt < 0.0 || Now < TourneyNextAt) return;
-	if (TourneyPend[0] >= 0)	// a pending match: carry on with it (a replay after a draw, a resume after a pause)
+	if (TourneyPend[0] >= 0)	// a pending match: carry on with it (a resume after a pause or a level change)
 	{
 		StartTourneyMatch(TourneyPend[0], TourneyPend[1]);
 		return;
@@ -243,7 +245,7 @@ void ASlapHUD::TourneyTick(double Now)
 	Caption(TEXT("CHAMPION!"), FString::Printf(TEXT("%s WINS THE TOURNAMENT"), *Champ.ToUpper()), Gold, 6.0);
 	Announce(TEXT("champion_") + Champ);
 	for (int32 a = 0; a < 2; ++a)	// the champion's voice, if he is in this arena
-		if (Last.Card[a] == Champ) { EmoteAt[a] = -100.0; Emote(a, EEmote::Happy, 5); }
+		if (Last.Card[a] == Champ) { EmoteAt[a] = -100.0; Emote(a, EEmote::Celebrate, 5); }
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament over: CHAMPION %s (Elo %.0f); bracket %s"), *Champ, EloNum(Champ), *TourneyPath());
 	if (bTourneyAuto && FParse::Param(FCommandLine::Get(), TEXT("SlapTourneyQuit")))	// the check: done once a champion is crowned
 		GetWorld()->GetTimerManager().SetTimer(TourneyQuitTimer, [] { FPlatformMisc::RequestExit(false); }, 4.f, false);
@@ -257,16 +259,10 @@ void ASlapHUD::TourneyResult(int32 W, const FSlapHud& H)
 	if (!((HereCard[0] == A && HereCard[1] == B) || (HereCard[0] == B && HereCard[1] == A))) return;	// not the tournament's match
 	const double Now = GetWorld()->GetTimeSeconds();
 	TourneyNextAt = bTourney ? Now + ResultHold + TourneyShow : -1.0;	// the result, then the bracket, then the next match
-	if (W < 0 && ++TourneyDraws < 3)	// a draw: the same match again
-	{
-		SaveTourney();
-		UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament: %s vs %s drawn (%d): replayed"), *A, *B, TourneyDraws);
-		return;
-	}
-	TourneyWon[R][I] = W >= 0 ? HereCard[W] : (EloNum(A) >= EloNum(B) ? A : B);
+	// a draw goes to the higher seed (the tournament standard: no replay)
+	TourneyWon[R][I] = W >= 0 ? HereCard[W] : (TourneySeedOf(A) <= TourneySeedOf(B) ? A : B);
 	TourneyHow[R][I] = W < 0 ? TEXT("SEED") : H.KOd >= 0 ? TEXT("KO") : TEXT("DEC");
 	TourneyPend[0] = TourneyPend[1] = -1;
-	TourneyDraws = 0;
 	SaveTourney();
 	UE_LOG(LogSlap, Log, TEXT("SlapHUD: tournament %s: %s beats %s (%s)"), RoundName[R], *TourneyWon[R][I], *(TourneyWon[R][I] == A ? B : A), *TourneyHow[R][I]);
 }

@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "SlapHUDInternal.h"
+#include "SlapVoiceSynth.h"
 #include "Sound/ReverbEffect.h"
 #include "Sound/SoundBase.h"
 
@@ -104,7 +105,7 @@ USoundBase* ASlapHUD::Voice(const FString& Kind, const FString& Card)
 
 void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
 {
-	static const TCHAR* Kinds[] = { TEXT("HAPPY"), TEXT("ANGRY"), TEXT("HURT"), TEXT("INSULT") };
+	static const TCHAR* Kinds[] = { TEXT("HAPPY"), TEXT("ANGRY"), TEXT("HURT"), TEXT("INSULT"), TEXT("CELEBRATE") };	// EEmote order
 	if (a < 0 || a > 1 || Last.Card[a].IsEmpty() || !GetWorld()) return;
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (Kind != EEmote::Hurt && Now - EmoteAt[a] < EmoteGap) return;	// one line at a time; the pain cuts in
@@ -118,8 +119,12 @@ void ASlapHUD::Emote(int32 a, EEmote Kind, int32 Level)
 	else
 	{
 		Snd = LoadNamed<USoundBase>(*(TEXT("/Game/Project/Core/Audio/Voice/") + Card), *Name);
+		if (!Snd)	// not recorded yet: a synthesised line in the card's own pitch, made once and kept
+		{
+			UE_LOG(LogSlap, Verbose, TEXT("SlapHUD: no voice %s (scripts/voice_pack.py, then voice_import.py): synthesised"), *Name);
+			Snd = USlapVoiceWave::Synthesize(this, Card, (int32)Kind, Take + 1, Level);
+		}
 		EmoteSounds.Add(Name, Snd);
-		if (!Snd) UE_LOG(LogSlap, Warning, TEXT("SlapHUD: no voice %s (scripts/voice_pack.py, then voice_import.py)"), *Name);
 	}
 	if (!Snd) return;
 	EmoteAt[a] = Now;
@@ -161,11 +166,11 @@ void ASlapHUD::EmoteCues(const FSlapHud& H)
 		EmoteSeenTurn = H.TurnSeq;
 		if (H.StrikeSeq == EmoteTurnStrike && H.KOd < 0) Emote(EmoteTurnDef, EEmote::Happy, 2);
 	}
-	// a KO: the winner's big laugh
+	// a KO: the winner celebrates
 	if (H.KOSeq != EmoteSeenKO)
 	{
 		EmoteSeenKO = H.KOSeq;
-		if (H.KOd >= 0) Emote(1 - H.KOd, EEmote::Happy, 5);
+		if (H.KOd >= 0) { EmoteAt[1 - H.KOd] = -100.0; Emote(1 - H.KOd, EEmote::Celebrate, 4); }
 	}
 	// a knockdown (not out cold): angry with himself, more with each one
 	for (int32 a = 0; a < 2; ++a)
