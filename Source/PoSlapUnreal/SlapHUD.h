@@ -8,6 +8,7 @@
 #include "Math/IntRect.h"
 #include "SlapController.h"
 #include "SlapSwingRead.h"
+#include "SlapVoiceSynth.h"
 #include "SlapHUD.generated.h"
 
 class ACameraActor;
@@ -225,8 +226,10 @@ private:
 
 	// ---- the round trip and the ratings (SlapHUDRoundTrip.cpp; user 2026-10-30: "a full round trip for 1v1 and a clear
 	// winner", "elo is saved as games are played"): the menu at launch, the result for ResultHold s, then the menu again
-	// with the same two picked; each result moves the two characters' Elo (K 32, from 1000), saved to Saved/PoSlap/elo.json
-	struct FRating { double Elo = 1000.0; int32 W = 0, L = 0; };
+	// with the same two picked; each result moves the two characters' Elo (K 32, from 1000, a draw 0.5 each: SlapElo.h),
+	// saved to Saved/PoSlap/elo.json at once. Every completed bout counts: menu START, watch, demo / attract, -SlapLoop,
+	// the tournament; an aborted, reset or no-contest bout and a mirror match count for nothing.
+	struct FRating { double Elo = 1000.0; int32 W = 0, L = 0, D = 0; };
 	static FString RatingsPath();
 	void LoadRatings();
 	void SaveRatings() const;
@@ -238,8 +241,9 @@ private:
 	// ---- the tournament (SlapHUDTourney.cpp; user 2026-11-09: "a 16 player (with byes) bracket tourney for the 1v1
 	// matches, play through the full tourney automatically and declare a winner"). Every character in the roster enters,
 	// seeded by Elo (1 v 16, 8 v 9, ...), the empty places are BYEs. PLAY runs each match in its pairing's level, one after
-	// another, until a champion; a pairing with no level in this build is a walkover (no Elo change); a draw is replayed
-	// (the third draw: the higher Elo goes through). Every played match moves the Elo as any match does. The state lives in
+	// another, until a champion; a pairing with no level in this build is a walkover (no Elo change; both or neither
+	// playable: the higher seed); a draw goes to the higher seed (tournament standard). Every played match moves the Elo
+	// as any match does. The state lives in
 	// Saved/PoSlap/tournament.json, so it survives the level changes between matches; an app launched cold pauses it.
 	static constexpr int32 TourneyRounds = 4;	// 16 -> 8 -> 4 -> 2 -> 1
 	static FString TourneyPath();
@@ -256,11 +260,11 @@ private:
 	TSharedRef<SWidget> BuildTourneyTab();
 	TArray<FString> TourneySeeds;			// 16 bracket positions: a card or "BYE"
 	TArray<TArray<FString>> TourneyWon;		// per round: each match's winner ("" = not yet)
-	TArray<TArray<FString>> TourneyHow;		// per round: "KO", "DEC", "W/O", "BYE", "SEED" (third draw)
+	TArray<TArray<FString>> TourneyHow;		// per round: "KO", "DEC", "W/O", "BYE", "SEED" (a draw: the higher seed)
 	TArray<FString> TourneyChampions;		// "YYYY-MM-DD card", the history
 	bool bTourney = false;					// running
 	int32 TourneyPend[2] = { -1, -1 };		// the match being played (round, index)
-	int32 TourneyDraws = 0;
+	int32 TourneySeedOf(const FString& Card) const;	// 1 (top) .. 16; 99: not in the bracket
 	double TourneyNextAt = -1.0;			// game time of the next start (-1: waiting on a match)
 	static constexpr double TourneyShow = 4.0;	// s the bracket shows between matches
 	bool bTourneyAuto = false;				// -SlapTourney: a new bracket at launch, played to the end (+ -SlapTourneyQuit: then quit)
@@ -426,7 +430,7 @@ private:
 
 	TMap<FString, FRating> Ratings;	// by character card
 	FString HereCard[2];			// the characters this level plays (red, blue)
-	int32 RatedSeq = 0, SeenWins[2] = { -1, -1 };
+	int32 RatedSeq = 0, SeenWins[2] = { -1, -1 }, SeenDraws = 0;
 	double ResultAt = -1.0;			// when the result showed (game time); -1 = none pending
 	double MenuAt = -100.0;			// when the menu last opened (game time): the checks wait for it to lay out
 	bool bLaunchMenu = false;
@@ -602,15 +606,18 @@ private:
 	FString BreathCard[2];	// the card each breathing loop is voiced for
 	USoundBase* Voice(const FString& Kind, const FString& Card);
 	// each character's voice pack (scripts/voice_pack.py -> /Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take>_<level>):
-	// four emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
-	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless).
-	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult };
+	// five emotions x 5 takes x 5 levels (1 weakest, 5 strongest; the loudness is in the file). A take is picked at random,
+	// never the same one twice running; one line per athlete per EmoteGap s (HURT cuts in regardless). voices.json
+	// (scripts/voice_manifest.py) says which lines are imported assets; every other line is synthesised in the card's voice
+	// profile from the manifest (USlapVoiceWave, SlapVoiceSynth.h) and kept in EmoteSounds like an asset.
+	enum class EEmote : uint8 { Happy, Angry, Hurt, Insult, Celebrate };	// the order USlapVoiceWave::Synthesize reads
 	void Emote(int32 Athlete, EEmote Kind, int32 Level);
-	void EmoteCues(const FSlapHud& H);	// HURT when struck, INSULT at the turn's start, HAPPY on a dodge or a KO, ANGRY on a knockdown
+	void EmoteCues(const FSlapHud& H);	// HURT when struck, INSULT at the turn's start, HAPPY on a dodge, CELEBRATE on a KO win, ANGRY on a knockdown
 	static constexpr double EmoteGap = 0.9;
 	static constexpr double IntroEach = 3.5;	// s per fighter's introduction card at the walk-in (SlapHUDDraw.cpp)
 	int32 IntroSaid = -1;	// the introduction that has had its taunt (0 red, 1 blue)
-	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> EmoteSounds;	// by asset name (null: not imported)
+	UPROPERTY(Transient) TMap<FString, TObjectPtr<USoundBase>> EmoteSounds;	// by asset name: the asset, or its synthesised stand-in
+	FSlapVoiceManifest VoiceManifest;	// voices.json, read at the first line
 	double EmoteAt[2] = { -100.0, -100.0 };
 	int32 EmoteTake[2] = { -1, -1 };
 	int32 EmoteSeenStrike = 0, EmoteSeenTurn = 0, EmoteSeenKO = 0, EmoteDowns[2] = {}, EmoteTurnStrike = 0, EmoteTurnDef = 1;

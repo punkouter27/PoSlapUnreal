@@ -16,6 +16,7 @@ public class PoSlapUnreal : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "URLab", "DeveloperSettings" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "NNE", "NNERuntimeBasicCpu", "Json", "Niagara", "Slate", "SlateCore", "InputCore", "AssetRegistry", "WebSockets", "Synthesis", "RHI",
+			"AudioExtensions",	// USlapVoiceWave (SlapVoiceSynth.h) subclasses USoundWaveProcedural, whose vtable needs IAudioProxyDataFactory
 			"LevelSequence", "MovieScene", "CinematicCamera", "Text3D" });
 
 		// One version stamp (Po Game Standard): UTC yyMMdd of the HEAD commit (the web build uses the same rule), else today (UTC).

@@ -1,0 +1,6042 @@
+{
+ "schema": "po-voice-manifest/1",
+ "game": "PoSlapUnreal",
+ "generated": "2026-11-23T04:15:43Z",
+ "root": "Content/Art/Exports/Audio/Voice",
+ "assetRoot": "/Game/Project/Core/Audio/Voice",
+ "layout": "file <card>/<EMOTION>_<take 1-5>_<level 1-5>.wav -> asset S_V_<card>_<EMOTION>_<take>_<level>",
+ "emotions": [
+  "angry",
+  "happy",
+  "hurt",
+  "insult",
+  "celebrate"
+ ],
+ "levels": [
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "takes": [
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "fallback": "procedural",
+ "characters": [
+  {
+   "id": "grandpa",
+   "name": "GRANDPA",
+   "voice": {
+    "pitchHz": 105.0,
+    "formantScale": 1.0,
+    "press": 0.8,
+    "breath": 0.3,
+    "rasp": 0.55,
+    "vibratoHz": 4.6,
+    "vibratoDepth": 0.025,
+    "tempo": 0.9,
+    "timbre": "old-male"
+   },
+   "clips": {
+    "angry": [
+     {
+      "level": 1,
+      "file": "grandpa/ANGRY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_ANGRY_1_1",
+        "file": "grandpa/ANGRY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_ANGRY_2_1",
+        "file": "grandpa/ANGRY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_ANGRY_3_1",
+        "file": "grandpa/ANGRY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_ANGRY_4_1",
+        "file": "grandpa/ANGRY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_ANGRY_5_1",
+        "file": "grandpa/ANGRY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "grandpa/ANGRY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_ANGRY_1_2",
+        "file": "grandpa/ANGRY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_ANGRY_2_2",
+        "file": "grandpa/ANGRY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_ANGRY_3_2",
+        "file": "grandpa/ANGRY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_ANGRY_4_2",
+        "file": "grandpa/ANGRY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_ANGRY_5_2",
+        "file": "grandpa/ANGRY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "grandpa/ANGRY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_ANGRY_1_3",
+        "file": "grandpa/ANGRY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_ANGRY_2_3",
+        "file": "grandpa/ANGRY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_ANGRY_3_3",
+        "file": "grandpa/ANGRY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_ANGRY_4_3",
+        "file": "grandpa/ANGRY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_ANGRY_5_3",
+        "file": "grandpa/ANGRY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "grandpa/ANGRY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_ANGRY_1_4",
+        "file": "grandpa/ANGRY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_ANGRY_2_4",
+        "file": "grandpa/ANGRY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_ANGRY_3_4",
+        "file": "grandpa/ANGRY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_ANGRY_4_4",
+        "file": "grandpa/ANGRY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_ANGRY_5_4",
+        "file": "grandpa/ANGRY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "grandpa/ANGRY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_ANGRY_1_5",
+        "file": "grandpa/ANGRY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_ANGRY_2_5",
+        "file": "grandpa/ANGRY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_ANGRY_3_5",
+        "file": "grandpa/ANGRY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_ANGRY_4_5",
+        "file": "grandpa/ANGRY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_ANGRY_5_5",
+        "file": "grandpa/ANGRY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "happy": [
+     {
+      "level": 1,
+      "file": "grandpa/HAPPY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HAPPY_1_1",
+        "file": "grandpa/HAPPY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HAPPY_2_1",
+        "file": "grandpa/HAPPY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HAPPY_3_1",
+        "file": "grandpa/HAPPY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HAPPY_4_1",
+        "file": "grandpa/HAPPY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HAPPY_5_1",
+        "file": "grandpa/HAPPY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "grandpa/HAPPY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HAPPY_1_2",
+        "file": "grandpa/HAPPY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HAPPY_2_2",
+        "file": "grandpa/HAPPY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HAPPY_3_2",
+        "file": "grandpa/HAPPY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HAPPY_4_2",
+        "file": "grandpa/HAPPY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HAPPY_5_2",
+        "file": "grandpa/HAPPY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "grandpa/HAPPY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HAPPY_1_3",
+        "file": "grandpa/HAPPY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HAPPY_2_3",
+        "file": "grandpa/HAPPY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HAPPY_3_3",
+        "file": "grandpa/HAPPY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HAPPY_4_3",
+        "file": "grandpa/HAPPY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HAPPY_5_3",
+        "file": "grandpa/HAPPY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "grandpa/HAPPY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HAPPY_1_4",
+        "file": "grandpa/HAPPY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HAPPY_2_4",
+        "file": "grandpa/HAPPY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HAPPY_3_4",
+        "file": "grandpa/HAPPY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HAPPY_4_4",
+        "file": "grandpa/HAPPY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HAPPY_5_4",
+        "file": "grandpa/HAPPY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "grandpa/HAPPY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HAPPY_1_5",
+        "file": "grandpa/HAPPY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HAPPY_2_5",
+        "file": "grandpa/HAPPY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HAPPY_3_5",
+        "file": "grandpa/HAPPY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HAPPY_4_5",
+        "file": "grandpa/HAPPY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HAPPY_5_5",
+        "file": "grandpa/HAPPY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "hurt": [
+     {
+      "level": 1,
+      "file": "grandpa/HURT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HURT_1_1",
+        "file": "grandpa/HURT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HURT_2_1",
+        "file": "grandpa/HURT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HURT_3_1",
+        "file": "grandpa/HURT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HURT_4_1",
+        "file": "grandpa/HURT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HURT_5_1",
+        "file": "grandpa/HURT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "grandpa/HURT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HURT_1_2",
+        "file": "grandpa/HURT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HURT_2_2",
+        "file": "grandpa/HURT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HURT_3_2",
+        "file": "grandpa/HURT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HURT_4_2",
+        "file": "grandpa/HURT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HURT_5_2",
+        "file": "grandpa/HURT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "grandpa/HURT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HURT_1_3",
+        "file": "grandpa/HURT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HURT_2_3",
+        "file": "grandpa/HURT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HURT_3_3",
+        "file": "grandpa/HURT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HURT_4_3",
+        "file": "grandpa/HURT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HURT_5_3",
+        "file": "grandpa/HURT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "grandpa/HURT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HURT_1_4",
+        "file": "grandpa/HURT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HURT_2_4",
+        "file": "grandpa/HURT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HURT_3_4",
+        "file": "grandpa/HURT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HURT_4_4",
+        "file": "grandpa/HURT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HURT_5_4",
+        "file": "grandpa/HURT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "grandpa/HURT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_HURT_1_5",
+        "file": "grandpa/HURT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_HURT_2_5",
+        "file": "grandpa/HURT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_HURT_3_5",
+        "file": "grandpa/HURT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_HURT_4_5",
+        "file": "grandpa/HURT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_HURT_5_5",
+        "file": "grandpa/HURT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "insult": [
+     {
+      "level": 1,
+      "file": "grandpa/INSULT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_INSULT_1_1",
+        "file": "grandpa/INSULT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_INSULT_2_1",
+        "file": "grandpa/INSULT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_INSULT_3_1",
+        "file": "grandpa/INSULT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_INSULT_4_1",
+        "file": "grandpa/INSULT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_INSULT_5_1",
+        "file": "grandpa/INSULT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "grandpa/INSULT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_INSULT_1_2",
+        "file": "grandpa/INSULT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_INSULT_2_2",
+        "file": "grandpa/INSULT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_INSULT_3_2",
+        "file": "grandpa/INSULT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_INSULT_4_2",
+        "file": "grandpa/INSULT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_INSULT_5_2",
+        "file": "grandpa/INSULT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "grandpa/INSULT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_INSULT_1_3",
+        "file": "grandpa/INSULT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_INSULT_2_3",
+        "file": "grandpa/INSULT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_INSULT_3_3",
+        "file": "grandpa/INSULT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_INSULT_4_3",
+        "file": "grandpa/INSULT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_INSULT_5_3",
+        "file": "grandpa/INSULT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "grandpa/INSULT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_INSULT_1_4",
+        "file": "grandpa/INSULT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_INSULT_2_4",
+        "file": "grandpa/INSULT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_INSULT_3_4",
+        "file": "grandpa/INSULT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_INSULT_4_4",
+        "file": "grandpa/INSULT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_INSULT_5_4",
+        "file": "grandpa/INSULT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "grandpa/INSULT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_INSULT_1_5",
+        "file": "grandpa/INSULT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_INSULT_2_5",
+        "file": "grandpa/INSULT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_INSULT_3_5",
+        "file": "grandpa/INSULT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_INSULT_4_5",
+        "file": "grandpa/INSULT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_INSULT_5_5",
+        "file": "grandpa/INSULT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "celebrate": [
+     {
+      "level": 1,
+      "file": "grandpa/CELEBRATE_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_CELEBRATE_1_1",
+        "file": "grandpa/CELEBRATE_1_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_CELEBRATE_2_1",
+        "file": "grandpa/CELEBRATE_2_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_CELEBRATE_3_1",
+        "file": "grandpa/CELEBRATE_3_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_CELEBRATE_4_1",
+        "file": "grandpa/CELEBRATE_4_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_CELEBRATE_5_1",
+        "file": "grandpa/CELEBRATE_5_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "grandpa/CELEBRATE_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_CELEBRATE_1_2",
+        "file": "grandpa/CELEBRATE_1_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_CELEBRATE_2_2",
+        "file": "grandpa/CELEBRATE_2_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_CELEBRATE_3_2",
+        "file": "grandpa/CELEBRATE_3_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_CELEBRATE_4_2",
+        "file": "grandpa/CELEBRATE_4_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_CELEBRATE_5_2",
+        "file": "grandpa/CELEBRATE_5_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "grandpa/CELEBRATE_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_CELEBRATE_1_3",
+        "file": "grandpa/CELEBRATE_1_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_CELEBRATE_2_3",
+        "file": "grandpa/CELEBRATE_2_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_CELEBRATE_3_3",
+        "file": "grandpa/CELEBRATE_3_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_CELEBRATE_4_3",
+        "file": "grandpa/CELEBRATE_4_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_CELEBRATE_5_3",
+        "file": "grandpa/CELEBRATE_5_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "grandpa/CELEBRATE_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_CELEBRATE_1_4",
+        "file": "grandpa/CELEBRATE_1_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_CELEBRATE_2_4",
+        "file": "grandpa/CELEBRATE_2_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_CELEBRATE_3_4",
+        "file": "grandpa/CELEBRATE_3_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_CELEBRATE_4_4",
+        "file": "grandpa/CELEBRATE_4_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_CELEBRATE_5_4",
+        "file": "grandpa/CELEBRATE_5_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "grandpa/CELEBRATE_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_grandpa_CELEBRATE_1_5",
+        "file": "grandpa/CELEBRATE_1_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_grandpa_CELEBRATE_2_5",
+        "file": "grandpa/CELEBRATE_2_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_grandpa_CELEBRATE_3_5",
+        "file": "grandpa/CELEBRATE_3_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_grandpa_CELEBRATE_4_5",
+        "file": "grandpa/CELEBRATE_4_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_grandpa_CELEBRATE_5_5",
+        "file": "grandpa/CELEBRATE_5_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "kim",
+   "name": "KIM",
+   "voice": {
+    "pitchHz": 212.0,
+    "formantScale": 1.17,
+    "press": 0.6,
+    "breath": 0.2,
+    "rasp": 0.15,
+    "vibratoHz": 5.6,
+    "vibratoDepth": 0.02,
+    "tempo": 1.1,
+    "timbre": "adult-female"
+   },
+   "clips": {
+    "angry": [
+     {
+      "level": 1,
+      "file": "kim/ANGRY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_ANGRY_1_1",
+        "file": "kim/ANGRY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_ANGRY_2_1",
+        "file": "kim/ANGRY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_ANGRY_3_1",
+        "file": "kim/ANGRY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_ANGRY_4_1",
+        "file": "kim/ANGRY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_ANGRY_5_1",
+        "file": "kim/ANGRY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "kim/ANGRY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_ANGRY_1_2",
+        "file": "kim/ANGRY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_ANGRY_2_2",
+        "file": "kim/ANGRY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_ANGRY_3_2",
+        "file": "kim/ANGRY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_ANGRY_4_2",
+        "file": "kim/ANGRY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_ANGRY_5_2",
+        "file": "kim/ANGRY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "kim/ANGRY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_ANGRY_1_3",
+        "file": "kim/ANGRY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_ANGRY_2_3",
+        "file": "kim/ANGRY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_ANGRY_3_3",
+        "file": "kim/ANGRY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_ANGRY_4_3",
+        "file": "kim/ANGRY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_ANGRY_5_3",
+        "file": "kim/ANGRY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "kim/ANGRY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_ANGRY_1_4",
+        "file": "kim/ANGRY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_ANGRY_2_4",
+        "file": "kim/ANGRY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_ANGRY_3_4",
+        "file": "kim/ANGRY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_ANGRY_4_4",
+        "file": "kim/ANGRY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_ANGRY_5_4",
+        "file": "kim/ANGRY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "kim/ANGRY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_ANGRY_1_5",
+        "file": "kim/ANGRY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_ANGRY_2_5",
+        "file": "kim/ANGRY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_ANGRY_3_5",
+        "file": "kim/ANGRY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_ANGRY_4_5",
+        "file": "kim/ANGRY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_ANGRY_5_5",
+        "file": "kim/ANGRY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "happy": [
+     {
+      "level": 1,
+      "file": "kim/HAPPY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HAPPY_1_1",
+        "file": "kim/HAPPY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HAPPY_2_1",
+        "file": "kim/HAPPY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HAPPY_3_1",
+        "file": "kim/HAPPY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HAPPY_4_1",
+        "file": "kim/HAPPY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HAPPY_5_1",
+        "file": "kim/HAPPY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "kim/HAPPY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HAPPY_1_2",
+        "file": "kim/HAPPY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HAPPY_2_2",
+        "file": "kim/HAPPY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HAPPY_3_2",
+        "file": "kim/HAPPY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HAPPY_4_2",
+        "file": "kim/HAPPY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HAPPY_5_2",
+        "file": "kim/HAPPY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "kim/HAPPY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HAPPY_1_3",
+        "file": "kim/HAPPY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HAPPY_2_3",
+        "file": "kim/HAPPY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HAPPY_3_3",
+        "file": "kim/HAPPY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HAPPY_4_3",
+        "file": "kim/HAPPY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HAPPY_5_3",
+        "file": "kim/HAPPY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "kim/HAPPY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HAPPY_1_4",
+        "file": "kim/HAPPY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HAPPY_2_4",
+        "file": "kim/HAPPY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HAPPY_3_4",
+        "file": "kim/HAPPY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HAPPY_4_4",
+        "file": "kim/HAPPY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HAPPY_5_4",
+        "file": "kim/HAPPY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "kim/HAPPY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HAPPY_1_5",
+        "file": "kim/HAPPY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HAPPY_2_5",
+        "file": "kim/HAPPY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HAPPY_3_5",
+        "file": "kim/HAPPY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HAPPY_4_5",
+        "file": "kim/HAPPY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HAPPY_5_5",
+        "file": "kim/HAPPY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "hurt": [
+     {
+      "level": 1,
+      "file": "kim/HURT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HURT_1_1",
+        "file": "kim/HURT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HURT_2_1",
+        "file": "kim/HURT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HURT_3_1",
+        "file": "kim/HURT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HURT_4_1",
+        "file": "kim/HURT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HURT_5_1",
+        "file": "kim/HURT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "kim/HURT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HURT_1_2",
+        "file": "kim/HURT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HURT_2_2",
+        "file": "kim/HURT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HURT_3_2",
+        "file": "kim/HURT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HURT_4_2",
+        "file": "kim/HURT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HURT_5_2",
+        "file": "kim/HURT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "kim/HURT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HURT_1_3",
+        "file": "kim/HURT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HURT_2_3",
+        "file": "kim/HURT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HURT_3_3",
+        "file": "kim/HURT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HURT_4_3",
+        "file": "kim/HURT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HURT_5_3",
+        "file": "kim/HURT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "kim/HURT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HURT_1_4",
+        "file": "kim/HURT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HURT_2_4",
+        "file": "kim/HURT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HURT_3_4",
+        "file": "kim/HURT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HURT_4_4",
+        "file": "kim/HURT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HURT_5_4",
+        "file": "kim/HURT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "kim/HURT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_HURT_1_5",
+        "file": "kim/HURT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_HURT_2_5",
+        "file": "kim/HURT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_HURT_3_5",
+        "file": "kim/HURT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_HURT_4_5",
+        "file": "kim/HURT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_HURT_5_5",
+        "file": "kim/HURT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "insult": [
+     {
+      "level": 1,
+      "file": "kim/INSULT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_INSULT_1_1",
+        "file": "kim/INSULT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_INSULT_2_1",
+        "file": "kim/INSULT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_INSULT_3_1",
+        "file": "kim/INSULT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_INSULT_4_1",
+        "file": "kim/INSULT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_INSULT_5_1",
+        "file": "kim/INSULT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "kim/INSULT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_INSULT_1_2",
+        "file": "kim/INSULT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_INSULT_2_2",
+        "file": "kim/INSULT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_INSULT_3_2",
+        "file": "kim/INSULT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_INSULT_4_2",
+        "file": "kim/INSULT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_INSULT_5_2",
+        "file": "kim/INSULT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "kim/INSULT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_INSULT_1_3",
+        "file": "kim/INSULT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_INSULT_2_3",
+        "file": "kim/INSULT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_INSULT_3_3",
+        "file": "kim/INSULT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_INSULT_4_3",
+        "file": "kim/INSULT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_INSULT_5_3",
+        "file": "kim/INSULT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "kim/INSULT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_INSULT_1_4",
+        "file": "kim/INSULT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_INSULT_2_4",
+        "file": "kim/INSULT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_INSULT_3_4",
+        "file": "kim/INSULT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_INSULT_4_4",
+        "file": "kim/INSULT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_INSULT_5_4",
+        "file": "kim/INSULT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "kim/INSULT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_INSULT_1_5",
+        "file": "kim/INSULT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_INSULT_2_5",
+        "file": "kim/INSULT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_INSULT_3_5",
+        "file": "kim/INSULT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_INSULT_4_5",
+        "file": "kim/INSULT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_INSULT_5_5",
+        "file": "kim/INSULT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "celebrate": [
+     {
+      "level": 1,
+      "file": "kim/CELEBRATE_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_CELEBRATE_1_1",
+        "file": "kim/CELEBRATE_1_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_CELEBRATE_2_1",
+        "file": "kim/CELEBRATE_2_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_CELEBRATE_3_1",
+        "file": "kim/CELEBRATE_3_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_CELEBRATE_4_1",
+        "file": "kim/CELEBRATE_4_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_CELEBRATE_5_1",
+        "file": "kim/CELEBRATE_5_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "kim/CELEBRATE_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_CELEBRATE_1_2",
+        "file": "kim/CELEBRATE_1_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_CELEBRATE_2_2",
+        "file": "kim/CELEBRATE_2_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_CELEBRATE_3_2",
+        "file": "kim/CELEBRATE_3_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_CELEBRATE_4_2",
+        "file": "kim/CELEBRATE_4_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_CELEBRATE_5_2",
+        "file": "kim/CELEBRATE_5_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "kim/CELEBRATE_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_CELEBRATE_1_3",
+        "file": "kim/CELEBRATE_1_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_CELEBRATE_2_3",
+        "file": "kim/CELEBRATE_2_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_CELEBRATE_3_3",
+        "file": "kim/CELEBRATE_3_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_CELEBRATE_4_3",
+        "file": "kim/CELEBRATE_4_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_CELEBRATE_5_3",
+        "file": "kim/CELEBRATE_5_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "kim/CELEBRATE_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_CELEBRATE_1_4",
+        "file": "kim/CELEBRATE_1_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_CELEBRATE_2_4",
+        "file": "kim/CELEBRATE_2_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_CELEBRATE_3_4",
+        "file": "kim/CELEBRATE_3_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_CELEBRATE_4_4",
+        "file": "kim/CELEBRATE_4_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_CELEBRATE_5_4",
+        "file": "kim/CELEBRATE_5_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "kim/CELEBRATE_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_kim_CELEBRATE_1_5",
+        "file": "kim/CELEBRATE_1_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_kim_CELEBRATE_2_5",
+        "file": "kim/CELEBRATE_2_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_kim_CELEBRATE_3_5",
+        "file": "kim/CELEBRATE_3_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_kim_CELEBRATE_4_5",
+        "file": "kim/CELEBRATE_4_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_kim_CELEBRATE_5_5",
+        "file": "kim/CELEBRATE_5_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "matt",
+   "name": "MATT",
+   "voice": {
+    "pitchHz": 88.0,
+    "formantScale": 0.94,
+    "press": 0.9,
+    "breath": 0.18,
+    "rasp": 0.45,
+    "vibratoHz": 5.0,
+    "vibratoDepth": 0.015,
+    "tempo": 1.0,
+    "timbre": "adult-male-deep"
+   },
+   "clips": {
+    "angry": [
+     {
+      "level": 1,
+      "file": "matt/ANGRY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_ANGRY_1_1",
+        "file": "matt/ANGRY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_ANGRY_2_1",
+        "file": "matt/ANGRY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_ANGRY_3_1",
+        "file": "matt/ANGRY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_ANGRY_4_1",
+        "file": "matt/ANGRY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_ANGRY_5_1",
+        "file": "matt/ANGRY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "matt/ANGRY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_ANGRY_1_2",
+        "file": "matt/ANGRY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_ANGRY_2_2",
+        "file": "matt/ANGRY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_ANGRY_3_2",
+        "file": "matt/ANGRY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_ANGRY_4_2",
+        "file": "matt/ANGRY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_ANGRY_5_2",
+        "file": "matt/ANGRY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "matt/ANGRY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_ANGRY_1_3",
+        "file": "matt/ANGRY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_ANGRY_2_3",
+        "file": "matt/ANGRY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_ANGRY_3_3",
+        "file": "matt/ANGRY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_ANGRY_4_3",
+        "file": "matt/ANGRY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_ANGRY_5_3",
+        "file": "matt/ANGRY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "matt/ANGRY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_ANGRY_1_4",
+        "file": "matt/ANGRY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_ANGRY_2_4",
+        "file": "matt/ANGRY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_ANGRY_3_4",
+        "file": "matt/ANGRY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_ANGRY_4_4",
+        "file": "matt/ANGRY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_ANGRY_5_4",
+        "file": "matt/ANGRY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "matt/ANGRY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_ANGRY_1_5",
+        "file": "matt/ANGRY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_ANGRY_2_5",
+        "file": "matt/ANGRY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_ANGRY_3_5",
+        "file": "matt/ANGRY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_ANGRY_4_5",
+        "file": "matt/ANGRY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_ANGRY_5_5",
+        "file": "matt/ANGRY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "happy": [
+     {
+      "level": 1,
+      "file": "matt/HAPPY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HAPPY_1_1",
+        "file": "matt/HAPPY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HAPPY_2_1",
+        "file": "matt/HAPPY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HAPPY_3_1",
+        "file": "matt/HAPPY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HAPPY_4_1",
+        "file": "matt/HAPPY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HAPPY_5_1",
+        "file": "matt/HAPPY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "matt/HAPPY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HAPPY_1_2",
+        "file": "matt/HAPPY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HAPPY_2_2",
+        "file": "matt/HAPPY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HAPPY_3_2",
+        "file": "matt/HAPPY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HAPPY_4_2",
+        "file": "matt/HAPPY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HAPPY_5_2",
+        "file": "matt/HAPPY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "matt/HAPPY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HAPPY_1_3",
+        "file": "matt/HAPPY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HAPPY_2_3",
+        "file": "matt/HAPPY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HAPPY_3_3",
+        "file": "matt/HAPPY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HAPPY_4_3",
+        "file": "matt/HAPPY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HAPPY_5_3",
+        "file": "matt/HAPPY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "matt/HAPPY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HAPPY_1_4",
+        "file": "matt/HAPPY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HAPPY_2_4",
+        "file": "matt/HAPPY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HAPPY_3_4",
+        "file": "matt/HAPPY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HAPPY_4_4",
+        "file": "matt/HAPPY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HAPPY_5_4",
+        "file": "matt/HAPPY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "matt/HAPPY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HAPPY_1_5",
+        "file": "matt/HAPPY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HAPPY_2_5",
+        "file": "matt/HAPPY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HAPPY_3_5",
+        "file": "matt/HAPPY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HAPPY_4_5",
+        "file": "matt/HAPPY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HAPPY_5_5",
+        "file": "matt/HAPPY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "hurt": [
+     {
+      "level": 1,
+      "file": "matt/HURT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HURT_1_1",
+        "file": "matt/HURT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HURT_2_1",
+        "file": "matt/HURT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HURT_3_1",
+        "file": "matt/HURT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HURT_4_1",
+        "file": "matt/HURT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HURT_5_1",
+        "file": "matt/HURT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "matt/HURT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HURT_1_2",
+        "file": "matt/HURT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HURT_2_2",
+        "file": "matt/HURT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HURT_3_2",
+        "file": "matt/HURT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HURT_4_2",
+        "file": "matt/HURT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HURT_5_2",
+        "file": "matt/HURT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "matt/HURT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HURT_1_3",
+        "file": "matt/HURT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HURT_2_3",
+        "file": "matt/HURT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HURT_3_3",
+        "file": "matt/HURT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HURT_4_3",
+        "file": "matt/HURT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HURT_5_3",
+        "file": "matt/HURT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "matt/HURT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HURT_1_4",
+        "file": "matt/HURT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HURT_2_4",
+        "file": "matt/HURT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HURT_3_4",
+        "file": "matt/HURT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HURT_4_4",
+        "file": "matt/HURT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HURT_5_4",
+        "file": "matt/HURT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "matt/HURT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_HURT_1_5",
+        "file": "matt/HURT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_HURT_2_5",
+        "file": "matt/HURT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_HURT_3_5",
+        "file": "matt/HURT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_HURT_4_5",
+        "file": "matt/HURT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_HURT_5_5",
+        "file": "matt/HURT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "insult": [
+     {
+      "level": 1,
+      "file": "matt/INSULT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_INSULT_1_1",
+        "file": "matt/INSULT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_INSULT_2_1",
+        "file": "matt/INSULT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_INSULT_3_1",
+        "file": "matt/INSULT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_INSULT_4_1",
+        "file": "matt/INSULT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_INSULT_5_1",
+        "file": "matt/INSULT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "matt/INSULT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_INSULT_1_2",
+        "file": "matt/INSULT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_INSULT_2_2",
+        "file": "matt/INSULT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_INSULT_3_2",
+        "file": "matt/INSULT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_INSULT_4_2",
+        "file": "matt/INSULT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_INSULT_5_2",
+        "file": "matt/INSULT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "matt/INSULT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_INSULT_1_3",
+        "file": "matt/INSULT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_INSULT_2_3",
+        "file": "matt/INSULT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_INSULT_3_3",
+        "file": "matt/INSULT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_INSULT_4_3",
+        "file": "matt/INSULT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_INSULT_5_3",
+        "file": "matt/INSULT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "matt/INSULT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_INSULT_1_4",
+        "file": "matt/INSULT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_INSULT_2_4",
+        "file": "matt/INSULT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_INSULT_3_4",
+        "file": "matt/INSULT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_INSULT_4_4",
+        "file": "matt/INSULT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_INSULT_5_4",
+        "file": "matt/INSULT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "matt/INSULT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_INSULT_1_5",
+        "file": "matt/INSULT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_INSULT_2_5",
+        "file": "matt/INSULT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_INSULT_3_5",
+        "file": "matt/INSULT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_INSULT_4_5",
+        "file": "matt/INSULT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_INSULT_5_5",
+        "file": "matt/INSULT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "celebrate": [
+     {
+      "level": 1,
+      "file": "matt/CELEBRATE_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_CELEBRATE_1_1",
+        "file": "matt/CELEBRATE_1_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_CELEBRATE_2_1",
+        "file": "matt/CELEBRATE_2_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_CELEBRATE_3_1",
+        "file": "matt/CELEBRATE_3_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_CELEBRATE_4_1",
+        "file": "matt/CELEBRATE_4_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_CELEBRATE_5_1",
+        "file": "matt/CELEBRATE_5_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "matt/CELEBRATE_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_CELEBRATE_1_2",
+        "file": "matt/CELEBRATE_1_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_CELEBRATE_2_2",
+        "file": "matt/CELEBRATE_2_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_CELEBRATE_3_2",
+        "file": "matt/CELEBRATE_3_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_CELEBRATE_4_2",
+        "file": "matt/CELEBRATE_4_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_CELEBRATE_5_2",
+        "file": "matt/CELEBRATE_5_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "matt/CELEBRATE_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_CELEBRATE_1_3",
+        "file": "matt/CELEBRATE_1_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_CELEBRATE_2_3",
+        "file": "matt/CELEBRATE_2_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_CELEBRATE_3_3",
+        "file": "matt/CELEBRATE_3_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_CELEBRATE_4_3",
+        "file": "matt/CELEBRATE_4_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_CELEBRATE_5_3",
+        "file": "matt/CELEBRATE_5_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "matt/CELEBRATE_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_CELEBRATE_1_4",
+        "file": "matt/CELEBRATE_1_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_CELEBRATE_2_4",
+        "file": "matt/CELEBRATE_2_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_CELEBRATE_3_4",
+        "file": "matt/CELEBRATE_3_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_CELEBRATE_4_4",
+        "file": "matt/CELEBRATE_4_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_CELEBRATE_5_4",
+        "file": "matt/CELEBRATE_5_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "matt/CELEBRATE_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_matt_CELEBRATE_1_5",
+        "file": "matt/CELEBRATE_1_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_matt_CELEBRATE_2_5",
+        "file": "matt/CELEBRATE_2_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_matt_CELEBRATE_3_5",
+        "file": "matt/CELEBRATE_3_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_matt_CELEBRATE_4_5",
+        "file": "matt/CELEBRATE_4_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_matt_CELEBRATE_5_5",
+        "file": "matt/CELEBRATE_5_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "mom",
+   "name": "MOM",
+   "voice": {
+    "pitchHz": 196.0,
+    "formantScale": 1.14,
+    "press": 0.55,
+    "breath": 0.28,
+    "rasp": 0.2,
+    "vibratoHz": 5.3,
+    "vibratoDepth": 0.025,
+    "tempo": 0.95,
+    "timbre": "adult-female-warm"
+   },
+   "clips": {
+    "angry": [
+     {
+      "level": 1,
+      "file": "mom/ANGRY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_ANGRY_1_1",
+        "file": "mom/ANGRY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_ANGRY_2_1",
+        "file": "mom/ANGRY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_ANGRY_3_1",
+        "file": "mom/ANGRY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_ANGRY_4_1",
+        "file": "mom/ANGRY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_ANGRY_5_1",
+        "file": "mom/ANGRY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "mom/ANGRY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_ANGRY_1_2",
+        "file": "mom/ANGRY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_ANGRY_2_2",
+        "file": "mom/ANGRY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_ANGRY_3_2",
+        "file": "mom/ANGRY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_ANGRY_4_2",
+        "file": "mom/ANGRY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_ANGRY_5_2",
+        "file": "mom/ANGRY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "mom/ANGRY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_ANGRY_1_3",
+        "file": "mom/ANGRY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_ANGRY_2_3",
+        "file": "mom/ANGRY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_ANGRY_3_3",
+        "file": "mom/ANGRY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_ANGRY_4_3",
+        "file": "mom/ANGRY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_ANGRY_5_3",
+        "file": "mom/ANGRY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "mom/ANGRY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_ANGRY_1_4",
+        "file": "mom/ANGRY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_ANGRY_2_4",
+        "file": "mom/ANGRY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_ANGRY_3_4",
+        "file": "mom/ANGRY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_ANGRY_4_4",
+        "file": "mom/ANGRY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_ANGRY_5_4",
+        "file": "mom/ANGRY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "mom/ANGRY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_ANGRY_1_5",
+        "file": "mom/ANGRY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_ANGRY_2_5",
+        "file": "mom/ANGRY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_ANGRY_3_5",
+        "file": "mom/ANGRY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_ANGRY_4_5",
+        "file": "mom/ANGRY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_ANGRY_5_5",
+        "file": "mom/ANGRY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "happy": [
+     {
+      "level": 1,
+      "file": "mom/HAPPY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HAPPY_1_1",
+        "file": "mom/HAPPY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HAPPY_2_1",
+        "file": "mom/HAPPY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HAPPY_3_1",
+        "file": "mom/HAPPY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HAPPY_4_1",
+        "file": "mom/HAPPY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HAPPY_5_1",
+        "file": "mom/HAPPY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "mom/HAPPY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HAPPY_1_2",
+        "file": "mom/HAPPY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HAPPY_2_2",
+        "file": "mom/HAPPY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HAPPY_3_2",
+        "file": "mom/HAPPY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HAPPY_4_2",
+        "file": "mom/HAPPY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HAPPY_5_2",
+        "file": "mom/HAPPY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "mom/HAPPY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HAPPY_1_3",
+        "file": "mom/HAPPY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HAPPY_2_3",
+        "file": "mom/HAPPY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HAPPY_3_3",
+        "file": "mom/HAPPY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HAPPY_4_3",
+        "file": "mom/HAPPY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HAPPY_5_3",
+        "file": "mom/HAPPY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "mom/HAPPY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HAPPY_1_4",
+        "file": "mom/HAPPY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HAPPY_2_4",
+        "file": "mom/HAPPY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HAPPY_3_4",
+        "file": "mom/HAPPY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HAPPY_4_4",
+        "file": "mom/HAPPY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HAPPY_5_4",
+        "file": "mom/HAPPY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "mom/HAPPY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HAPPY_1_5",
+        "file": "mom/HAPPY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HAPPY_2_5",
+        "file": "mom/HAPPY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HAPPY_3_5",
+        "file": "mom/HAPPY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HAPPY_4_5",
+        "file": "mom/HAPPY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HAPPY_5_5",
+        "file": "mom/HAPPY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "hurt": [
+     {
+      "level": 1,
+      "file": "mom/HURT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HURT_1_1",
+        "file": "mom/HURT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HURT_2_1",
+        "file": "mom/HURT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HURT_3_1",
+        "file": "mom/HURT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HURT_4_1",
+        "file": "mom/HURT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HURT_5_1",
+        "file": "mom/HURT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "mom/HURT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HURT_1_2",
+        "file": "mom/HURT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HURT_2_2",
+        "file": "mom/HURT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HURT_3_2",
+        "file": "mom/HURT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HURT_4_2",
+        "file": "mom/HURT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HURT_5_2",
+        "file": "mom/HURT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "mom/HURT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HURT_1_3",
+        "file": "mom/HURT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HURT_2_3",
+        "file": "mom/HURT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HURT_3_3",
+        "file": "mom/HURT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HURT_4_3",
+        "file": "mom/HURT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HURT_5_3",
+        "file": "mom/HURT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "mom/HURT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HURT_1_4",
+        "file": "mom/HURT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HURT_2_4",
+        "file": "mom/HURT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HURT_3_4",
+        "file": "mom/HURT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HURT_4_4",
+        "file": "mom/HURT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HURT_5_4",
+        "file": "mom/HURT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "mom/HURT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_HURT_1_5",
+        "file": "mom/HURT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_HURT_2_5",
+        "file": "mom/HURT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_HURT_3_5",
+        "file": "mom/HURT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_HURT_4_5",
+        "file": "mom/HURT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_HURT_5_5",
+        "file": "mom/HURT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "insult": [
+     {
+      "level": 1,
+      "file": "mom/INSULT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_INSULT_1_1",
+        "file": "mom/INSULT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_INSULT_2_1",
+        "file": "mom/INSULT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_INSULT_3_1",
+        "file": "mom/INSULT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_INSULT_4_1",
+        "file": "mom/INSULT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_INSULT_5_1",
+        "file": "mom/INSULT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "mom/INSULT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_INSULT_1_2",
+        "file": "mom/INSULT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_INSULT_2_2",
+        "file": "mom/INSULT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_INSULT_3_2",
+        "file": "mom/INSULT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_INSULT_4_2",
+        "file": "mom/INSULT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_INSULT_5_2",
+        "file": "mom/INSULT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "mom/INSULT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_INSULT_1_3",
+        "file": "mom/INSULT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_INSULT_2_3",
+        "file": "mom/INSULT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_INSULT_3_3",
+        "file": "mom/INSULT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_INSULT_4_3",
+        "file": "mom/INSULT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_INSULT_5_3",
+        "file": "mom/INSULT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "mom/INSULT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_INSULT_1_4",
+        "file": "mom/INSULT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_INSULT_2_4",
+        "file": "mom/INSULT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_INSULT_3_4",
+        "file": "mom/INSULT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_INSULT_4_4",
+        "file": "mom/INSULT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_INSULT_5_4",
+        "file": "mom/INSULT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "mom/INSULT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_INSULT_1_5",
+        "file": "mom/INSULT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_INSULT_2_5",
+        "file": "mom/INSULT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_INSULT_3_5",
+        "file": "mom/INSULT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_INSULT_4_5",
+        "file": "mom/INSULT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_INSULT_5_5",
+        "file": "mom/INSULT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "celebrate": [
+     {
+      "level": 1,
+      "file": "mom/CELEBRATE_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_CELEBRATE_1_1",
+        "file": "mom/CELEBRATE_1_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_CELEBRATE_2_1",
+        "file": "mom/CELEBRATE_2_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_CELEBRATE_3_1",
+        "file": "mom/CELEBRATE_3_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_CELEBRATE_4_1",
+        "file": "mom/CELEBRATE_4_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_CELEBRATE_5_1",
+        "file": "mom/CELEBRATE_5_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "mom/CELEBRATE_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_CELEBRATE_1_2",
+        "file": "mom/CELEBRATE_1_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_CELEBRATE_2_2",
+        "file": "mom/CELEBRATE_2_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_CELEBRATE_3_2",
+        "file": "mom/CELEBRATE_3_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_CELEBRATE_4_2",
+        "file": "mom/CELEBRATE_4_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_CELEBRATE_5_2",
+        "file": "mom/CELEBRATE_5_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "mom/CELEBRATE_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_CELEBRATE_1_3",
+        "file": "mom/CELEBRATE_1_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_CELEBRATE_2_3",
+        "file": "mom/CELEBRATE_2_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_CELEBRATE_3_3",
+        "file": "mom/CELEBRATE_3_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_CELEBRATE_4_3",
+        "file": "mom/CELEBRATE_4_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_CELEBRATE_5_3",
+        "file": "mom/CELEBRATE_5_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "mom/CELEBRATE_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_CELEBRATE_1_4",
+        "file": "mom/CELEBRATE_1_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_CELEBRATE_2_4",
+        "file": "mom/CELEBRATE_2_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_CELEBRATE_3_4",
+        "file": "mom/CELEBRATE_3_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_CELEBRATE_4_4",
+        "file": "mom/CELEBRATE_4_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_CELEBRATE_5_4",
+        "file": "mom/CELEBRATE_5_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "mom/CELEBRATE_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_mom_CELEBRATE_1_5",
+        "file": "mom/CELEBRATE_1_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_mom_CELEBRATE_2_5",
+        "file": "mom/CELEBRATE_2_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_mom_CELEBRATE_3_5",
+        "file": "mom/CELEBRATE_3_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_mom_CELEBRATE_4_5",
+        "file": "mom/CELEBRATE_4_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_mom_CELEBRATE_5_5",
+        "file": "mom/CELEBRATE_5_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "tong",
+   "name": "TONG",
+   "voice": {
+    "pitchHz": 330.0,
+    "formantScale": 1.32,
+    "press": 0.45,
+    "breath": 0.12,
+    "rasp": 0.05,
+    "vibratoHz": 6.5,
+    "vibratoDepth": 0.03,
+    "tempo": 1.25,
+    "timbre": "child"
+   },
+   "clips": {
+    "angry": [
+     {
+      "level": 1,
+      "file": "tong/ANGRY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_ANGRY_1_1",
+        "file": "tong/ANGRY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_ANGRY_2_1",
+        "file": "tong/ANGRY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_ANGRY_3_1",
+        "file": "tong/ANGRY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_ANGRY_4_1",
+        "file": "tong/ANGRY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_ANGRY_5_1",
+        "file": "tong/ANGRY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "tong/ANGRY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_ANGRY_1_2",
+        "file": "tong/ANGRY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_ANGRY_2_2",
+        "file": "tong/ANGRY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_ANGRY_3_2",
+        "file": "tong/ANGRY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_ANGRY_4_2",
+        "file": "tong/ANGRY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_ANGRY_5_2",
+        "file": "tong/ANGRY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "tong/ANGRY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_ANGRY_1_3",
+        "file": "tong/ANGRY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_ANGRY_2_3",
+        "file": "tong/ANGRY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_ANGRY_3_3",
+        "file": "tong/ANGRY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_ANGRY_4_3",
+        "file": "tong/ANGRY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_ANGRY_5_3",
+        "file": "tong/ANGRY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "tong/ANGRY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_ANGRY_1_4",
+        "file": "tong/ANGRY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_ANGRY_2_4",
+        "file": "tong/ANGRY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_ANGRY_3_4",
+        "file": "tong/ANGRY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_ANGRY_4_4",
+        "file": "tong/ANGRY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_ANGRY_5_4",
+        "file": "tong/ANGRY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "tong/ANGRY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_ANGRY_1_5",
+        "file": "tong/ANGRY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_ANGRY_2_5",
+        "file": "tong/ANGRY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_ANGRY_3_5",
+        "file": "tong/ANGRY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_ANGRY_4_5",
+        "file": "tong/ANGRY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_ANGRY_5_5",
+        "file": "tong/ANGRY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "happy": [
+     {
+      "level": 1,
+      "file": "tong/HAPPY_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HAPPY_1_1",
+        "file": "tong/HAPPY_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HAPPY_2_1",
+        "file": "tong/HAPPY_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HAPPY_3_1",
+        "file": "tong/HAPPY_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HAPPY_4_1",
+        "file": "tong/HAPPY_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HAPPY_5_1",
+        "file": "tong/HAPPY_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "tong/HAPPY_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HAPPY_1_2",
+        "file": "tong/HAPPY_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HAPPY_2_2",
+        "file": "tong/HAPPY_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HAPPY_3_2",
+        "file": "tong/HAPPY_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HAPPY_4_2",
+        "file": "tong/HAPPY_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HAPPY_5_2",
+        "file": "tong/HAPPY_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "tong/HAPPY_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HAPPY_1_3",
+        "file": "tong/HAPPY_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HAPPY_2_3",
+        "file": "tong/HAPPY_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HAPPY_3_3",
+        "file": "tong/HAPPY_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HAPPY_4_3",
+        "file": "tong/HAPPY_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HAPPY_5_3",
+        "file": "tong/HAPPY_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "tong/HAPPY_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HAPPY_1_4",
+        "file": "tong/HAPPY_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HAPPY_2_4",
+        "file": "tong/HAPPY_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HAPPY_3_4",
+        "file": "tong/HAPPY_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HAPPY_4_4",
+        "file": "tong/HAPPY_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HAPPY_5_4",
+        "file": "tong/HAPPY_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "tong/HAPPY_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HAPPY_1_5",
+        "file": "tong/HAPPY_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HAPPY_2_5",
+        "file": "tong/HAPPY_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HAPPY_3_5",
+        "file": "tong/HAPPY_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HAPPY_4_5",
+        "file": "tong/HAPPY_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HAPPY_5_5",
+        "file": "tong/HAPPY_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "hurt": [
+     {
+      "level": 1,
+      "file": "tong/HURT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HURT_1_1",
+        "file": "tong/HURT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HURT_2_1",
+        "file": "tong/HURT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HURT_3_1",
+        "file": "tong/HURT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HURT_4_1",
+        "file": "tong/HURT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HURT_5_1",
+        "file": "tong/HURT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "tong/HURT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HURT_1_2",
+        "file": "tong/HURT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HURT_2_2",
+        "file": "tong/HURT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HURT_3_2",
+        "file": "tong/HURT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HURT_4_2",
+        "file": "tong/HURT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HURT_5_2",
+        "file": "tong/HURT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "tong/HURT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HURT_1_3",
+        "file": "tong/HURT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HURT_2_3",
+        "file": "tong/HURT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HURT_3_3",
+        "file": "tong/HURT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HURT_4_3",
+        "file": "tong/HURT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HURT_5_3",
+        "file": "tong/HURT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "tong/HURT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HURT_1_4",
+        "file": "tong/HURT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HURT_2_4",
+        "file": "tong/HURT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HURT_3_4",
+        "file": "tong/HURT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HURT_4_4",
+        "file": "tong/HURT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HURT_5_4",
+        "file": "tong/HURT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "tong/HURT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_HURT_1_5",
+        "file": "tong/HURT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_HURT_2_5",
+        "file": "tong/HURT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_HURT_3_5",
+        "file": "tong/HURT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_HURT_4_5",
+        "file": "tong/HURT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_HURT_5_5",
+        "file": "tong/HURT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "insult": [
+     {
+      "level": 1,
+      "file": "tong/INSULT_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_INSULT_1_1",
+        "file": "tong/INSULT_1_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_INSULT_2_1",
+        "file": "tong/INSULT_2_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_INSULT_3_1",
+        "file": "tong/INSULT_3_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_INSULT_4_1",
+        "file": "tong/INSULT_4_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_INSULT_5_1",
+        "file": "tong/INSULT_5_1.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "tong/INSULT_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_INSULT_1_2",
+        "file": "tong/INSULT_1_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_INSULT_2_2",
+        "file": "tong/INSULT_2_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_INSULT_3_2",
+        "file": "tong/INSULT_3_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_INSULT_4_2",
+        "file": "tong/INSULT_4_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_INSULT_5_2",
+        "file": "tong/INSULT_5_2.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "tong/INSULT_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_INSULT_1_3",
+        "file": "tong/INSULT_1_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_INSULT_2_3",
+        "file": "tong/INSULT_2_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_INSULT_3_3",
+        "file": "tong/INSULT_3_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_INSULT_4_3",
+        "file": "tong/INSULT_4_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_INSULT_5_3",
+        "file": "tong/INSULT_5_3.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "tong/INSULT_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_INSULT_1_4",
+        "file": "tong/INSULT_1_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_INSULT_2_4",
+        "file": "tong/INSULT_2_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_INSULT_3_4",
+        "file": "tong/INSULT_3_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_INSULT_4_4",
+        "file": "tong/INSULT_4_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_INSULT_5_4",
+        "file": "tong/INSULT_5_4.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "tong/INSULT_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_INSULT_1_5",
+        "file": "tong/INSULT_1_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_INSULT_2_5",
+        "file": "tong/INSULT_2_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_INSULT_3_5",
+        "file": "tong/INSULT_3_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_INSULT_4_5",
+        "file": "tong/INSULT_4_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_INSULT_5_5",
+        "file": "tong/INSULT_5_5.wav",
+        "exists": false,
+        "placeholder": true,
+        "imported": true
+       }
+      ]
+     }
+    ],
+    "celebrate": [
+     {
+      "level": 1,
+      "file": "tong/CELEBRATE_1_1.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_CELEBRATE_1_1",
+        "file": "tong/CELEBRATE_1_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_CELEBRATE_2_1",
+        "file": "tong/CELEBRATE_2_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_CELEBRATE_3_1",
+        "file": "tong/CELEBRATE_3_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_CELEBRATE_4_1",
+        "file": "tong/CELEBRATE_4_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_CELEBRATE_5_1",
+        "file": "tong/CELEBRATE_5_1.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 2,
+      "file": "tong/CELEBRATE_1_2.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_CELEBRATE_1_2",
+        "file": "tong/CELEBRATE_1_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_CELEBRATE_2_2",
+        "file": "tong/CELEBRATE_2_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_CELEBRATE_3_2",
+        "file": "tong/CELEBRATE_3_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_CELEBRATE_4_2",
+        "file": "tong/CELEBRATE_4_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_CELEBRATE_5_2",
+        "file": "tong/CELEBRATE_5_2.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 3,
+      "file": "tong/CELEBRATE_1_3.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_CELEBRATE_1_3",
+        "file": "tong/CELEBRATE_1_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_CELEBRATE_2_3",
+        "file": "tong/CELEBRATE_2_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_CELEBRATE_3_3",
+        "file": "tong/CELEBRATE_3_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_CELEBRATE_4_3",
+        "file": "tong/CELEBRATE_4_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_CELEBRATE_5_3",
+        "file": "tong/CELEBRATE_5_3.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 4,
+      "file": "tong/CELEBRATE_1_4.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_CELEBRATE_1_4",
+        "file": "tong/CELEBRATE_1_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_CELEBRATE_2_4",
+        "file": "tong/CELEBRATE_2_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_CELEBRATE_3_4",
+        "file": "tong/CELEBRATE_3_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_CELEBRATE_4_4",
+        "file": "tong/CELEBRATE_4_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_CELEBRATE_5_4",
+        "file": "tong/CELEBRATE_5_4.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     },
+     {
+      "level": 5,
+      "file": "tong/CELEBRATE_1_5.wav",
+      "exists": false,
+      "takes": [
+       {
+        "take": 1,
+        "asset": "S_V_tong_CELEBRATE_1_5",
+        "file": "tong/CELEBRATE_1_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 2,
+        "asset": "S_V_tong_CELEBRATE_2_5",
+        "file": "tong/CELEBRATE_2_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 3,
+        "asset": "S_V_tong_CELEBRATE_3_5",
+        "file": "tong/CELEBRATE_3_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 4,
+        "asset": "S_V_tong_CELEBRATE_4_5",
+        "file": "tong/CELEBRATE_4_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       },
+       {
+        "take": 5,
+        "asset": "S_V_tong_CELEBRATE_5_5",
+        "file": "tong/CELEBRATE_5_5.wav",
+        "exists": false,
+        "placeholder": false,
+        "imported": false
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -71,3 +71,57 @@ UnrealEditor.exe PoSlapUnreal.uproject /Game/Project/Environments/Levels/L_Arena
 # Verify bit-identical match event sequence against Python MuJoCo reference
 training/.venv/Scripts/python.exe training/match.py compare training/models/brains/grandpa_final.onnx Saved/URLab/live_ue.json --mjb Saved/URLab/scene_compiled.mjb
 ```
+
+---
+
+## Tournament Standard
+
+* **Main menu:** a 4 x 4 grid of the 16 league places: each roster character's tile (place, name, Elo, record), every empty place a **BYE** tile.
+* **Bracket (1v1 only, no FFA):** 16-slot single elimination seeded by Elo, bracket order 1v16, 8v9, 4v13, 5v12, 2v15, 7v10, 3v14, 6v11. BYEs take the bottom seeds; a fighter facing a BYE advances unfought; BYE vs BYE sends a BYE on; a draw goes to the higher seed (no replay); a pairing with no arena level in this build is a walkover. PLAY runs every match automatically to a champion; the state is saved to `Saved/PoSlap/tournament.json` (`Source/PoSlapUnreal/SlapHUDTourney.cpp`).
+* **Elo:** every character starts at 1000, K = 32, saved to `Saved/PoSlap/elo.json` (`SlapHUDRoundTrip.cpp`, rule in `SlapElo.h`).
+  Every **completed** 1v1 bout updates it immediately, whatever started it: menu START, watch, the idle demo / attract mode, the `-SlapLoop` unattended loop and the tournament. A draw scores 0.5 each (no seed rule outside the bracket); an aborted, reset or no-contest bout and a mirror match (a character vs itself) record nothing; each bout is rated once.
+* **No free-for-all:** PoSlap is a 1v1 sport, so this project has the bracket only; the FFA mode of the tournament standard does not apply.
+
+## Voice / SFX Matrix
+
+Every card has 5 emotions x 5 intensity levels (1 weakest .. 5 strongest), each with 5 takes (a random take, never the same one twice running):
+
+| Emotion | When |
+|---|---|
+| `ANGRY` | a knockdown (louder with each one); the loser of a decision |
+| `HAPPY` | the defender after a turn with no strike; the winner of a decision |
+| `HURT` | struck (level from the palm's speed) |
+| `INSULT` | the walk-in introduction; the striker at each new turn |
+| `CELEBRATE` | the winner of a bout by KO (level 4); the tournament champion (level 5) |
+
+**Asset naming:** `/Game/Project/Core/Audio/Voice/<card>/S_V_<card>_<EMOTION>_<take 1-5>_<level 1-5>`, e.g. `S_V_grandpa_CELEBRATE_2_5`,
+imported from the WAV `Content/Art/Exports/Audio/Voice/<card>/<EMOTION>_<take>_<level>.wav`.
+
+**The manifest, `voices.json`:** `Content/Art/Exports/Audio/Voice/voices.json` (next to the WAVs; the identical
+`Content/Data/voices.json` is the copy a packaged build reads, staged as NonUFS). It lists every card x 5 emotions x
+5 levels x 5 takes with the asset and WAV names, `exists` (a real recording is there), `placeholder` (a WAV
+`voice_pack.py` generated: `manifest.json` lists it and its SHA-1 still matches; it counts as missing), `imported`
+(the asset is there), and each card's procedural `voice` profile (pitch,
+formant scale, strain, breath, rasp, vibrato, tempo). The flags are written by the generator, never by hand; a
+`voice` profile already in the file is kept, so it can be tuned there.
+
+**Adding a recording:** save the WAV under its name in `Content/Art/Exports/Audio/Voice/<card>/`, import it
+(`UnrealEditor-Cmd.exe PoSlapUnreal.uproject -run=pythonscript -script="<abs>/scripts/voice_import.py" -unattended`),
+then run `python scripts/voice_manifest.py` (or `scripts/voice_pack.py`). It prints "N of M clips recorded ...;
+missing: ...". Saving a recording over a placeholder changes its hash, so it counts as recorded. The old placeholder
+WAVs and their imported assets stay in the repo but are ignored: the game synthesises those lines with the new engine
+(`scripts/voice_pack.py --placeholders` still writes them for listening tests).
+
+**What plays:** the game reads `voices.json` once. A clip marked both `exists` and `imported` plays its asset; every other clip (and
+every clip, with one warning, if the manifest is missing) is an **advanced procedural imitation** in that card's
+voice (`USlapVoiceWave`, `Source/PoSlapUnreal/SlapVoiceSynth.cpp`): a Rosenberg glottal pulse with jitter, shimmer,
+subharmonic rasp and aspiration, through a cascade of four vowel formants, built from 1-4 syllables with consonant
+onsets (h, s, sh, f, k, t, p, n, a gasp) and per-emotion prosody (angry: tense, falling, growled; happy: bright
+rise-fall and laughter; hurt: gasp then a breaking groan, a long cry at level 5; insult: nasal sing-song "nyah-nyah";
+celebrate: a rising "woo-hoo!" with wide vibrato, then laughter). The level scales loudness (peaks 0.30 .. 0.94, the
+placeholders' loudness), length, pitch range, rasp, breath, syllables and vibrato. Each line is deterministic per
+(card, emotion, take, level), made once and cached; the miss is logged at `Verbose` only.
+
+**Tests:** `pytest tests/test_voice_manifest.py` (every card x 5 x 5 x 5, the names, the flags against the folders,
+a distinct voice per card); `UnrealEditor-Cmd.exe PoSlapUnreal.uproject -ExecCmds="Automation RunTests PoSlap.Voice;Quit" -unattended -nullrhi`
+(each emotion is audible, level 5 louder and longer than level 1, deterministic, two cards differ).
