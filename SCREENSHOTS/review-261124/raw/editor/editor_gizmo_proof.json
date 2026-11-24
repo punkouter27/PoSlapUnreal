@@ -1,0 +1,26 @@
+{
+  "level": "/Game/Project/Environments/Levels/L_Arena_grandpa_vs_kim_v4",
+  "actor_label": "Env_JudgesTable",
+  "actor_class": "StaticMeshActor",
+  "before_cm": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "after_cm": [
+    200.0,
+    140.0,
+    110.0
+  ],
+  "delta_cm": [
+    200.0,
+    140.0,
+    110.0
+  ],
+  "pie_running_after_move": true,
+  "actor_pos_during_pie_cm": [
+    200.0,
+    140.0,
+    110.0
+  ]
+}
