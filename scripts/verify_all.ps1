@@ -71,9 +71,10 @@ if ($Unreal) {
         $global:LASTEXITCODE = if ($log -match "UI test PASS") { 0 } else { 1 }
     }
     # rendered too (no -nullrhi): Unreal tests run on a real RHI (D3D12), as the Po Game Standard asks
-    Step "Showcase automation tests" {
+    # every PoSlap.* test: Showcase (overlay, idle demo, DataAssets), Elo (bout rating), Voice (synth + manifest)
+    Step "PoSlap automation tests" {
         $log = & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$Proj" `
-            "-ExecCmds=Automation RunTests PoSlap.Showcase;Quit" -unattended -nosplash -stdout 2>&1 | Out-String
+            "-ExecCmds=Automation RunTests PoSlap;Quit" -unattended -nosplash -stdout 2>&1 | Out-String
         $log -split "`n" | Select-String -Pattern "Test Completed" | Select-Object -Last 10
         $global:LASTEXITCODE = if ($log -match "Result=\{Fail\}" -or $log -notmatch "Result=\{Success\}") { 1 } else { 0 }
     }

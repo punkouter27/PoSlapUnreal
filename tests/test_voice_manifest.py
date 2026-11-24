@@ -1,6 +1,7 @@
 """voices.json (scripts/voice_manifest.py): every card x 5 emotions x 5 levels x 5 takes, the real names, a voice profile
 per card, flags that match the folders, and the staged copy identical to the source. Reads only; writes nothing."""
 
+import hashlib
 import json
 import re
 import sys
@@ -64,3 +65,13 @@ def test_manifest_is_current(doc):
     fresh = vm.build(doc)
     assert {**doc, "generated": None} == fresh
     assert str(vm.VOICES_JSON.relative_to(ROOT)).replace("\\", "/") == doc["root"] + "/voices.json"
+
+
+def test_content_id_is_the_same_for_an_lfs_pointer(tmp_path):
+    """CI checks out the WAVs as Git LFS pointers: a pointer and its real file must give manifest.json the same id."""
+    real = tmp_path / "real.wav"
+    real.write_bytes(b"RIFF....WAVEfmt fake pcm")
+    oid = hashlib.sha256(real.read_bytes()).hexdigest()
+    pointer = tmp_path / "pointer.wav"
+    pointer.write_text(f"version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize 24\n")
+    assert vm.content_id(real) == vm.content_id(pointer) == oid

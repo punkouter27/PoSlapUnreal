@@ -72,6 +72,15 @@ UnrealEditor.exe PoSlapUnreal.uproject /Game/Project/Environments/Levels/L_Arena
 training/.venv/Scripts/python.exe training/match.py compare training/models/brains/grandpa_final.onnx Saved/URLab/live_ue.json --mjb Saved/URLab/scene_compiled.mjb
 ```
 
+### 5. Before/after screenshots (`SCREENSHOTS/`)
+UI changes get a before/after page in [`SCREENSHOTS/`](SCREENSHOTS/) (`<yyMMdd>-<feature>.html`, one side-by-side
+`<yyMMdd>-<feature>.png` and the scaled shots in `<yyMMdd>-<feature>/`), made by one command that shoots the local web
+build at 1366x768 and 390x844 (never the live site):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\screenshots.ps1 -Feature <name> [-Before <git ref> | -BeforeDir <PNGs>]
+```
+Example: [`SCREENSHOTS/261124-v4-audit.html`](SCREENSHOTS/261124-v4-audit.html).
+
 ---
 
 ## Tournament Standard

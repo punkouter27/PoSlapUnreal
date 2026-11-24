@@ -32,6 +32,23 @@ VOICES_STAGED = ROOT / "Content" / "Data" / "voices.json"
 ASSETS = ROOT / "Content" / "Project" / "Core" / "Audio" / "Voice"
 EMOTIONS = ("ANGRY", "HAPPY", "HURT", "INSULT", "CELEBRATE")
 LEVELS = TAKES = 5
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def content_id(path):
+    """sha256 of a WAV's content, the same whether the checkout has the real file or only its Git LFS pointer.
+
+    The WAVs are LFS files and CI checks out the pointers only (deploy.yml pulls the web assets, not the voice pack);
+    a pointer's `oid sha256:` IS the sha256 of the real content, so manifest.json matches in both checkouts. (A sha1
+    of the bytes matched only one of them: CI failed on the real hashes, a full checkout on the pointers' hashes.)
+    """
+    data = path.read_bytes()
+    if data.startswith(LFS_POINTER):
+        for line in data.decode("ascii", "replace").splitlines():
+            if line.startswith("oid sha256:"):
+                return line.split(":", 1)[1].strip()
+    return hashlib.sha256(data).hexdigest()
+
 
 # per card: the procedural voice beyond f0 / formant scale / strain (those come from voice_pack.voice_of)
 PROFILES = dict(
@@ -95,9 +112,7 @@ def build(previous=None, voice_of=None):
                     wav = OUT / rel
                     known = placeholders.get(rel, {})
                     generated = (
-                        wav.exists()
-                        and bool(known.get("placeholder"))
-                        and known.get("sha1") == hashlib.sha1(wav.read_bytes()).hexdigest()
+                        wav.exists() and bool(known.get("placeholder")) and known.get("sha256") == content_id(wav)
                     )
                     takes.append(
                         dict(

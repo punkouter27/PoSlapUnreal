@@ -221,7 +221,7 @@ every publish. Tests never write into tracked files.
 
 One command sequence verifies the repo (ruff, pytest, then `verify_all.ps1`: cards, constants, naming, physics audit,
 browser engine, live relay, spectator API, web build, CUDA realism, and with `-Unreal` the editor build, UI test and
-Showcase automation; run `scripts\setup_urlab.ps1` once per clone first):
+every PoSlap.* automation test; run `scripts\setup_urlab.ps1` once per clone first):
 
 ```
 ruff check . && ruff format --check . && python -m pytest -q && powershell -ExecutionPolicy Bypass -File scripts\verify_all.ps1 -Unreal
@@ -252,13 +252,22 @@ Unreal (UE 5.8; once per clone: `powershell -ExecutionPolicy Bypass -File script
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" PoSlapUnrealEditor Win64 Development `
     "-Project=$PWD\PoSlapUnreal.uproject" -WaitMutex                          # 0 warnings in Source/PoSlapUnreal
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\PoSlapUnreal.uproject" `
-    "-ExecCmds=Automation RunTests PoSlap.Showcase;Quit" -unattended -nosplash   # 3 tests, "Test Completed. Result={Success}" (rendered: never -nullrhi)
+    "-ExecCmds=Automation RunTests PoSlap;Quit" -unattended -nosplash   # every PoSlap.* test (Showcase, Elo, Voice): "Result={Success}" (rendered: never -nullrhi)
 # the HUD's own checks need a real renderer (they run from DrawHUD; -nullrhi never draws, so they never start):
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "$PWD\PoSlapUnreal.uproject" `
     -game -windowed -ResX=1600 -ResY=900 -SlapUiTest -unattended -nosplash      # "UI test PASS"
 # 16:9 and 9:16 runtime check (overlay + benchmark, demo mode screenshots into <dir>, then quits):
 & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" "$PWD\PoSlapUnreal.uproject" `
     -game -windowed -ResX=1600 -ResY=900 -ShowcaseCapture=<dir> -ShowcaseTouch -ShowcaseBenchmark   # and -ResX=450 -ResY=800
+```
+
+UI changes: the before/after page in `SCREENSHOTS/` is one command (local Web/dist in headless Edge at 1366x768 and
+390x844, never the live site; `-Before` defaults to `HEAD~1`, `-BeforeDir` takes PNGs named `*_<route>_<W>x<H>.png`,
+e.g. an Unreal `-ShowcaseCapture` folder renamed that way):
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\screenshots.ps1 -Feature <name> [-Before <ref> | -BeforeDir <dir>] [-Notes "..."]
+# -> SCREENSHOTS/<yyMMdd>-<feature>.html + .png (side by side, annotated) + <yyMMdd>-<feature>/ (scaled shots)
 ```
 
 Live (after a push to master): the workflow run ends with `Live: <url> at X-Commit <sha> ...`.

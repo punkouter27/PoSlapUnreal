@@ -32,7 +32,6 @@ only where the manifest says it is imported; every other clip is synthesised in 
 """
 
 import argparse
-import hashlib
 import json
 import sys
 import wave
@@ -378,8 +377,8 @@ def write_wav(path, frames):
         w.writeframes(frames)
 
 
-def sha1(path):
-    return hashlib.sha1(path.read_bytes()).hexdigest()
+def content_id(path):
+    return voice_manifest.content_id(path)  # sha256, equal to the Git LFS oid (manifest.json matches in CI too)
 
 
 def main():
@@ -405,12 +404,14 @@ def main():
                     rel = f"{card}/{emotion}_{sound}_{level}.wav"
                     path = OUT / rel
                     known = files.get(rel)
-                    if path.exists() and (not known or not known.get("placeholder") or known.get("sha1") != sha1(path)):
+                    if path.exists() and (
+                        not known or not known.get("placeholder") or known.get("sha256") != content_id(path)
+                    ):
                         files[rel] = {"placeholder": False}  # a recording: never overwritten
                         kept += 1
                         continue
                     write_wav(path, render(card, emotion, sound, level))
-                    files[rel] = {"placeholder": True, "sha1": sha1(path)}
+                    files[rel] = {"placeholder": True, "sha256": content_id(path)}
                     made += 1
         summary[card] = (made, kept)
         print(f"{card:10s} {made:3d} placeholders, {kept:3d} recordings  (f0 {voice_of(card)[0]:.0f} Hz)")
