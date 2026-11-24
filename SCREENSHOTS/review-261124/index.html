@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoSlapUnreal (UE 5.8) — Overnight RL Training &amp; Live Inference Review (2026-11-24)</title>
+<style>
+  :root {
+    --bg: #0b1018;
+    --panel: #131b27;
+    --border: #243044;
+    --text: #e6edf7;
+    --muted: #93a4bc;
+    --gold: #f5c242;
+    --cyan: #60c6ff;
+    --green: #4ade80;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 22px 64px; }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 26px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gold);
+    background: rgba(245, 194, 66, 0.12);
+    border: 1px solid rgba(245, 194, 66, 0.35);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  h1 { margin: 4px 0 8px; font-size: 30px; font-weight: 700; }
+  .subtitle { color: var(--muted); font-size: 15px; margin: 0; max-width: 900px; }
+  h2 {
+    margin: 34px 0 14px;
+    font-size: 21px;
+    border-left: 4px solid var(--gold);
+    padding-left: 12px;
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+    margin: 18px 0 28px;
+  }
+  .kpi {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .kpi .val { font-size: 26px; font-weight: 700; color: var(--gold); }
+  .kpi .lbl { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .kpi.green .val { color: var(--green); }
+  .kpi.cyan .val { color: var(--cyan); }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #070a10;
+  }
+  .card .cap {
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .card .cap h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  .card .cap p { margin: 0; font-size: 14px; color: var(--muted); }
+  .gif-wrap {
+    display: flex;
+    justify-content: center;
+    background: #070a10;
+    padding: 12px;
+  }
+  .gif-wrap img {
+    width: auto;
+    max-width: 100%;
+    max-height: 620px;
+    border-radius: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background: #182334; color: var(--text); font-weight: 600; }
+  td { color: var(--muted); }
+  td strong, td code { color: var(--text); }
+  code {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px;
+    border-radius: 5px;
+  }
+  .pill {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .pill.pass { background: rgba(74, 222, 128, 0.16); color: var(--green); }
+  .pill.info { background: rgba(96, 198, 255, 0.16); color: var(--cyan); }
+  .note {
+    background: rgba(96, 198, 255, 0.08);
+    border: 1px solid rgba(96, 198, 255, 0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 14px;
+    color: var(--text);
+    margin: 16px 0;
+  }
+  footer {
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Unreal Engine 5.8 · NNE ORT ONNX Inference · 2026-11-24</div>
+    <h1>PoSlapUnreal — Latest Trained RL Brains &amp; Feature Verification</h1>
+    <p class="subtitle">
+      Live Unreal Engine 5.8 verification of the overnight-trained physics-4 / interface-5 RL policies
+      (<code>matt_L4_v4_261124.onnx</code>, <code>mom_L0_v4_261124.onnx</code>, <code>tong_L0_v4_261124.onnx</code>)
+      and graduated v5 match brains (<code>grandpa_L4_vs_kim_v4.onnx</code>, <code>kim_L4_vs_grandpa_v4_candidate.onnx</code>)
+      running in real-time NNE Inference mode, plus Editor Viewport Move-Gizmo decoupling proof.
+    </p>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi cyan">
+      <div class="val">0.27 – 0.37 ms</div>
+      <div class="lbl">NNE ORT ONNX Inference Latency (mean of 60 steps, 142 inputs)</div>
+    </div>
+    <div class="kpi green">
+      <div class="val">56 – 104 FPS</div>
+      <div class="lbl">Live UE 5.8 Desktop Frame Rate (Lumen GI + SSR + MuJoCo 200 Hz)</div>
+    </div>
+    <div class="kpi">
+      <div class="val">994M Steps</div>
+      <div class="lbl">Overnight PoSlapUnreal v5 Queue (Stages 9–12, 0 CUDA crashes)</div>
+    </div>
+    <div class="kpi green">
+      <div class="val">PASS (0 Errors)</div>
+      <div class="lbl">Gizmo Move + Play-In-Editor (Exact 9.0 m/s deterministic hit parity)</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Note on Engine Selection:</strong> Unity Editor <code>6000.6.9f1</code> on this machine currently reports
+    <em>"No valid Unity Editor license found"</em>, so live runtime capture &amp; Editor gizmo verification were executed in
+    <strong>Unreal Engine 5.8</strong> on <strong>PoSlapUnreal</strong> (which trained 4 stages overnight). Overnight
+    training metrics for <strong>PoBox</strong> and <strong>PoHillKing</strong> are summarized in the progress table below.
+  </div>
+
+  <h2>1. Gameplay GIFs — Agents in Live NNE Inference Action</h2>
+  <div class="grid-2">
+    <div class="card">
+      <div class="gif-wrap">
+        <img src="gif_01_slap_impact_120fps.gif" alt="Grandpa v4 vs Kim v4 120fps slap impact GIF">
+      </div>
+      <div class="cap">
+        <h3>120 FPS Slap-Impact Burst — Grandpa v4 vs Kim v4</h3>
+        <p>
+          Captured via <code>-SlapBurst</code> (35 engine frames) on <code>L_Arena_grandpa_vs_kim_v4</code>
+          under Rules v2 (palm-only strikes, stun, flinch line). Both corners run 142-input NNE ORT ONNX policies
+          (<code>grandpa_L4_vs_kim_v4.onnx</code> vs <code>kim_L4_vs_grandpa_v4_candidate.onnx</code>) driving 30-DoF MuJoCo bodies.
+        </p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="gif-wrap">
+        <img src="gif_02_overnight_matt_l4.gif" alt="Overnight Matt L4 v4 live inference GIF">
+      </div>
+      <div class="cap">
+        <h3>Overnight Matt L4 v4 Brain in Live Action</h3>
+        <p>
+          Freshly exported <code>matt_L4_v4_261124.onnx</code> (trained overnight for 290M steps on physics-4 self-play)
+          loaded via <code>-SlapBlueBrain</code> against <code>grandpa_L4_vs_kim_v4.onnx</code> (9 frames).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. Annotated Screenshots — New Mechanics &amp; Overnight Brains</h2>
+
+  <div class="card">
+    <img src="ann_01_overnight_matt_overlay.jpg" alt="Overnight Matt L4 v4 with TAB Diagnostics Overlay">
+    <div class="cap">
+      <h3>Opaque TAB Diagnostics Overlay &amp; Overnight Matt L4 Brain</h3>
+      <p>
+        Running <code>L_Arena_grandpa_vs_matt</code> with <code>-DiagOverlay</code>. The new opaque TAB panel displays
+        live <strong>FPS (56.3)</strong>, <strong>Episode reward (-7.59 critic proxy)</strong>,
+        <strong>Inference latency (0.37 ms mean of 60)</strong>, <strong>Curriculum stage <code>L4 (matt_L4_v4_261124)</code></strong>,
+        30 s Demo countdown, and the in-engine <strong>Benchmark sim speed [B]</strong> button while Matt delivers a palm strike.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ann_02_overnight_mom_tong.jpg" alt="Overnight Mom L0 v4 vs Tong L0 v4 with Scorecards">
+    <div class="cap">
+      <h3>Overnight Mom L0 &amp; Tong L0 Brains + 3-Judge Scorecards &amp; Scouting Strip</h3>
+      <p>
+        Running <code>L_Arena_mom_vs_tong</code> with both overnight checkpoints exported to ONNX
+        (<code>mom_L0_v4_261124.onnx</code> 277M steps / exam 0.69 vs <code>tong_L0_v4_261124.onnx</code> 182M steps / exam 0.75)
+        at <strong>0.27 ms inference latency</strong> and <strong>58.1 FPS</strong>, showcasing 3-judge 10-point scorecards and live Elo scouting.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ann_03_rules2_flinch_strike.jpg" alt="Rules v2 Flinch Detection and 9.0 m/s Clean Palm Impact">
+    <div class="cap">
+      <h3>Rules v2 Mechanics — Pre-Contact Flinch Detection &amp; Cheek-Dent Impact</h3>
+      <p>
+        Left: Real-time flinch callout (<code>FLINCH: head 8 cm before contact</code>) at <strong>104 FPS</strong> with timing reticle.
+        Right: Clean palm contact (<code>9.0 m/s</code>, <code>21 N·s</code> impulse, <code>REFEREE: STAGGER</code>) triggering
+        slow-motion impact circle, cheek-dent morph targets, dynamic ticker, and procedural/recorded character voices.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ann_04_replay_and_demo.jpg" alt="Kinetic Chain Replay and 30s Idle Demo Mode">
+    <div class="cap">
+      <h3>Automatic Kinetic-Chain Replay &amp; 30 s Idle Demo Mode</h3>
+      <p>
+        Left: Post-strike kinetic-chain replay (<code>PALM 8.7 m/s, SNAP 1.1 m/s</code>) displaying both active v4 brains and Elo ratings.
+        Right: After 30 s idle, <strong>Demo Mode</strong> cleanly hides the HUD behind the bottom <code>Demo</code> chip and cycles 4 broadcast cameras.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ann_05_tournament_league.jpg" alt="16-Slot Power Slap League Tournament Menu">
+    <div class="cap">
+      <h3>Tournament Standard — 16-Slot Elo Bracket &amp; Unified League Menu</h3>
+      <p>
+        New tournament UI (<code>MATCH / BRAINS / VIEW / TOURNEY</code> tabs) seeding all 5 RL athletes by Elo
+        (Grandpa, Kim, Matt, Mom, Tong) with 11 auto-advancing BYEs; every completed bout (demo included) updates ratings.
+      </p>
+    </div>
+  </div>
+
+  <h2>3. Unreal Editor 5.8 Viewport Proof — Free Gizmo Movement Without Breaking Logic</h2>
+  <p class="subtitle" style="margin-bottom: 14px;">
+    In <code>L_Arena_grandpa_vs_kim_v4</code>, <code>Env_JudgesTable</code> (<code>StaticMeshActor</code>) was selected in the
+    Unreal Editor Viewport, switched to <code>Movable</code>, translated by <strong>(+200, +140, +110) cm</strong> and rotated
+    <strong>+25° Yaw</strong> via its Transform gizmo, then Play-In-Editor (PIE) was launched immediately without reverting.
+  </p>
+
+  <div class="card">
+    <img src="ed_01_gizmo_before_ann.jpg" alt="UE 5.8 Editor Viewport before gizmo move">
+    <div class="cap">
+      <h3>Step A — Editor Viewport Before Move (<code>Location: 0.0, 0.0, 0.0</code>)</h3>
+      <p>
+        <code>Env_JudgesTable</code> selected in the Outliner and highlighted in the Perspective viewport; Details Transform reads <code>(0, 0, 0)</code>.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ed_02_gizmo_after_ann.jpg" alt="UE 5.8 Editor Viewport after gizmo move">
+    <div class="cap">
+      <h3>Step B — Editor Viewport After Free Gizmo Transform (<code>Location: 200.0, 140.0, 110.0</code>, Yaw <code>+25°</code>)</h3>
+      <p>
+        Actor freely moved and rotated in the Editor; Details panel confirms the updated world transform and <code>Movable</code> mobility.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <img src="ed_03_pie_unbroken_ann.jpg" alt="Play-In-Editor running live with displaced actor">
+    <div class="cap">
+      <h3>Step C — Play-In-Editor Running Unbroken After Move</h3>
+      <p>
+        PIE launches cleanly (<code>URLab: live</code>, <code>78 actors</code>, <code>0.35 ms</code> NNE inference on
+        <code>kim_L4_vs_grandpa_v4_candidate</code>) and reproduces the <strong>exact same deterministic strike</strong>
+        (<code>BLUE lands 9.0 m/s with the HAND (R), impulse 21 N s, on a flinch</code>) as the unmodified level because
+        render scenery is Chaos-disabled and fully decoupled from the MuJoCo simulation. Actor was restored cleanly after PIE exit.
+      </p>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Verification Item</th>
+        <th>Measured Value</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Moved Scene Actor</td>
+        <td><code>Env_JudgesTable</code> (<code>StaticMeshActor</code>)</td>
+        <td><span class="pill info">Verified</span></td>
+      </tr>
+      <tr>
+        <td>Transform Delta Applied</td>
+        <td><code>[0.0, 0.0, 0.0]</code> → <code>[200.0, 140.0, 110.0]</code> cm (Δ <code>[200.0, 140.0, 110.0]</code>, Yaw +25°)</td>
+        <td><span class="pill pass">Moved Freely</span></td>
+      </tr>
+      <tr>
+        <td>Play-In-Editor Active After Move</td>
+        <td><code>pie_running_after_move = True</code> · Actor stayed at <code>[200.0, 140.0, 110.0]</code></td>
+        <td><span class="pill pass">Unbroken</span></td>
+      </tr>
+      <tr>
+        <td>Deterministic Physics &amp; NNE Parity</td>
+        <td>Identical strike: <code>9.0 m/s</code>, <code>21 N·s</code> impulse on flinch; <code>0</code> runtime errors</td>
+        <td><span class="pill pass">PASS</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>4. Overnight 10-Hour Multi-Repo Training Summary (2026-11-23 → 2026-11-24)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Repository</th>
+        <th>Overnight Work Completed</th>
+        <th>Standout Result</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>PoSlapUnreal</strong><br>(UE 5.8 · NNE ORT)</td>
+        <td>Stages 9–12 of <code>retrain_v5_queue.json</code> (<code>4.86 h</code>, <code>994M</code> steps): Matt L3/L4, Mom L0, Tong L0</td>
+        <td>All 3 overnight brains exported (142-dim, physics 4) and verified live in UE 5.8 at <strong>0.27–0.37 ms</strong> inference</td>
+        <td><span class="pill pass">12 / 26 Done</span></td>
+      </tr>
+      <tr>
+        <td><strong>PoHillKing</strong><br>(Unity · MuJoCo Warp)</td>
+        <td>Built 3 CMU AMP datasets + 4×300-iter concrete-platform <code>strike_pass</code> runs (<code>4.06 h</code>)</td>
+        <td><strong><code>trump_p261124_a</code></strong>: 3-way share <code>0.217 → 0.680</code>, duel vs Grandpa <code>0.037 → 0.411</code>, jitter <code>2.8×</code> smoother</td>
+        <td><span class="pill info">Candidates Ready</span></td>
+      </tr>
+      <tr>
+        <td><strong>PoBox</strong><br>(Unity · MuJoCo Warp)</td>
+        <td>Finished interrupted <code>v4r2_sokol</code>, <code>v4r_nick</code>, <code>v4r_trump</code> + all 4 C MuJoCo CPU exams</td>
+        <td><strong><code>v4r_trump</code></strong>: footing <code>8.67 → 0.33</code> falls/min, guard <code>69%</code> pass, carry-on <code>25/28</code> (89.3%)</td>
+        <td><span class="pill pass">4 / 4 Graded</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Generated automatically on 2026-11-24 · All screenshots and GIFs are direct Unreal Engine 5.8 renders &amp; window-only Editor captures
+    (zero desktop bleed; shipped brains untouched).
+  </footer>
+</div>
+</body>
+</html>
