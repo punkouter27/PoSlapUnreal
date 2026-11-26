@@ -47,7 +47,7 @@ class SWidget;
  * Screen (portrait, one viewport, nothing scrolls): Slate corner anchors inside the safe zone - TL title, TC FPS + MuJoCo
  * step counter, TR menu, BL live telemetry (+ physics debug with DBG), BR build stamp - and a grip at the bottom centre
  * that opens the menu under the thumb. The menu is a bottom sheet: tabs MATCH (status, the two picks, replay) / BRAINS
- * (each corner's brain, the roster cards) / VIEW (overlays, camera, quality) / TOURNEY (the 16-place bracket; START there
+ * (each corner's brain, the roster cards) / VIEW (overlays, camera, quality) / TOURNEY (the 8-place bracket; START there
  * plays it to a champion), and START at its bottom centre. TAB toggles
  * the detailed stats; by default the HUD is the scoreboard, the momentum bar and the name plates. A finished match shows
  * a result card (winner, judges, a stats table, the Elo change; REMATCH / OK) that stands until OK, then the menu with the
@@ -244,8 +244,9 @@ private:
 	// another, until a champion; a pairing with no level in this build is a walkover (no Elo change; both or neither
 	// playable: the higher seed); a draw goes to the higher seed (tournament standard). Every played match moves the Elo
 	// as any match does. The state lives in
-	// Saved/PoSlap/tournament.json, so it survives the level changes between matches; an app launched cold pauses it.
-	static constexpr int32 TourneyRounds = 4;	// 16 -> 8 -> 4 -> 2 -> 1
+	// Saved/PoSlap/tournament8.json, so it survives level changes; an app launched cold pauses it.
+	static constexpr int32 TourneySize = 8;
+	static constexpr int32 TourneyRounds = 3;
 	static FString TourneyPath();
 	void LoadTourney();
 	void SaveTourney() const;
@@ -258,7 +259,7 @@ private:
 	void TourneyResult(int32 W, const FSlapHud& H);	// RoundTrip: the match just rated
 	FString TourneyStatus() const;
 	TSharedRef<SWidget> BuildTourneyTab();
-	TArray<FString> TourneySeeds;			// 16 bracket positions: a card or "BYE"
+	TArray<FString> TourneySeeds;			// 8 bracket positions: a card or "BYE"
 	TArray<TArray<FString>> TourneyWon;		// per round: each match's winner ("" = not yet)
 	TArray<TArray<FString>> TourneyHow;		// per round: "KO", "DEC", "W/O", "BYE", "SEED" (a draw: the higher seed)
 	TArray<FString> TourneyChampions;		// "YYYY-MM-DD card", the history

@@ -685,7 +685,7 @@ TSharedRef<SWidget> ASlapHUD::BuildViewTab()
 
 TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
 {
-	// TOURNEY: the status line, the bracket (16 -> 8 -> 4 -> 2 -> the champion; winners gold, the match on now lit), the
+	// TOURNEY: the status line, the bracket (8 -> 4 -> 2 -> the champion; winners gold, the match on now lit), the
 	// Elo of the field, NEW BRACKET; START (PLAY / PAUSE TOURNAMENT) runs it. Every cell reads the live state.
 	TWeakObjectPtr<ASlapHUD> Self(this);
 	auto Cell = [Self](int32 c, int32 j)
@@ -715,14 +715,13 @@ TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
 				return FSlateColor(W.IsEmpty() ? White * 0.85f : W == N ? Hi : Dim * 0.6f);
 			}))];
 	};
-	// Two-sided (user 2026-11-09): places 1-8 start on the left, 9-16 on the right, each half narrows toward the centre
-	// and the champion sits in the middle. Column order: L16 QF SF FINAL | CHAMP | FINAL SF QF L16.
-	static const TCHAR* const ColName[] = { TEXT("LAST 16"), TEXT("QF"), TEXT("SF"), TEXT("FINAL"), TEXT("CHAMPION") };
+	// Each half narrows toward the champion in the middle.
+	static const TCHAR* const ColName[] = { TEXT("QF"), TEXT("SF"), TEXT("FINAL"), TEXT("CHAMPION") };
 	TSharedRef<SHorizontalBox> Bracket = SNew(SHorizontalBox), Heads = SNew(SHorizontalBox);
 	auto AddColumn = [&](int32 c, int32 Side)	// Side 0 left half, 1 right half, -1 the champion
 	{
 		TSharedRef<SVerticalBox> Col = SNew(SVerticalBox);
-		const int32 Rows = c >= TourneyRounds ? 1 : (16 >> c) / 2, First = Side == 1 ? Rows : 0;
+		const int32 Rows = c >= TourneyRounds ? 1 : (TourneySize >> c) / 2, First = Side == 1 ? Rows : 0;
 		for (int32 k = 0; k < Rows; ++k)	// equal shares of the half's height: each winner sits level with the pair that fed it
 			Col->AddSlot().FillHeight(1.f).VAlign(VAlign_Center).Padding(0.f, 1.f, 0.f, k % 2 && k + 1 < Rows ? 3.f : 1.f)
 				[SNew(SBox).HeightOverride(c >= TourneyRounds ? 44.f : c == 0 ? 30.f : 34.f)[Cell(c, First + k)]];
@@ -738,7 +737,7 @@ TSharedRef<SWidget> ASlapHUD::BuildTourneyTab()
 		+ SVerticalBox::Slot().AutoHeight()[Label(TAttribute<FText>::CreateLambda([Self] { return FText::FromString(Self.IsValid() ? Self->TourneyStatus() : FString()); }), 14,
 			TAttribute<FSlateColor>::CreateLambda([Self] { return FSlateColor(Self.IsValid() && Self->TourneyWon.Num() == TourneyRounds && !Self->TourneyWon.Last()[0].IsEmpty() ? Hi : White); }), true)]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 4.f)[Heads]
-		+ SVerticalBox::Slot().AutoHeight()[SNew(SBox).HeightOverride(8.f * 46.f + 3.f * 3.f)[Bracket]]	// 8 rows a side: room for 14-point names
+		+ SVerticalBox::Slot().AutoHeight()[SNew(SBox).HeightOverride(4.f * 46.f + 3.f * 3.f)[Bracket]]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 4.f)[Label(TAttribute<FText>::CreateLambda([Self]
 		{
 			if (!Self.IsValid()) return FText();
