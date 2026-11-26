@@ -229,7 +229,12 @@ def run_queue(a, summary):
             run = RUNS / f"{char}_{stage['level']}{tag}_night{idx + 1}_{time.strftime('%H%M')}"
             resume = resume_of(stage, queue, carry, char)
         stage.update(run=run.name, started=time.strftime("%Y-%m-%d %H:%M:%S"))  # the restart point, before it trains
+        if resume:  # its seed too: the run it came from must survive this stage's housekeeping
+            stage["resume"] = str(resume)
         QUEUE.write_text(json.dumps(queue, indent=1))
+        if carry:  # a carried brain seeds a later stage: this stage's housekeeping must leave its run alone
+            keeps = [x for p in carry.values() for x in ("--keep", str(p))]
+            stage = {**stage, "args": stage.get("args", []) + keeps}
         if vs:
             opp = (
                 carry.get(vs) or stage.get("opponent") or HERE / "models" / "brains" / f"{vs}_final.pt"
@@ -247,6 +252,8 @@ def run_queue(a, summary):
             pool = []
             for c in stage["field"]:
                 pt = carry.get(c) or HERE / "models" / "brains" / f"{c}_final.pt"
+                if not Path(pt).exists():  # its run has been pruned: spar the shipped brain rather than lose the seat
+                    pt = HERE / "models" / "brains" / f"{c}_final.pt"
                 if Path(pt).exists():
                     pool.append(f"{c}:{pt}")
                 else:

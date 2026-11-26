@@ -126,7 +126,9 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "args": ["--physics", "4"]
+  "resume": "models/brains/tong_L0_v4_261124.pt",
+  "args": ["--physics", "4"],
+  "note": "2026-11-26: the first attempt died on FileNotFoundError - train.py's housekeeping had pruned runs/tong_L0_v4_night12_0718 (over 24 h old, and the queue names only the seeds it stores in a 'resume', never an inherited one) a minute before this stage resumed from its best.pt. Seeded explicitly from that run's export models/brains/tong_L0_v4_261124.onnx rebuilt with onnx_to_checkpoint.py (142 inputs, ONNX parity 9e-07)."
  },
  {
   "level": "G1",
@@ -134,9 +136,9 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "resume": "@stage:7",
+  "resume": "models/brains/grandpa_L4_vs_kim_v4.pt",
   "args": ["--physics", "4", "--critic-warmup", "20"],
-  "note": "The get-up brain the count needs (rules 2: a defender down after the strike has 10 s; match.py hands him to <char>_G1_v4.onnx while he is down). From real knockdown states (models/v4/getup/, the v3 states: same bodies), seeded from his stage-7 match brain. Not carried."
+  "note": "The get-up brain the count needs (rules 2: a defender down after the strike has 10 s; match.py hands him to <char>_G1_v4.onnx while he is down). From real knockdown states (models/v4/getup/, the v3 states: same bodies), seeded from his stage-7 match brain. Not carried. 2026-11-26: was @stage:7, but runs/grandpa_L4_vs_kim_v4_night7_0556 had been pruned, so the seed is that brain's export models/brains/grandpa_L4_vs_kim_v4.onnx rebuilt with onnx_to_checkpoint.py (142 inputs = interface 5, ONNX parity 2e-06)."
  },
  {
   "level": "G1",
@@ -144,9 +146,9 @@
   "minutes": 45,
   "envs": 8192,
   "no_gate": true,
-  "resume": "@stage:6",
+  "resume": "models/brains/kim_L4_vs_grandpa_v4.pt",
   "args": ["--physics", "4", "--critic-warmup", "20"],
-  "note": "Kim's get-up brain, from her stage-6 match brain"
+  "note": "Kim's get-up brain, from her stage-6 match brain. 2026-11-26: was @stage:6, but runs/kim_L4_vs_grandpa_v4_night6_0441 had been pruned; seeded from models/brains/kim_L4_vs_grandpa_v4_candidate.onnx rebuilt with onnx_to_checkpoint.py (142 inputs = interface 5, ONNX parity 1e-06)."
  },
  {
   "level": "S3",

@@ -65,6 +65,9 @@ def housekeeping(keep=()):
             pending += json.dumps([s for s in json.loads(q.read_text()) if not s.get("done")])
         except (ValueError, TypeError, AttributeError):
             pending += q.read_text()  # not a stage list: keep every run it mentions
+    # a stage's resume is an absolute path: `\` as well as `/` (2026-11-26: tong L0's run was pruned a minute before
+    # tong L1 resumed from it, its stored `runs\<run>\best.pt` never matching `runs/<run>/`)
+    pending = pending.replace("\\\\", "/").replace("\\", "/")
     for d in RUNS.glob("*"):
         if not d.is_dir() or d.resolve() in keep or f"runs/{d.name}/" in pending or f'"{d.name}"' in pending:
             continue
@@ -478,6 +481,13 @@ def main():
         default=0,
         help="crash guard: resume a crashed run from latest.pt up to N times (see the docstring)",
     )
+    ap.add_argument(
+        "--keep",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="a checkpoint a later run still needs (overnight.py passes the brains it carries): its run is never pruned",
+    )
     a = ap.parse_args()
     if a.physics is not None:  # before any env is built: every env reads its models from constants.models_dir()
         os.environ["SLAP_PHYSICS"] = str(a.physics)
@@ -486,7 +496,7 @@ def main():
     )  # before anything is written
     RUNS.mkdir(exist_ok=True)
     run_dir = RUNS / (a.run or "")
-    housekeeping(keep=[run_dir] + ([Path(a.resume).parent] if a.resume else []))
+    housekeeping(keep=[run_dir, *(Path(k).parent for k in a.keep)] + ([Path(a.resume).parent] if a.resume else []))
     tensorboard()
     run = RUNS / (a.run or f"{a.char}_{a.level}_{time.strftime('%y%m%d_%H%M')}")
     run.mkdir(exist_ok=True)
