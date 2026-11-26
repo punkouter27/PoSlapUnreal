@@ -1,4 +1,4 @@
-// ASlapHUD: the 16-place tournament (seeded by Elo, BYEs, single elimination), played on its own to a champion.
+// ASlapHUD: the 8-place tournament (seeded by Elo, BYEs, single elimination), played on its own to a champion.
 
 #include "SlapHUD.h"
 
@@ -19,10 +19,10 @@ using namespace SlapUi;
 namespace
 {
 	const FString Bye(TEXT("BYE"));
-	// the seed at each bracket position: 1 v 16, 8 v 9, 4 v 13, 5 v 12 | 2 v 15, 7 v 10, 3 v 14, 6 v 11 (the top seeds
+	// the seed at each bracket position: 1 v 8, 4 v 5 | 2 v 7, 3 v 6 (the top seeds
 	// meet the BYEs, and 1 and 2 only meet in the final)
-	constexpr int32 SeedAt[16] = { 1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11 };
-	const TCHAR* RoundName[] = { TEXT("ROUND OF 16"), TEXT("QUARTER-FINAL"), TEXT("SEMI-FINAL"), TEXT("FINAL") };
+	constexpr int32 SeedAt[8] = { 1, 8, 4, 5, 2, 7, 3, 6 };
+	const TCHAR* RoundName[] = { TEXT("QUARTER-FINAL"), TEXT("SEMI-FINAL"), TEXT("FINAL") };
 
 	TArray<TSharedPtr<FJsonValue>> Strings(const TArray<FString>& A)
 	{
@@ -40,7 +40,7 @@ namespace
 
 FString ASlapHUD::TourneyPath()
 {
-	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PoSlap"), TEXT("tournament.json"));
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PoSlap"), TEXT("tournament8.json"));
 }
 
 void ASlapHUD::LoadTourney()
@@ -53,6 +53,16 @@ void ASlapHUD::LoadTourney()
 	TourneyPend[0] = TourneyPend[1] = -1;
 	FString Text;
 	TSharedPtr<FJsonObject> J;
+	if (!FPaths::FileExists(TourneyPath()))
+	{
+		const FString Legacy = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PoSlap"), TEXT("tournament.json"));
+		TSharedPtr<FJsonObject> Old;
+		const TArray<TSharedPtr<FJsonValue>>* Champions;
+		if (FFileHelper::LoadFileToString(Text, *Legacy) &&
+			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Old) && Old &&
+			Old->TryGetArrayField(TEXT("champions"), Champions))
+			TourneyChampions = Strings(*Champions);
+	}
 	if (FFileHelper::LoadFileToString(Text, *TourneyPath()) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), J) && J)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* A;
@@ -68,11 +78,11 @@ void ASlapHUD::LoadTourney()
 		J->TryGetNumberField(TEXT("pend_round"), TourneyPend[0]);
 		J->TryGetNumberField(TEXT("pend_index"), TourneyPend[1]);
 	}
-	bool bShape = TourneySeeds.Num() == 16 && TourneyWon.Num() == TourneyRounds && TourneyHow.Num() == TourneyRounds;
+	bool bShape = TourneySeeds.Num() == TourneySize && TourneyWon.Num() == TourneyRounds && TourneyHow.Num() == TourneyRounds;
 	bool bUntouched = TourneyPend[0] < 0;
 	for (int32 r = 0; bShape && r < TourneyRounds; ++r)
 	{
-		bShape = TourneyWon[r].Num() == (8 >> r) && TourneyHow[r].Num() == (8 >> r);
+		bShape = TourneyWon[r].Num() == (TourneySize / 2 >> r) && TourneyHow[r].Num() == (TourneySize / 2 >> r);
 		for (const FString& W : TourneyWon[r]) bUntouched &= W.IsEmpty();
 	}
 	if (bShape && TourneyPend[0] >= 0 && !(TourneyPend[0] < TourneyRounds && TourneyWon[TourneyPend[0]].IsValidIndex(TourneyPend[1]))) TourneyPend[0] = TourneyPend[1] = -1;
@@ -128,26 +138,27 @@ void ASlapHUD::SaveTourney() const
 
 void ASlapHUD::NewTourney()
 {
-	// every character in the roster, by Elo (ties: roster slot), into the 16 places; the rest are BYEs
+	// The highest-rated roster members (ties: roster slot), into eight places; the rest are BYEs.
 	TArray<FString> Field;
 	for (const FString& C : SlotCards)
 		if (!C.IsEmpty()) Field.Add(C);
 	Field.StableSort([this](const FString& A, const FString& B) { return EloNum(A) > EloNum(B); });
-	TourneySeeds.Init(Bye, 16);
-	for (int32 p = 0; p < 16; ++p)
+	if (Field.Num() > TourneySize) Field.SetNum(TourneySize);
+	TourneySeeds.Init(Bye, TourneySize);
+	for (int32 p = 0; p < TourneySize; ++p)
 		if (Field.IsValidIndex(SeedAt[p] - 1)) TourneySeeds[p] = Field[SeedAt[p] - 1];
 	TourneyWon.Reset();
 	TourneyHow.Reset();
 	for (int32 r = 0; r < TourneyRounds; ++r)
 	{
-		TourneyWon.Emplace_GetRef().Init(FString(), 8 >> r);
-		TourneyHow.Emplace_GetRef().Init(FString(), 8 >> r);
+		TourneyWon.Emplace_GetRef().Init(FString(), TourneySize / 2 >> r);
+		TourneyHow.Emplace_GetRef().Init(FString(), TourneySize / 2 >> r);
 	}
 	bTourney = false;
 	TourneyPend[0] = TourneyPend[1] = -1;
 	TourneyNextAt = -1.0;
 	SaveTourney();
-	UE_LOG(LogSlap, Log, TEXT("SlapHUD: new tournament: %d fighters, %d BYEs (%s)"), Field.Num(), 16 - Field.Num(), *FString::Join(Field, TEXT(", ")));
+	UE_LOG(LogSlap, Log, TEXT("SlapHUD: new tournament: %d fighters, %d BYEs (%s)"), Field.Num(), TourneySize - Field.Num(), *FString::Join(Field, TEXT(", ")));
 }
 
 int32 ASlapHUD::TourneySeedOf(const FString& Card) const
@@ -277,5 +288,5 @@ FString ASlapHUD::TourneyStatus() const
 	if (TourneyPend[0] >= 0)
 		return FString::Printf(TEXT("%s%s: %s vs %s"), bTourney ? TEXT("") : TEXT("PAUSED  "), RoundName[TourneyPend[0]],
 			*TourneyEntrant(TourneyPend[0], TourneyPend[1], 0).ToUpper(), *TourneyEntrant(TourneyPend[0], TourneyPend[1], 1).ToUpper());
-	return FString::Printf(TEXT("%s%d fighters + %d BYEs, seeded by Elo. PLAY runs every match to a champion."), bTourney ? TEXT("Starting... ") : TEXT(""), Fighters, 16 - Fighters);
+	return FString::Printf(TEXT("%s%d fighters + %d BYEs, seeded by Elo. PLAY runs every match to a champion."), bTourney ? TEXT("Starting... ") : TEXT(""), Fighters, TourneySize - Fighters);
 }
