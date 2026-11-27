@@ -1,14 +1,14 @@
 {
  "run": "tong_L1_v4_night14_1234",
- "started": "2026-11-26 12:34:32",
- "command": "train.py --char tong --level L1 --minutes 45.0 --envs 8192 --run tong_L1_v4_night14_1234 --resume models/brains/tong_L0_v4_261124.pt --physics 4 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
+ "started": "2026-11-26 19:21:48",
+ "command": "train.py --char tong --level L1 --minutes 37.7 --envs 8192 --run tong_L1_v4_night14_1234 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\latest.pt --physics 4 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
  "args": {
   "char": "tong",
   "level": "L1",
-  "minutes": 45.0,
+  "minutes": 37.7,
   "envs": 8192,
   "run": "tong_L1_v4_night14_1234",
-  "resume": "models/brains/tong_L0_v4_261124.pt",
+  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\latest.pt",
   "max_std": 0.3,
   "entropy": 0.001,
   "critic_warmup": 0,
@@ -27,9 +27,7 @@
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt",
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt"
   ],
-  "config_changes": [
-   "unchecked: no snapshot"
-  ]
+  "config_changes": []
  },
  "level": "L1",
  "level_config": {
@@ -225,8 +223,8 @@
    "note": "Practice opponent: Grandpa's face from Tong's start pelvis (Mom's 0.72 m plus the 6 cm Tong's pelvis sits lower: 0.787 vs 0.847 m); up to 15 cm lower for Kim; leaning in when braced"
   }
  },
- "git_sha": "9b2a5ff6cad740ef8e08e26f974de197cb0b5a7e",
- "git_dirty": true,
+ "git_sha": "55ea2ed0ee95dfafd9cd195bc571c30fceac2c3b",
+ "git_dirty": false,
  "versions": {
   "python": "3.11.9",
   "torch": "2.11.0+cu128",
@@ -242,9 +240,7 @@
   "level": "L1",
   "level_config": "78d65beb03cb3a89710ca6c06a9090859a79b9424e2aef4d4ef04f010ecc9593"
  },
- "config_changes": [
-  "unchecked: no snapshot"
- ],
+ "config_changes": [],
  "ppo": {
   "lr": 0.001,
   "init_std": 0.8,
@@ -258,9 +254,9 @@
  "models_dir": "models\\v4",
  "fingerprint_sha256": "411eb28395e0ca466752577b58fff6f01508538f3432762269543a81d281fd34",
  "gpu": {
-  "temp_c": 86.91,
-  "sm_mhz": 457.0,
-  "power_w": 21.47,
-  "util": 35.0
+  "temp_c": 73.44,
+  "sm_mhz": 180.0,
+  "power_w": 20.82,
+  "util": 0.0
  }
 }
