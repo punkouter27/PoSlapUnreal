@@ -1,14 +1,14 @@
 {
  "run": "kim_G1_v4_night16_0736",
- "started": "2026-11-27 07:36:22",
- "command": "train.py --char kim --level G1 --minutes 45.0 --envs 8192 --run kim_G1_v4_night16_0736 --resume models/brains/kim_L4_vs_grandpa_v4.pt --physics 4 --critic-warmup 20 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_G1_v4_night15_1226\\best.pt",
+ "started": "2026-11-27 07:53:03",
+ "command": "train.py --char kim --level G1 --minutes 31.0 --envs 8192 --run kim_G1_v4_night16_0736 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\latest.pt --physics 4 --critic-warmup 20 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt",
  "args": {
   "char": "kim",
   "level": "G1",
-  "minutes": 45.0,
+  "minutes": 31.0,
   "envs": 8192,
   "run": "kim_G1_v4_night16_0736",
-  "resume": "models/brains/kim_L4_vs_grandpa_v4.pt",
+  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\latest.pt",
   "max_std": 0.3,
   "entropy": 0.001,
   "critic_warmup": 20,
@@ -26,12 +26,9 @@
   "keep": [
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt",
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
-   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt",
-   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_G1_v4_night15_1226\\best.pt"
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt"
   ],
-  "config_changes": [
-   "unchecked: no snapshot"
-  ]
+  "config_changes": []
  },
  "level": "G1",
  "level_config": {
@@ -215,8 +212,8 @@
    "note": "Practice opponent: Grandpa, 7 cm taller; his braced face sat 0.78 m ahead, 0.825 m above her start pelvis in Unreal (2026-10-23); she had trained 9-25 cm below it and landed with the back of the hand"
   }
  },
- "git_sha": "de8a860f994b4d192a92a2dcbe9fe8651ac59128",
- "git_dirty": true,
+ "git_sha": "bba41e8f520fdc65b32c71009f2aac32d11fa6fb",
+ "git_dirty": false,
  "versions": {
   "python": "3.11.9",
   "torch": "2.11.0+cu128",
@@ -232,9 +229,7 @@
   "level": "G1",
   "level_config": "10db1b3662219b1f7c8283e2d890a1e41b60c41b772528eabbe6914317b9ba72"
  },
- "config_changes": [
-  "unchecked: no snapshot"
- ],
+ "config_changes": [],
  "ppo": {
   "lr": 0.001,
   "init_std": 0.8,
@@ -248,9 +243,9 @@
  "models_dir": "models\\v4",
  "fingerprint_sha256": "8d26838db9718a74d27826007b9f49113203e12b615ba7059a6b5756660e8453",
  "gpu": {
-  "temp_c": 86.69,
-  "sm_mhz": 2257.0,
-  "power_w": 55.09,
-  "util": 76.0
+  "temp_c": 80.25,
+  "sm_mhz": 1507.0,
+  "power_w": 26.15,
+  "util": 0.0
  }
 }
