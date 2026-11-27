@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "repo": "PoSlapUnreal",
+  "updated_utc": "2026-11-27T13:30:00Z",
+  "items": [
+    {
+      "id": "slap_v5_resume",
+      "label": "Resume v5 retrain queue (Mom/Tong L1-L4 + G1 get-up)",
+      "behavior_id": "slap_mom_tong_g1",
+      "status": "in_progress",
+      "priority": 90,
+      "device": "gpu",
+      "default_hours": 6.0,
+      "cwd": "PoSlapUnreal/training",
+      "command": ".venv/Scripts/python.exe overnight.py --resume --hours {hours} --queue retrain_v5_queue.json",
+      "eval_command": "",
+      "self_limiting": true,
+      "requires": [
+        "PoSlapUnreal/training/.venv/Scripts/python.exe",
+        "PoSlapUnreal/training/runs/retrain_v5_queue.json"
+      ],
+      "notes": "Fastest Warp gym in the fleet (~32.5k sps); resumes remaining stages automatically."
+    }
+  ]
+}
