@@ -1,0 +1,270 @@
+{
+ "run": "mom_L2_v4_night20_2035",
+ "started": "2026-11-27 20:35:31",
+ "command": "train.py --char mom --level L2 --minutes 90.0 --envs 8192 --run mom_L2_v4_night20_2035 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --physics 4 --reach-start 0.0 --imit-start 1.0 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_L4_v4_night18_0955\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_L4_v4_night19_1902\\latest.pt",
+ "args": {
+  "char": "mom",
+  "level": "L2",
+  "minutes": 90.0,
+  "envs": 8192,
+  "run": "mom_L2_v4_night20_2035",
+  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
+  "max_std": 0.3,
+  "entropy": 0.001,
+  "critic_warmup": 0,
+  "roles": null,
+  "opponent": null,
+  "field": null,
+  "out": null,
+  "reach_start": 0.0,
+  "imit_start": 1.0,
+  "keep_going": false,
+  "obs_project": 0,
+  "physics": 4,
+  "allow_config_change": false,
+  "supervise": 0,
+  "keep": [
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt",
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt",
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_L4_v4_night18_0955\\latest.pt",
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_L4_v4_night19_1902\\latest.pt"
+  ],
+  "config_changes": []
+ },
+ "level": "L2",
+ "level_config": {
+  "roles": {
+   "1": 0.7,
+   "0": 0.3
+  },
+  "seconds": 30.0,
+  "pushes": true,
+  "foot_box": [
+   0.2,
+   0.25
+  ],
+  "max_push": 0.6,
+  "hit_speed": 8.0,
+  "hit_speed_start": 2.0,
+  "reach_start": 1.0,
+  "imit_start": 1.0,
+  "reward_target": {
+   "1": 100.0,
+   "0": 2500.0
+  },
+  "check": {
+   "1": {
+    "episodes": 100,
+    "min_hit": 0.9,
+    "min_no_fall": 0.9,
+    "min_in_box": 0.9
+   },
+   "0": {
+    "episodes": 100,
+    "min_no_fall": 0.95,
+    "min_in_box": 0.95
+   }
+  }
+ },
+ "character": "mom",
+ "card": {
+  "name": "mom",
+  "display": "MOM",
+  "slot": 4,
+  "mesh": "Content/Art/Exports/Mom_rigged.fbx",
+  "skeleton": "characters/mom_skeleton.json",
+  "height_m": 1.68,
+  "mass_kg": 80.0,
+  "strength": 0.6,
+  "speed": 0.7,
+  "flexibility": 0.9,
+  "toughness": 1.2,
+  "stamina_per_strike": 0.03,
+  "neck_damage_per_snap": 0.03,
+  "strike_mass": 3.08,
+  "notes": "Fourth roster athlete (user, 2026-11-05: MomRigged.fbx from AccuRig, \"tough and stubborn\", 1.68 m / 80 kg). Rigged by Scripts/rig_mixamo.py's AccuRig/CC path (A-pose arms straightened to Grandpa/Matt's rest; 92 CC shape keys dropped). Toughest neck on the roster (toughness 1.2 vs Matt 1.15) and slowest to wear down (neck damage 0.03 per m/s of snap, stamina 0.03 per strike vs Grandpa's 0.04 / 0.05); a steady hitter, not a fast one (strength 0.6 like Kim, speed 0.7 between Matt 0.55 and Grandpa 0.75), a little less supple than Kim (flexibility 0.9). Strike mass scaled to body mass as for the others (3.0 kg per 78 kg). Same rules as grandpa.json otherwise.",
+  "style": {
+   "summary": "Balance: square and planted - knees softly bent 15 deg, hips nearly straight over the feet (3 deg, COM +0.1 cm), hands low. Slap: a quick upward chop - a full hip and trunk turn and a lean to make up for a short reach, the lead arm kept at her side, almost no follow-through.",
+   "stance_deg": {
+    "knee_l": 15,
+    "knee_r": 15,
+    "hip_flex_l": 3,
+    "hip_flex_r": 3,
+    "hip_abd_l": 6,
+    "hip_abd_r": 6,
+    "ankle_flex_l": 11,
+    "ankle_flex_r": 11,
+    "ankle_roll_l": -5,
+    "ankle_roll_r": -5,
+    "waist_flex": 4,
+    "shoulder_swing_l": -10,
+    "shoulder_raise_l": -60,
+    "shoulder_twist_l": 0,
+    "elbow_l": 30,
+    "shoulder_swing_r": -10,
+    "shoulder_raise_r": -60,
+    "shoulder_twist_r": 10,
+    "elbow_r": 30
+   },
+   "slap": {
+    "note": "(wind-up, strike, follow-through) degrees, slap_demo.py's conventions (see kim.json). Mom: quick, because every athlete drifts onto the podium ~0.75 s into stand targets and her slow joints (speed 0.7) need the time; a high arm (the face is ~30 cm above her shoulder) with a full trunk/hip turn and a lean, because her reach is short like Kim's (hand 17 cm short of the face in the best static pose vs Grandpa 4, Matt 1, Kim 16); the lead arm hangs at her side (in front it hit the podium in the wind-up); short follow-through.",
+    "guess_deg": {
+     "waist_twist": [
+      -25,
+      30,
+      30
+     ],
+     "waist_flex": [
+      4,
+      14,
+      10
+     ],
+     "waist_side": [
+      0,
+      2,
+      2
+     ],
+     "shoulder_swing_r": [
+      12,
+      -70,
+      -72
+     ],
+     "shoulder_raise_r": [
+      60,
+      55,
+      45
+     ],
+     "shoulder_twist_r": [
+      -25,
+      -45,
+      -42
+     ],
+     "elbow_r": [
+      85,
+      15,
+      25
+     ],
+     "wrist_flex_r": [
+      -30,
+      20,
+      10
+     ],
+     "wrist_dev_r": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_swing_l": [
+      0,
+      0,
+      0
+     ],
+     "shoulder_raise_l": [
+      -80,
+      -80,
+      -80
+     ],
+     "elbow_l": [
+      10,
+      10,
+      10
+     ],
+     "hip_flex_l": [
+      3,
+      10,
+      10
+     ],
+     "hip_flex_r": [
+      3,
+      10,
+      10
+     ],
+     "knee_l": [
+      15,
+      20,
+      20
+     ],
+     "knee_r": [
+      15,
+      20,
+      20
+     ],
+     "hip_rot_l": [
+      -10,
+      12,
+      12
+     ],
+     "hip_rot_r": [
+      -10,
+      12,
+      12
+     ]
+    },
+    "times_s": [
+     0.25,
+     0.18,
+     0.2
+    ],
+    "delays_s": {
+     "hip_rot_l": 0.0,
+     "hip_rot_r": 0.0,
+     "waist_twist": 0.03,
+     "waist_flex": 0.03,
+     "shoulder_swing_r": 0.06,
+     "shoulder_raise_r": 0.06,
+     "shoulder_twist_r": 0.09,
+     "elbow_r": 0.12,
+     "wrist_flex_r": 0.15
+    },
+    "search_sigma_deg": 15.0
+   }
+  },
+  "sparring": {
+   "head": [
+    0.8,
+    0.0,
+    0.72
+   ],
+   "shorter_max": 0.15,
+   "lean": 1.0,
+   "note": "Practice opponent: Grandpa's face from Mom's start pelvis (his own 0.74 m less the ~2 cm their pelvises differ); up to 15 cm lower for Kim; leaning in when braced"
+  }
+ },
+ "git_sha": "b93128f077a306b881734822840e0a569987626c",
+ "git_dirty": true,
+ "versions": {
+  "python": "3.11.9",
+  "torch": "2.11.0+cu128",
+  "mujoco": "3.10.0"
+ },
+ "obs_dim": 142,
+ "interface": 5,
+ "hashes": {
+  "character": "mom",
+  "card": "917aa213c0f003b83f50b121eeaea3cdc8312ad277a7bd8b88612390d0f722a0",
+  "model": "bf2e54db786c4063f8df00cd69335061bebc919d214eb00046ccf53fc41272cd",
+  "physics": 4,
+  "level": "L2",
+  "level_config": "97f2bb253151ec0689f6f4d36f481d86c8d7948a64405375ee135a435e4da35c"
+ },
+ "config_changes": [],
+ "ppo": {
+  "lr": 0.001,
+  "init_std": 0.8,
+  "max_std": 0.3,
+  "entropy": 0.001
+ },
+ "worlds": 8192,
+ "gaze_servo": true,
+ "servo_mix": "0.0",
+ "physics": 4,
+ "models_dir": "models\\v4",
+ "fingerprint_sha256": "bf2e54db786c4063f8df00cd69335061bebc919d214eb00046ccf53fc41272cd",
+ "gpu": {
+  "temp_c": 77.88,
+  "sm_mhz": 180.0,
+  "power_w": 16.72,
+  "util": 0.0
+ }
+}

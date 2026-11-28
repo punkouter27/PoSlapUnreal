@@ -1,20 +1,20 @@
 {
  "run": "grandpa_L4_v4_night18_0955",
- "started": "2026-11-27 09:55:44",
- "command": "train.py --char grandpa --level L4 --minutes 90.0 --envs 8192 --run grandpa_L4_v4_night18_0955 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt --physics 4 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt --field kim:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\best.pt,matt:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt,grandpa:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt",
+ "started": "2026-11-27 18:28:43",
+ "command": "train.py --char grandpa --level L4 --minutes 32.6 --envs 8192 --run grandpa_L4_v4_night18_0955 --resume C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_L4_v4_night18_0955\\latest.pt --physics 4 --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt --keep C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt --field kim:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\models\\brains\\kim_final.pt,matt:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt,grandpa:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\models\\brains\\grandpa_final.pt",
  "args": {
   "char": "grandpa",
   "level": "L4",
-  "minutes": 90.0,
+  "minutes": 32.6,
   "envs": 8192,
   "run": "grandpa_L4_v4_night18_0955",
-  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt",
+  "resume": "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_L4_v4_night18_0955\\latest.pt",
   "max_std": 0.3,
   "entropy": 0.001,
   "critic_warmup": 0,
   "roles": null,
   "opponent": null,
-  "field": "kim:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\best.pt,matt:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt,grandpa:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt",
+  "field": "kim:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\models\\brains\\kim_final.pt,matt:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt,grandpa:C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\models\\brains\\grandpa_final.pt",
   "out": null,
   "reach_start": null,
   "imit_start": null,
@@ -26,9 +26,7 @@
   "keep": [
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\matt_L4_v4_night10_0432\\latest.pt",
    "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\mom_L1_v4_night13_1218\\best.pt",
-   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt",
-   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\kim_G1_v4_night16_0736\\best.pt",
-   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\grandpa_S3_v4_night17_0824\\latest.pt"
+   "C:\\Users\\punko\\Downloads\\_CODEMATT\\PoSlapUnreal\\training\\runs\\tong_L1_v4_night14_1234\\best.pt"
   ],
   "config_changes": []
  },
@@ -92,7 +90,7 @@
    "note": "Practice opponent (envs/slap.py): his face from own start pelvis vs a braced Grandpa; up to 10 cm shorter, leaning in like a braced Kim (her face sat 13-14 cm lower, 5-10 cm closer in Unreal, 2026-10-23)"
   }
  },
- "git_sha": "b707dabdcb22859b5255a23ba4e8d9f87baa6ef9",
+ "git_sha": "b93128f077a306b881734822840e0a569987626c",
  "git_dirty": false,
  "versions": {
   "python": "3.11.9",
@@ -123,9 +121,9 @@
  "models_dir": "models\\v4",
  "fingerprint_sha256": "61e088d66afa5a3ec616a5c2d29211c1d6c81b51eadd206f03ac6354ff185c1d",
  "gpu": {
-  "temp_c": 86.91,
+  "temp_c": 85.28,
   "sm_mhz": 180.0,
-  "power_w": 21.34,
+  "power_w": 22.43,
   "util": 0.0
  }
 }
